@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory
-import sqlite3, os
+from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
+import sqlite3, os, json
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -31,7 +31,6 @@ def init_db():
     db.commit()
     db.close()
 
-os.makedirs('uploads', exist_ok=True)
 init_db()
 
 @app.route('/')
