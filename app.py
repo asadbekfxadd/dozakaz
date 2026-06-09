@@ -652,15 +652,14 @@ YADISK_TOKEN = os.environ.get('YADISK_TOKEN', '35a4110c9f5a4729ba8a54cf978276f4'
 YADISK_PUBLIC_KEY = 'https://disk.yandex.com/d/-plm2CMx-kHNuA'
 YADISK_FOLDER = '/06-White Background Pics'
 _photo_cache = {}
+_photo_url_cache = {}
 
 @app.route('/api/photos/<article>')
 def get_photos(article):
     import urllib.request, urllib.parse, json as _json
-    # Normalize article: strip trailing A for folder match
     art_base = article.rstrip('A')
-    cache_key = art_base
-    if cache_key in _photo_cache:
-        return jsonify(_photo_cache[cache_key])
+    if art_base in _photo_cache:
+        return jsonify(_photo_cache[art_base])
 
     folder_path = f"{YADISK_FOLDER}/{art_base}"
     url = (
@@ -674,26 +673,65 @@ def get_photos(article):
     )
     try:
         req = urllib.request.Request(url, headers={'Authorization': f'OAuth {YADISK_TOKEN}'})
-        with urllib.request.urlopen(req, timeout=5) as resp:
+        with urllib.request.urlopen(req, timeout=8) as resp:
             data = _json.loads(resp.read())
         items = data.get('_embedded', {}).get('items', [])
         photos = []
         for item in items:
-            if item.get('media_type') in ('image', None) and item.get('name', '').lower().endswith(('.jpg','.jpeg','.png','.webp')):
-                # Get download link
+            name = item.get('name', '')
+            if name.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                # Get direct download link via server (has token)
                 dl_url = (
                     "https://cloud-api.yandex.net/v1/disk/public/resources/download?"
-                    + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': f"{folder_path}/{item['name']}"})
+                    + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': f"{folder_path}/{name}"})
                 )
                 req2 = urllib.request.Request(dl_url, headers={'Authorization': f'OAuth {YADISK_TOKEN}'})
-                with urllib.request.urlopen(req2, timeout=5) as r2:
+                with urllib.request.urlopen(req2, timeout=8) as r2:
                     dl_data = _json.loads(r2.read())
-                photos.append({'url': dl_data.get('href', ''), 'name': item['name'], 'preview': item.get('preview', '')})
+                href = dl_data.get('href', '')
+                if href:
+                    # Store real URL and return proxy URL
+                    proxy_key = f"{art_base}/{name}"
+                    _photo_url_cache[proxy_key] = href
+                    photos.append(f"/api/photo-proxy/{urllib.parse.quote(art_base)}/{urllib.parse.quote(name)}")
         result = {'photos': photos}
-        _photo_cache[cache_key] = result
+        _photo_cache[art_base] = result
         return jsonify(result)
     except Exception as e:
         return jsonify({'photos': [], 'error': str(e)})
+
+
+@app.route('/api/photo-proxy/<art_base>/<filename>')
+def photo_proxy(art_base, filename):
+    import urllib.request
+    from flask import Response
+    key = f"{art_base}/{filename}"
+    href = _photo_url_cache.get(key)
+    if not href:
+        # Re-fetch download link
+        import urllib.parse, json as _json
+        folder_path = f"{YADISK_FOLDER}/{art_base}"
+        dl_url = (
+            "https://cloud-api.yandex.net/v1/disk/public/resources/download?"
+            + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': f"{folder_path}/{filename}"})
+        )
+        try:
+            req = urllib.request.Request(dl_url, headers={'Authorization': f'OAuth {YADISK_TOKEN}'})
+            with urllib.request.urlopen(req, timeout=8) as r:
+                href = _json.loads(r.read()).get('href', '')
+            _photo_url_cache[key] = href
+        except:
+            return 'Not found', 404
+    try:
+        req = urllib.request.Request(href)
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = r.read()
+            ct = r.headers.get('Content-Type', 'image/jpeg')
+        resp = Response(data, mimetype=ct)
+        resp.headers['Cache-Control'] = 'public, max-age=86400'
+        return resp
+    except:
+        return 'Error', 500
 
 
 if __name__ == '__main__':
