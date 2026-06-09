@@ -104,6 +104,7 @@ td.muted{color:var(--text2)}
 .toast.error{border-color:var(--red);color:var(--red)}
 .toast.show{display:flex}
 
+<<<<<<< HEAD
 .empty-state{padding:48px;text-align:center;color:var(--text3)}
 .empty-state svg{width:40px;height:40px;margin:0 auto 12px;opacity:.3}
 
@@ -427,3 +428,8 @@ loadStats();
 </script>
 </body>
 </html>
+=======
+if __name__ == '__main__':
+    port = int(os.environ.get('PORT', 5000))
+    app.run(host='0.0.0.0', port=port)
+>>>>>>> db353c66d55ca1d90019ce7172d1166e3588babf
