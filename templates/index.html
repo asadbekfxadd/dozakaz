@@ -3,147 +3,171 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Дозаказы</title>
+<title>LI-NING | Дозаказы</title>
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
-  --bg:#0f1117;--bg2:#161b26;--bg3:#1e2433;
-  --border:#2a3044;--border2:#3a4460;
-  --text:#e8eaf6;--text2:#8892b0;--text3:#4a5568;
-  --accent:#4f8ef7;--accent2:#1a3a6e;
-  --green:#22c55e;--green2:#14532d;
-  --amber:#f59e0b;--amber2:#451a03;
-  --red:#ef4444;--red2:#450a0a;
-  --radius:10px;--radius-sm:6px;
+  --bg:#0a0a0a;--bg2:#111111;--bg3:#1a1a1a;
+  --border:#2a2a2a;--border2:#3a3a3a;
+  --text:#f0f0f0;--text2:#888;--text3:#555;
+  --accent:#e31837;--accent2:#2a0008;
+  --green:#22c55e;--green2:#0a2a15;
+  --amber:#f59e0b;--amber2:#2a1a00;
+  --red:#e31837;--red2:#2a0008;
+  --radius:8px;--radius-sm:4px;
 }
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh}
 a{color:var(--accent);text-decoration:none}
 .shell{display:flex;min-height:100vh}
 .sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);padding:0;flex-shrink:0;display:flex;flex-direction:column}
 .logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
-.logo-title{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px}
-.logo-sub{font-size:11px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:1px}
+.logo-brand{font-size:22px;font-weight:900;color:#fff;letter-spacing:3px;text-transform:uppercase}
+.logo-brand span{color:var(--accent)}
+.logo-sub{font-size:10px;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:2px}
 nav{padding:12px 8px;flex:1}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;color:var(--text2);font-size:13px;transition:all .15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
 .nav-item:hover{background:var(--bg3);color:var(--text)}
-.nav-item.active{background:var(--accent2);color:var(--accent)}
+.nav-item.active{background:var(--accent2);color:var(--accent);border-left:2px solid var(--accent)}
 .nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.7}
 .nav-item.active svg{opacity:1}
-.nav-badge{margin-left:auto;background:var(--accent2);color:var(--accent);font-size:10px;padding:2px 6px;border-radius:20px;font-weight:600}
+.nav-badge{margin-left:auto;background:var(--accent);color:#fff;font-size:10px;padding:2px 6px;border-radius:20px;font-weight:700}
 .sidebar-footer{padding:12px 8px;border-top:1px solid var(--border)}
-.user-info{font-size:12px;color:var(--text2);padding:8px 12px;margin-bottom:4px}
-.user-info span{color:var(--text);font-weight:500}
+.user-info{font-size:11px;color:var(--text3);padding:8px 12px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.5px}
+.user-info span{color:var(--text);font-weight:600}
 .main{flex:1;overflow:auto}
 .topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between}
-.topbar-title{font-size:18px;font-weight:600;color:var(--text)}
-.topbar-sub{font-size:12px;color:var(--text3);margin-top:2px}
+.topbar-title{font-size:18px;font-weight:700;color:var(--text);letter-spacing:-.3px}
+.topbar-sub{font-size:11px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:.5px}
 .content{padding:24px 28px}
 .page{display:none}.page.active{display:block}
-.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)}
-.login-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:40px;width:100%;max-width:380px}
-.login-title{font-size:22px;font-weight:700;margin-bottom:6px}
-.login-sub{font-size:13px;color:var(--text2);margin-bottom:28px}
+
+/* LOGIN */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0a0a0a;position:relative;overflow:hidden}
+.login-wrap::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent)}
+.login-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%, #2a000820 0%, transparent 70%)}
+.login-card{background:#111;border:1px solid #222;border-radius:var(--radius);padding:48px 40px;width:100%;max-width:400px;position:relative;z-index:1}
+.login-logo{font-size:28px;font-weight:900;color:#fff;letter-spacing:4px;text-transform:uppercase;margin-bottom:4px}
+.login-logo span{color:var(--accent)}
+.login-tagline{font-size:10px;color:#555;text-transform:uppercase;letter-spacing:3px;margin-bottom:32px}
 .login-group{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
-.login-group label{font-size:12px;color:var(--text2)}
-.login-group input{width:100%;padding:10px 14px;font-size:14px}
-.login-btn{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:500;cursor:pointer;margin-top:8px;font-family:inherit}
+.login-group label{font-size:11px;color:#666;text-transform:uppercase;letter-spacing:.8px}
+.login-group input{width:100%;padding:12px 14px;font-size:14px;background:#1a1a1a;border:1px solid #2a2a2a;color:#f0f0f0;border-radius:var(--radius-sm);transition:border-color .15s}
+.login-group input:focus{outline:none;border-color:var(--accent)}
+.login-btn{width:100%;padding:13px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:700;cursor:pointer;margin-top:8px;font-family:inherit;letter-spacing:1px;text-transform:uppercase;transition:opacity .15s}
 .login-btn:hover{opacity:.85}
-.login-error{color:var(--red);font-size:12px;margin-top:8px;display:none}
+.login-error{color:var(--accent);font-size:12px;margin-top:10px;display:none;text-align:center}
+
+/* STATS */
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
-.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
-.stat-num{font-size:26px;font-weight:700;line-height:1}
-.stat-label{font-size:11px;color:var(--text2);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
-.stat-card.c-blue .stat-num{color:var(--accent)}
+.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden}
+.stat-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--border)}
+.stat-card.c-red::after{background:var(--accent)}
+.stat-card.c-green::after{background:var(--green)}
+.stat-card.c-amber::after{background:var(--amber)}
+.stat-num{font-size:28px;font-weight:700;line-height:1}
+.stat-label{font-size:10px;color:var(--text2);margin-top:4px;text-transform:uppercase;letter-spacing:.8px}
+.stat-card.c-red .stat-num{color:var(--accent)}
 .stat-card.c-green .stat-num{color:var(--green)}
 .stat-card.c-amber .stat-num{color:var(--amber)}
+
 .filters{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
-select,input,textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--radius-sm);font-size:13px;outline:none;font-family:inherit}
+select,input,textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--radius-sm);font-size:13px;outline:none;font-family:inherit;transition:border-color .15s}
 select:focus,input:focus,textarea:focus{border-color:var(--accent)}
 select option{background:var(--bg3)}
 .filters select,.filters input{min-width:160px}
+
 .orders-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
 table{width:100%;border-collapse:collapse}
-thead th{padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;font-weight:500}
+thead th{padding:10px 14px;font-size:10px;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;font-weight:600}
 tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
 tbody tr:last-child{border-bottom:none}
 tbody tr:hover{background:var(--bg3)}
 td{padding:12px 14px;font-size:13px;color:var(--text)}
 td.muted{color:var(--text2)}
-.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
+
+.badge{display:inline-flex;align-items:center;padding:3px 9px;border-radius:3px;font-size:11px;font-weight:600;text-transform:uppercase;letter-spacing:.3px}
 .badge-new{background:var(--accent2);color:var(--accent)}
-.badge-work{background:#2a1f00;color:var(--amber)}
+.badge-work{background:var(--amber2);color:var(--amber)}
 .badge-done{background:var(--green2);color:var(--green)}
-.badge-urgent{background:#3a1a1a;color:#f87171;font-size:10px;padding:2px 7px}
+.badge-urgent{background:var(--accent2);color:var(--accent);font-size:10px;padding:2px 7px}
 .badge-normal{background:var(--bg3);color:var(--text3);font-size:10px;padding:2px 7px}
-.file-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:pointer;transition:all .15s}
+
+.file-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:pointer;transition:all .15s}
 .file-chip:hover{border-color:var(--accent);color:var(--accent)}
+
 .btn-icon{background:none;border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
 .btn-icon:hover{border-color:var(--border2);color:var(--text)}
-.btn-icon.danger:hover{border-color:var(--red);color:var(--red)}
 .btn-icon.success:hover{border-color:var(--green);color:var(--green)}
+
 .form-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;max-width:620px}
-.form-section{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:12px;margin-top:24px;font-weight:500}
+.form-section{font-size:10px;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:12px;margin-top:24px;font-weight:600}
 .form-section:first-child{margin-top:0}
 .form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
 .form-group{display:flex;flex-direction:column;gap:5px}
-.form-group label{font-size:12px;color:var(--text2)}
+.form-group label{font-size:11px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px}
 .form-group input,.form-group select,.form-group textarea{width:100%}
 .form-group textarea{min-height:72px;resize:vertical}
-.required{color:var(--red);margin-left:2px}
+.required{color:var(--accent);margin-left:2px}
+
 .upload-zone{border:1.5px dashed var(--border2);border-radius:var(--radius);padding:28px;text-align:center;cursor:pointer;transition:all .15s;margin-top:4px}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:#0d1a33}
-.upload-zone-icon{font-size:28px;margin-bottom:8px;color:var(--text3)}
+.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:#1a0005}
+.upload-zone-icon{font-size:28px;margin-bottom:8px}
 .upload-zone p{font-size:13px;color:var(--text2)}
 .upload-zone small{font-size:11px;color:var(--text3)}
 .upload-name{color:var(--green);font-size:13px;font-weight:500;margin-top:6px}
-.btn-primary{background:var(--accent);color:#fff;border:none;padding:10px 22px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;cursor:pointer;transition:opacity .15s;font-family:inherit}
+
+.btn-primary{background:var(--accent);color:#fff;border:none;padding:11px 24px;border-radius:var(--radius-sm);font-size:13px;font-weight:700;cursor:pointer;transition:opacity .15s;font-family:inherit;text-transform:uppercase;letter-spacing:1px}
 .btn-primary:hover{opacity:.85}
-.btn-secondary{background:var(--bg3);color:var(--text2);border:1px solid var(--border);padding:10px 18px;border-radius:var(--radius-sm);font-size:14px;cursor:pointer;font-family:inherit}
+.btn-secondary{background:var(--bg3);color:var(--text2);border:1px solid var(--border);padding:11px 18px;border-radius:var(--radius-sm);font-size:13px;cursor:pointer;font-family:inherit;text-transform:uppercase;letter-spacing:.5px}
 .btn-secondary:hover{color:var(--text);border-color:var(--border2)}
 .form-actions{display:flex;gap:10px;margin-top:20px}
-.toast{position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--green);color:var(--green);padding:12px 20px;border-radius:var(--radius);font-size:13px;display:none;align-items:center;gap:8px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.4)}
-.toast.error{border-color:var(--red);color:var(--red)}
+
+.toast{position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--green);color:var(--green);padding:12px 20px;border-radius:var(--radius);font-size:13px;display:none;align-items:center;gap:8px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.6)}
+.toast.error{border-color:var(--accent);color:var(--accent)}
 .toast.show{display:flex}
+
 .empty-state{padding:48px;text-align:center;color:var(--text3)}
-.empty-state svg{width:40px;height:40px;margin:0 auto 12px;opacity:.3}
-.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;flex-shrink:0}
+.empty-state svg{width:40px;height:40px;margin:0 auto 12px;opacity:.2}
+
+.dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:6px;flex-shrink:0}
 .dot-new{background:var(--accent)}
 .dot-work{background:var(--amber)}
 .dot-done{background:var(--green)}
+
+/* KANBAN */
 .kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}
 .kanban-col{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden;min-height:400px}
-.kanban-col-header{padding:12px 16px;font-size:12px;font-weight:600;text-transform:uppercase;letter-spacing:.5px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
+.kanban-col-header{padding:12px 16px;font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid var(--border)}
 .kanban-col-header.h-new{color:var(--accent);background:var(--accent2)}
-.kanban-col-header.h-work{color:var(--amber);background:#2a1f00}
+.kanban-col-header.h-work{color:var(--amber);background:var(--amber2)}
 .kanban-col-header.h-done{color:var(--green);background:var(--green2)}
 .kanban-col-count{font-size:11px;background:rgba(255,255,255,.1);padding:2px 7px;border-radius:20px}
 .kanban-cards{padding:10px;display:flex;flex-direction:column;gap:8px;min-height:200px}
 .kanban-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;cursor:grab;transition:all .15s;user-select:none}
-.kanban-card:hover{border-color:var(--border2);transform:translateY(-1px);box-shadow:0 4px 12px rgba(0,0,0,.3)}
+.kanban-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 12px rgba(227,24,55,.1)}
 .kanban-card.dragging{opacity:.4;cursor:grabbing}
-.kanban-col.drag-over .kanban-cards{background:rgba(79,142,247,.05);border-radius:var(--radius-sm)}
-.kanban-card-branch{font-weight:600;font-size:13px;margin-bottom:4px}
+.kanban-col.drag-over .kanban-cards{background:rgba(227,24,55,.03);border-radius:var(--radius-sm)}
+.kanban-card-branch{font-weight:700;font-size:13px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
 .kanban-card-resp{font-size:11px;color:var(--text2);margin-bottom:6px}
 .kanban-card-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .kanban-card-date{font-size:10px;color:var(--text3)}
 
 /* ANALYTICS */
-.analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:24px}
+.analytics-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 .analytics-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:20px}
-.analytics-card h3{font-size:13px;color:var(--text2);text-transform:uppercase;letter-spacing:.5px;margin-bottom:16px}
+.analytics-card h3{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:16px;font-weight:600}
 .bar-row{display:flex;align-items:center;gap:10px;margin-bottom:10px}
 .bar-label{font-size:12px;color:var(--text2);width:160px;flex-shrink:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.bar-wrap{flex:1;background:var(--bg3);border-radius:4px;height:20px;overflow:hidden}
-.bar-fill{height:100%;border-radius:4px;transition:width .4s}
-.bar-val{font-size:12px;color:var(--text);width:30px;text-align:right;flex-shrink:0}
+.bar-wrap{flex:1;background:var(--bg3);border-radius:2px;height:18px;overflow:hidden}
+.bar-fill{height:100%;border-radius:2px;transition:width .4s}
+.bar-val{font-size:12px;color:var(--text);width:30px;text-align:right;flex-shrink:0;font-weight:600}
 
 /* CONVERSION */
 .conv-upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
-.conv-table-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-.conv-pct{font-weight:700}
+.conv-pct{font-weight:700;font-size:14px}
 .conv-pct.good{color:var(--green)}
 .conv-pct.mid{color:var(--amber)}
-.conv-pct.bad{color:var(--red)}
+.conv-pct.bad{color:var(--accent)}
 
 @media(max-width:700px){
   .sidebar{display:none}
@@ -158,13 +182,15 @@ td.muted{color:var(--text2)}
 </head>
 <body>
 
+<!-- LOGIN -->
 <div class="login-wrap" id="login-wrap">
+  <div class="login-bg"></div>
   <div class="login-card">
-    <div class="login-title">📦 Дозаказы</div>
-    <div class="login-sub">Войдите в систему</div>
+    <div class="login-logo">LI<span>-</span>NING</div>
+    <div class="login-tagline">Supply Management System</div>
     <div class="login-group">
       <label>Логин</label>
-      <input type="text" id="l-user" placeholder="Название филиала или admin">
+      <input type="text" id="l-user" placeholder="Введите логин">
     </div>
     <div class="login-group">
       <label>Пароль</label>
@@ -175,11 +201,12 @@ td.muted{color:var(--text2)}
   </div>
 </div>
 
+<!-- APP -->
 <div class="shell" id="app-wrap" style="display:none">
   <aside class="sidebar">
     <div class="logo">
-      <div class="logo-title">📦 Дозаказы</div>
-      <div class="logo-sub">Управление заявками</div>
+      <div class="logo-brand">LI<span style="color:var(--accent)">-</span>NING</div>
+      <div class="logo-sub">Supply Management</div>
     </div>
     <nav>
       <button class="nav-item active" onclick="showPage('dash',this)">
@@ -221,12 +248,12 @@ td.muted{color:var(--text2)}
           <div class="topbar-title">Заявки на дозаказ</div>
           <div class="topbar-sub" id="topbar-date"></div>
         </div>
-        <button class="btn-primary" onclick="showPage('form',null)" style="font-size:13px;padding:8px 16px">+ Новая заявка</button>
+        <button class="btn-primary" onclick="showPage('form',null)">+ Новая заявка</button>
       </div>
       <div class="content">
         <div class="stats-grid">
           <div class="stat-card"><div class="stat-num" id="s-total">—</div><div class="stat-label">Всего заявок</div></div>
-          <div class="stat-card c-blue"><div class="stat-num" id="s-new">—</div><div class="stat-label">Новые</div></div>
+          <div class="stat-card c-red"><div class="stat-num" id="s-new">—</div><div class="stat-label">Новые</div></div>
           <div class="stat-card c-amber"><div class="stat-num" id="s-work">—</div><div class="stat-label">В работе</div></div>
           <div class="stat-card c-green"><div class="stat-num" id="s-done">—</div><div class="stat-label">Выполнены</div></div>
         </div>
@@ -246,8 +273,8 @@ td.muted{color:var(--text2)}
           <input type="text" id="f-responsible" placeholder="🔍 Сотрудник..." oninput="loadOrders()">
           <input type="date" id="f-date-from" onchange="loadOrders()" title="Дата с">
           <input type="date" id="f-date-to" onchange="loadOrders()" title="Дата по">
-          <button class="btn-secondary" onclick="clearFilters()" style="padding:8px 14px;font-size:13px">✕ Сброс</button>
-          <button class="btn-secondary" onclick="loadOrders()" style="padding:8px 14px;font-size:13px">↻ Обновить</button>
+          <button class="btn-secondary" onclick="clearFilters()" style="padding:8px 14px">✕ Сброс</button>
+          <button class="btn-secondary" onclick="loadOrders()" style="padding:8px 14px">↻ Обновить</button>
         </div>
         <div class="orders-wrap">
           <table>
@@ -269,20 +296,20 @@ td.muted{color:var(--text2)}
     <div id="page-kanban" class="page">
       <div class="topbar">
         <div><div class="topbar-title">Канбан</div><div class="topbar-sub">Перетащите карточку для смены статуса</div></div>
-        <button class="btn-secondary" onclick="loadKanban()" style="font-size:13px;padding:8px 14px">↻ Обновить</button>
+        <button class="btn-secondary" onclick="loadKanban()">↻ Обновить</button>
       </div>
       <div class="content">
         <div class="kanban">
           <div class="kanban-col" id="col-new" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(this)" ondrop="onDrop(event,'Новая')">
-            <div class="kanban-col-header h-new"><span>🔵 Новая</span><span class="kanban-col-count" id="cnt-new">0</span></div>
+            <div class="kanban-col-header h-new"><span>Новая</span><span class="kanban-col-count" id="cnt-new">0</span></div>
             <div class="kanban-cards" id="cards-new"></div>
           </div>
           <div class="kanban-col" id="col-work" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(this)" ondrop="onDrop(event,'В работе')">
-            <div class="kanban-col-header h-work"><span>🟡 В работе</span><span class="kanban-col-count" id="cnt-work">0</span></div>
+            <div class="kanban-col-header h-work"><span>В работе</span><span class="kanban-col-count" id="cnt-work">0</span></div>
             <div class="kanban-cards" id="cards-work"></div>
           </div>
           <div class="kanban-col" id="col-done" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(this)" ondrop="onDrop(event,'Выполнена')">
-            <div class="kanban-col-header h-done"><span>🟢 Выполнена</span><span class="kanban-col-count" id="cnt-done">0</span></div>
+            <div class="kanban-col-header h-done"><span>Выполнена</span><span class="kanban-col-count" id="cnt-done">0</span></div>
             <div class="kanban-cards" id="cards-done"></div>
           </div>
         </div>
@@ -293,7 +320,7 @@ td.muted{color:var(--text2)}
     <div id="page-analytics" class="page">
       <div class="topbar">
         <div><div class="topbar-title">Аналитика</div><div class="topbar-sub">Статистика заявок по филиалам</div></div>
-        <button class="btn-secondary" onclick="loadAnalytics()" style="font-size:13px;padding:8px 14px">↻ Обновить</button>
+        <button class="btn-secondary" onclick="loadAnalytics()">↻ Обновить</button>
       </div>
       <div class="content">
         <div class="analytics-grid">
@@ -306,19 +333,12 @@ td.muted{color:var(--text2)}
             <div id="chart-statuses"></div>
           </div>
         </div>
-        <div class="analytics-card" style="margin-bottom:16px">
+        <div class="analytics-card">
           <h3>Таблица по филиалам</h3>
-          <div class="conv-table-wrap" style="margin-top:12px">
+          <div class="orders-wrap" style="margin-top:12px">
             <table>
               <thead>
-                <tr>
-                  <th>Филиал</th>
-                  <th>Всего</th>
-                  <th>Новые</th>
-                  <th>В работе</th>
-                  <th>Выполнены</th>
-                  <th>Срочных</th>
-                </tr>
+                <tr><th>Филиал</th><th>Всего</th><th>Новые</th><th>В работе</th><th>Выполнены</th><th>Срочных</th></tr>
               </thead>
               <tbody id="analytics-tbody"></tbody>
             </table>
@@ -335,20 +355,20 @@ td.muted{color:var(--text2)}
       <div class="content">
         <div class="conv-upload-grid">
           <div class="form-card" style="padding:20px">
-            <div class="form-section" style="margin-top:0">📷 Макроскоп (посетители)</div>
+            <div class="form-section">📷 Макроскоп — посетители</div>
             <div class="upload-zone" id="mac-zone" onclick="document.getElementById('mac-file').click()"
                  ondragover="event.preventDefault();this.classList.add('drag')"
                  ondragleave="this.classList.remove('drag')"
                  ondrop="handleConvDrop(event,'mac')">
               <div class="upload-zone-icon">📊</div>
               <p>Загрузить файл Макроскоп</p>
-              <small>.xlsx — выгрузка входящих посетителей</small>
+              <small>.xlsx — входящие посетители</small>
               <div class="upload-name" id="mac-name"></div>
             </div>
             <input type="file" id="mac-file" accept=".xlsx" style="display:none" onchange="onConvFile(this,'mac')">
           </div>
           <div class="form-card" style="padding:20px">
-            <div class="form-section" style="margin-top:0">🛍️ 1С (продажи)</div>
+            <div class="form-section">🛍️ 1С — продажи</div>
             <div class="upload-zone" id="onec-zone" onclick="document.getElementById('onec-file').click()"
                  ondragover="event.preventDefault();this.classList.add('drag')"
                  ondragleave="this.classList.remove('drag')"
@@ -362,20 +382,14 @@ td.muted{color:var(--text2)}
           </div>
         </div>
         <div style="margin-bottom:16px;display:flex;gap:10px">
-          <button class="btn-primary" onclick="calcConversion()">📊 Рассчитать конверсию</button>
+          <button class="btn-primary" onclick="calcConversion()">Рассчитать конверсию</button>
           <button class="btn-secondary" onclick="clearConversion()">✕ Сбросить</button>
         </div>
         <div id="conv-result" style="display:none">
-          <div class="conv-table-wrap">
+          <div class="orders-wrap">
             <table>
               <thead>
-                <tr>
-                  <th>Филиал</th>
-                  <th>Посетители</th>
-                  <th>Чеков</th>
-                  <th>Сумма продаж</th>
-                  <th>Конверсия %</th>
-                </tr>
+                <tr><th>Филиал</th><th>Посетители</th><th>Чеков</th><th>Сумма продаж</th><th>Конверсия %</th></tr>
               </thead>
               <tbody id="conv-tbody"></tbody>
             </table>
@@ -390,8 +404,8 @@ td.muted{color:var(--text2)}
     <!-- FORM -->
     <div id="page-form" class="page">
       <div class="topbar">
-        <div><div class="topbar-title">Новая заявка на дозаказ</div><div class="topbar-sub">Заполните форму и прикрепите Excel файл</div></div>
-        <button class="btn-secondary" onclick="showPage('dash',null)" style="font-size:13px;padding:8px 14px">← Назад</button>
+        <div><div class="topbar-title">Новая заявка</div><div class="topbar-sub">Заполните форму и прикрепите Excel файл</div></div>
+        <button class="btn-secondary" onclick="showPage('dash',null)">← Назад</button>
       </div>
       <div class="content">
         <div class="form-card">
@@ -451,415 +465,265 @@ td.muted{color:var(--text2)}
 <div class="toast" id="toast"><span id="toast-msg"></span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var selectedFile = null;
-var dragId = null;
-var currentRole = null;
-var currentBranch = null;
-var macData = null;
-var onecData = null;
+var selectedFile=null,dragId=null,currentRole=null,currentBranch=null,macData=null,onecData=null;
 
-document.getElementById('topbar-date').textContent = new Date().toLocaleDateString('ru-RU', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
-document.getElementById('r-date').value = new Date().toISOString().slice(0,10);
+document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
+document.getElementById('r-date').value=new Date().toISOString().slice(0,10);
 
-// Маппинг названий филиалов Макроскоп → наши названия
-const BRANCH_MAP = {
-  'magic': 'MAGIC CITY',
-  'novza': 'NOVZA',
-  'atlas': 'ATLAS CHIMGAN',
-  'Family Park': 'Family park',
-  'alayskiy': 'ALAYSKIY',
-  'tashcityMall': 'TASHKENT CITY MALL',
-  'Hitown': 'HIGH TOWN PLAZA',
-  'Malika': 'MALIKA',
-  'ekopark': 'ECO PARK',
-  'Shoto-Rust': 'Shota Rustavely',
-  'Shoto-Rust-2': 'Shota Rustavely',
-  'Gallary-1': 'Yunusabad gallery',
-  'Gallary-2': 'Yunusabad gallery',
-};
+const BRANCH_MAP={'magic':'MAGIC CITY','novza':'NOVZA','atlas':'ATLAS CHIMGAN','Family Park':'Family park','alayskiy':'ALAYSKIY','tashcityMall':'TASHKENT CITY MALL','Hitown':'HIGH TOWN PLAZA','Malika':'MALIKA','ekopark':'ECO PARK','Shoto-Rust':'Shota Rustavely','Shoto-Rust-2':'Shota Rustavely','Gallary-1':'Yunusabad gallery','Gallary-2':'Yunusabad gallery'};
+const ONEC_MAP={'MAGIC CITY':'MAGIC CITY','NOVZA':'NOVZA','ATLAS CHIMGAN':'ATLAS CHIMGAN','Family park':'Family park','ALAYSKIY':'ALAYSKIY','TASHKENT CITY MALL':'TASHKENT CITY MALL','HIGH TOWN PLAZA':'HIGH TOWN PLAZA','MALIKA':'MALIKA','ECO PARK':'ECO PARK','Shota Rustavely':'Shota Rustavely','Scopus Mall':'Scopus Mall','UZBEGIM ANDIJAN':'UZBEGIM ANDIJAN','M. BARAKA':'M. BARAKA','Yunusabad gallery':'Yunusabad gallery'};
 
-// Маппинг названий магазинов в 1С → наши названия
-const ONEC_MAP = {
-  'MAGIC CITY': 'MAGIC CITY',
-  'NOVZA': 'NOVZA',
-  'ATLAS CHIMGAN': 'ATLAS CHIMGAN',
-  'Family park': 'Family park',
-  'ALAYSKIY': 'ALAYSKIY',
-  'TASHKENT CITY MALL': 'TASHKENT CITY MALL',
-  'HIGH TOWN PLAZA': 'HIGH TOWN PLAZA',
-  'MALIKA': 'MALIKA',
-  'ECO PARK': 'ECO PARK',
-  'Shota Rustavely': 'Shota Rustavely',
-  'Scopus Mall': 'Scopus Mall',
-  'UZBEGIM ANDIJAN': 'UZBEGIM ANDIJAN',
-  'M. BARAKA': 'M. BARAKA',
-  'Yunusabad gallery': 'Yunusabad gallery',
-};
+async function init(){
+  var r=await fetch('/api/me');
+  var d=await r.json();
+  if(d.logged_in){currentRole=d.role;currentBranch=d.branch;showApp(d);}
+  else document.getElementById('login-wrap').style.display='flex';
+}
 
-async function init() {
-  var r = await fetch('/api/me');
-  var d = await r.json();
-  if (d.logged_in) {
-    currentRole = d.role;
-    currentBranch = d.branch;
-    showApp(d);
-  } else {
-    document.getElementById('login-wrap').style.display = 'flex';
+async function doLogin(){
+  var username=document.getElementById('l-user').value.trim();
+  var password=document.getElementById('l-pass').value;
+  var r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+  var d=await r.json();
+  if(!r.ok){document.getElementById('login-error').style.display='block';return;}
+  document.getElementById('login-error').style.display='none';
+  currentRole=d.role;currentBranch=d.branch;showApp(d);
+}
+
+function showApp(d){
+  document.getElementById('login-wrap').style.display='none';
+  document.getElementById('app-wrap').style.display='flex';
+  document.getElementById('ui-name').textContent=d.username;
+  if(d.role==='user'){
+    document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
+    document.getElementById('th-actions').style.display='none';
+    if(d.branch){var sel=document.getElementById('r-branch');sel.value=d.branch;sel.disabled=true;}
   }
+  loadOrders();loadStats();
 }
 
-async function doLogin() {
-  var username = document.getElementById('l-user').value.trim();
-  var password = document.getElementById('l-pass').value;
-  var r = await fetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-  var d = await r.json();
-  if (!r.ok) { document.getElementById('login-error').style.display = 'block'; return; }
-  document.getElementById('login-error').style.display = 'none';
-  currentRole = d.role;
-  currentBranch = d.branch;
-  showApp(d);
+async function doLogout(){await fetch('/api/logout',{method:'POST'});location.reload();}
+
+function showPage(name,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  if(name==='dash')loadOrders();
+  if(name==='kanban')loadKanban();
+  if(name==='analytics')loadAnalytics();
 }
 
-function showApp(d) {
-  document.getElementById('login-wrap').style.display = 'none';
-  document.getElementById('app-wrap').style.display = 'flex';
-  document.getElementById('ui-name').textContent = d.username;
-  if (d.role === 'user') {
-    document.querySelectorAll('.admin-only').forEach(el => el.style.display = 'none');
-    document.getElementById('th-actions').style.display = 'none';
-    if (d.branch) {
-      var sel = document.getElementById('r-branch');
-      sel.value = d.branch;
-      sel.disabled = true;
-    }
-  }
-  loadOrders();
-  loadStats();
+function toast(msg,err){
+  var t=document.getElementById('toast');
+  t.className='toast show'+(err?' error':'');
+  document.getElementById('toast-msg').textContent=msg;
+  setTimeout(()=>t.classList.remove('show'),3000);
 }
 
-async function doLogout() {
-  await fetch('/api/logout', {method:'POST'});
-  location.reload();
-}
-
-function showPage(name, btn) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  if (name === 'dash') loadOrders();
-  if (name === 'kanban') loadKanban();
-  if (name === 'analytics') loadAnalytics();
-}
-
-function toast(msg, err) {
-  var t = document.getElementById('toast');
-  t.className = 'toast show' + (err ? ' error' : '');
-  document.getElementById('toast-msg').textContent = msg;
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-
-function clearFilters() {
-  document.getElementById('f-branch').value = '';
-  document.getElementById('f-status').value = '';
-  document.getElementById('f-responsible').value = '';
-  document.getElementById('f-date-from').value = '';
-  document.getElementById('f-date-to').value = '';
+function clearFilters(){
+  ['f-branch','f-status','f-responsible','f-date-from','f-date-to'].forEach(id=>document.getElementById(id).value='');
   loadOrders();
 }
 
-async function loadStats() {
-  var r = await fetch('/api/stats');
-  if (!r.ok) return;
-  var d = await r.json();
-  document.getElementById('s-total').textContent = d.total;
-  document.getElementById('s-new').textContent = d.new;
-  document.getElementById('s-work').textContent = d.in_progress;
-  document.getElementById('s-done').textContent = d.done;
-  document.getElementById('nav-badge').textContent = d.total;
+async function loadStats(){
+  var r=await fetch('/api/stats');if(!r.ok)return;
+  var d=await r.json();
+  document.getElementById('s-total').textContent=d.total;
+  document.getElementById('s-new').textContent=d.new;
+  document.getElementById('s-work').textContent=d.in_progress;
+  document.getElementById('s-done').textContent=d.done;
+  document.getElementById('nav-badge').textContent=d.total;
 }
 
-function statusBadge(s) {
-  if (s === 'Новая') return '<span class="badge badge-new"><span class="dot dot-new"></span>Новая</span>';
-  if (s === 'В работе') return '<span class="badge badge-work"><span class="dot dot-work"></span>В работе</span>';
+function statusBadge(s){
+  if(s==='Новая')return '<span class="badge badge-new"><span class="dot dot-new"></span>Новая</span>';
+  if(s==='В работе')return '<span class="badge badge-work"><span class="dot dot-work"></span>В работе</span>';
   return '<span class="badge badge-done"><span class="dot dot-done"></span>Выполнена</span>';
 }
 
-function prioBadge(p) {
-  return p === 'Срочно' ? '<span class="badge badge-urgent">⚡ Срочно</span>' : '<span class="badge badge-normal">Обычный</span>';
+function prioBadge(p){
+  return p==='Срочно'?'<span class="badge badge-urgent">⚡ Срочно</span>':'<span class="badge badge-normal">Обычный</span>';
 }
 
-async function loadOrders() {
-  var params = {};
-  if (currentRole === 'admin') {
-    var branch = document.getElementById('f-branch').value;
-    var status = document.getElementById('f-status').value;
-    var responsible = document.getElementById('f-responsible').value.trim();
-    var dateFrom = document.getElementById('f-date-from').value;
-    var dateTo = document.getElementById('f-date-to').value;
-    if (branch) params.branch = branch;
-    if (status) params.status = status;
-    if (responsible) params.responsible = responsible;
-    if (dateFrom) params.date_from = dateFrom;
-    if (dateTo) params.date_to = dateTo;
+async function loadOrders(){
+  var params={};
+  if(currentRole==='admin'){
+    var branch=document.getElementById('f-branch').value;
+    var status=document.getElementById('f-status').value;
+    var responsible=document.getElementById('f-responsible').value.trim();
+    var dateFrom=document.getElementById('f-date-from').value;
+    var dateTo=document.getElementById('f-date-to').value;
+    if(branch)params.branch=branch;
+    if(status)params.status=status;
+    if(responsible)params.responsible=responsible;
+    if(dateFrom)params.date_from=dateFrom;
+    if(dateTo)params.date_to=dateTo;
   }
-  var r = await fetch('/api/orders?' + new URLSearchParams(params));
-  if (!r.ok) return;
-  var orders = await r.json();
-  var tbody = document.getElementById('orders-tbody');
-  if (!orders.length) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4"/></svg>Заявок не найдено</div></td></tr>';
-    return;
-  }
-  tbody.innerHTML = orders.map(o => `
+  var r=await fetch('/api/orders?'+new URLSearchParams(params));if(!r.ok)return;
+  var orders=await r.json();
+  var tbody=document.getElementById('orders-tbody');
+  if(!orders.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4"/></svg>Заявок не найдено</div></td></tr>';return;}
+  tbody.innerHTML=orders.map(o=>`
     <tr>
-      <td style="font-weight:500">${o.branch}</td>
+      <td style="font-weight:700;text-transform:uppercase;letter-spacing:.3px">${o.branch}</td>
       <td class="muted">${o.responsible}</td>
       <td class="muted">${o.date}</td>
-      <td>${o.filename ? `<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name.length>22?o.original_name.slice(0,20)+'…':o.original_name}</a>` : '<span style="color:var(--text3)">—</span>'}</td>
+      <td>${o.filename?`<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name.length>22?o.original_name.slice(0,20)+'…':o.original_name}</a>`:'<span style="color:var(--text3)">—</span>'}</td>
       <td>${statusBadge(o.status)}</td>
       <td>${prioBadge(o.priority)}</td>
       <td>${currentRole==='admin'?`
         <div style="display:flex;gap:5px;flex-wrap:wrap">
           ${o.status!=='В работе'&&o.status!=='Выполнена'?`<button class="btn-icon" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>`:''}
-          ${o.status!=='Выполнена'?`<button class="btn-icon success" onclick="setStatus(${o.id},'Выполнена')">✓</button>`:''}
-          <button class="btn-icon danger" onclick="del(${o.id})">✕</button>
+          ${o.status!=='Выполнена'?`<button class="btn-icon success" onclick="setStatus(${o.id},'Выполнена')">✓ Готово</button>`:''}
         </div>`:'—'}</td>
     </tr>
   `).join('');
   loadStats();
 }
 
-async function loadAnalytics() {
-  var r = await fetch('/api/orders');
-  if (!r.ok) return;
-  var orders = await r.json();
-
-  // По филиалам
-  var byBranch = {};
-  orders.forEach(o => {
-    if (!byBranch[o.branch]) byBranch[o.branch] = {total:0,new:0,work:0,done:0,urgent:0};
+async function loadAnalytics(){
+  var r=await fetch('/api/orders');if(!r.ok)return;
+  var orders=await r.json();
+  var byBranch={};
+  orders.forEach(o=>{
+    if(!byBranch[o.branch])byBranch[o.branch]={total:0,new:0,work:0,done:0,urgent:0};
     byBranch[o.branch].total++;
-    if (o.status==='Новая') byBranch[o.branch].new++;
-    if (o.status==='В работе') byBranch[o.branch].work++;
-    if (o.status==='Выполнена') byBranch[o.branch].done++;
-    if (o.priority==='Срочно') byBranch[o.branch].urgent++;
+    if(o.status==='Новая')byBranch[o.branch].new++;
+    if(o.status==='В работе')byBranch[o.branch].work++;
+    if(o.status==='Выполнена')byBranch[o.branch].done++;
+    if(o.priority==='Срочно')byBranch[o.branch].urgent++;
   });
-
-  var sorted = Object.entries(byBranch).sort((a,b) => b[1].total - a[1].total);
-  var max = sorted.length ? sorted[0][1].total : 1;
-
-  // Бар чарт по филиалам
-  var colors = ['#4f8ef7','#22c55e','#f59e0b','#ef4444','#a78bfa','#fb923c','#34d399','#60a5fa'];
-  document.getElementById('chart-branches').innerHTML = sorted.map((([branch, d], i) => `
+  var sorted=Object.entries(byBranch).sort((a,b)=>b[1].total-a[1].total);
+  var max=sorted.length?sorted[0][1].total:1;
+  document.getElementById('chart-branches').innerHTML=sorted.map(([branch,d],i)=>`
     <div class="bar-row">
       <div class="bar-label" title="${branch}">${branch}</div>
-      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(d.total/max*100)}%;background:${colors[i%colors.length]}"></div></div>
+      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(d.total/max*100)}%;background:var(--accent)"></div></div>
       <div class="bar-val">${d.total}</div>
     </div>
-  `)).join('');
-
-  // Статусы
-  var total = orders.length || 1;
-  var newC = orders.filter(o=>o.status==='Новая').length;
-  var workC = orders.filter(o=>o.status==='В работе').length;
-  var doneC = orders.filter(o=>o.status==='Выполнена').length;
-  document.getElementById('chart-statuses').innerHTML = `
-    <div class="bar-row">
-      <div class="bar-label">🔵 Новые</div>
-      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(newC/total*100)}%;background:var(--accent)"></div></div>
-      <div class="bar-val">${newC}</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label">🟡 В работе</div>
-      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(workC/total*100)}%;background:var(--amber)"></div></div>
-      <div class="bar-val">${workC}</div>
-    </div>
-    <div class="bar-row">
-      <div class="bar-label">🟢 Выполнены</div>
-      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(doneC/total*100)}%;background:var(--green)"></div></div>
-      <div class="bar-val">${doneC}</div>
-    </div>
+  `).join('');
+  var total=orders.length||1;
+  var newC=orders.filter(o=>o.status==='Новая').length;
+  var workC=orders.filter(o=>o.status==='В работе').length;
+  var doneC=orders.filter(o=>o.status==='Выполнена').length;
+  document.getElementById('chart-statuses').innerHTML=`
+    <div class="bar-row"><div class="bar-label">Новые</div><div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(newC/total*100)}%;background:var(--accent)"></div></div><div class="bar-val">${newC}</div></div>
+    <div class="bar-row"><div class="bar-label">В работе</div><div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(workC/total*100)}%;background:var(--amber)"></div></div><div class="bar-val">${workC}</div></div>
+    <div class="bar-row"><div class="bar-label">Выполнены</div><div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(doneC/total*100)}%;background:var(--green)"></div></div><div class="bar-val">${doneC}</div></div>
   `;
-
-  // Таблица
-  document.getElementById('analytics-tbody').innerHTML = sorted.map(([branch, d]) => `
+  document.getElementById('analytics-tbody').innerHTML=sorted.map(([branch,d])=>`
     <tr>
-      <td style="font-weight:500">${branch}</td>
+      <td style="font-weight:700;text-transform:uppercase">${branch}</td>
       <td>${d.total}</td>
       <td><span class="badge badge-new">${d.new}</span></td>
       <td><span class="badge badge-work">${d.work}</span></td>
       <td><span class="badge badge-done">${d.done}</span></td>
-      <td>${d.urgent ? `<span class="badge badge-urgent">⚡ ${d.urgent}</span>` : '—'}</td>
+      <td>${d.urgent?`<span class="badge badge-urgent">⚡ ${d.urgent}</span>`:'—'}</td>
     </tr>
   `).join('');
 }
 
-// CONVERSION
-function onConvFile(inp, type) {
-  var file = inp.files[0];
-  if (!file) return;
-  var reader = new FileReader();
-  reader.onload = function(e) {
-    var wb = XLSX.read(e.target.result, {type:'array', cellDates:true});
-    if (type === 'mac') {
-      macData = wb;
-      document.getElementById('mac-name').innerHTML = '✓ ' + file.name;
-      document.getElementById('mac-zone').classList.remove('drag');
-    } else {
-      onecData = wb;
-      document.getElementById('onec-name').innerHTML = '✓ ' + file.name;
-      document.getElementById('onec-zone').classList.remove('drag');
-    }
+function onConvFile(inp,type){
+  var file=inp.files[0];if(!file)return;
+  var reader=new FileReader();
+  reader.onload=function(e){
+    var wb=XLSX.read(e.target.result,{type:'array',cellDates:true});
+    if(type==='mac'){macData=wb;document.getElementById('mac-name').innerHTML='✓ '+file.name;}
+    else{onecData=wb;document.getElementById('onec-name').innerHTML='✓ '+file.name;}
   };
   reader.readAsArrayBuffer(file);
 }
 
-function handleConvDrop(e, type) {
+function handleConvDrop(e,type){
   e.preventDefault();
-  var zone = type === 'mac' ? 'mac-zone' : 'onec-zone';
-  document.getElementById(zone).classList.remove('drag');
-  var f = e.dataTransfer.files[0];
-  if (f) {
-    var inp = document.createElement('input');
-    inp.type = 'file';
-    var dt = new DataTransfer();
-    dt.items.add(f);
-    inp.files = dt.files;
-    onConvFile(inp, type);
-  }
+  document.getElementById(type==='mac'?'mac-zone':'onec-zone').classList.remove('drag');
+  var f=e.dataTransfer.files[0];
+  if(f){var inp=document.createElement('input');inp.type='file';var dt=new DataTransfer();dt.items.add(f);inp.files=dt.files;onConvFile(inp,type);}
 }
 
-function calcConversion() {
-  if (!macData || !onecData) {
-    toast('Загрузите оба файла', true);
-    return;
-  }
-
-  // Читаем Макроскоп — лист "Входящие"
-  var macSheet = macData.Sheets['Входящие'] || macData.Sheets[macData.SheetNames[0]];
-  var macRows = XLSX.utils.sheet_to_json(macSheet);
-
-  // Суммируем посетителей по филиалам
-  var visitors = {};
-  macRows.forEach(row => {
-    Object.entries(BRANCH_MAP).forEach(([col, branch]) => {
-      if (row[col] !== undefined && row[col] !== null) {
-        visitors[branch] = (visitors[branch] || 0) + (Number(row[col]) || 0);
-      }
+function calcConversion(){
+  if(!macData||!onecData){toast('Загрузите оба файла',true);return;}
+  var macSheet=macData.Sheets['Входящие']||macData.Sheets[macData.SheetNames[0]];
+  var macRows=XLSX.utils.sheet_to_json(macSheet);
+  var visitors={};
+  macRows.forEach(row=>{
+    Object.entries(BRANCH_MAP).forEach(([col,branch])=>{
+      if(row[col]!==undefined&&row[col]!==null)visitors[branch]=(visitors[branch]||0)+(Number(row[col])||0);
     });
   });
-
-  // Читаем 1С — ищем строки с магазинами
-  var onecSheet = onecData.Sheets[onecData.SheetNames[0]];
-  var onecRows = XLSX.utils.sheet_to_json(onecSheet, {header:1});
-
-  // Находим колонки Магазин и Сумма
-  var sales = {};
-  var checks = {};
-  var headerRow = -1;
-  var shopCol = -1;
-  var sumCol = -1;
-  var checkCol = -1;
-
-  for (var i = 0; i < onecRows.length; i++) {
-    var row = onecRows[i];
-    for (var j = 0; j < row.length; j++) {
-      if (String(row[j]).includes('Магазин')) { shopCol = j; headerRow = i; }
-      if (String(row[j]).trim() === 'Сумма') sumCol = j;
-      if (String(row[j]).includes('Ссылка')) checkCol = j;
+  var onecSheet=onecData.Sheets[onecData.SheetNames[0]];
+  var onecRows=XLSX.utils.sheet_to_json(onecSheet,{header:1});
+  var sales={},checks={},headerRow=-1,shopCol=-1,sumCol=-1,checkCol=-1;
+  for(var i=0;i<onecRows.length;i++){
+    var row=onecRows[i];
+    for(var j=0;j<row.length;j++){
+      if(String(row[j]).includes('Магазин')){shopCol=j;headerRow=i;}
+      if(String(row[j]).trim()==='Сумма')sumCol=j;
+      if(String(row[j]).includes('Ссылка'))checkCol=j;
     }
-    if (shopCol >= 0 && sumCol >= 0) break;
+    if(shopCol>=0&&sumCol>=0)break;
   }
-
-  if (shopCol < 0 || sumCol < 0) {
-    toast('Не удалось найти колонки в файле 1С', true);
-    return;
-  }
-
-  var prevCheck = '';
-  for (var i = headerRow + 1; i < onecRows.length; i++) {
-    var row = onecRows[i];
-    var shop = String(row[shopCol] || '').trim();
-    var sum = Number(row[sumCol]) || 0;
-    var check = checkCol >= 0 ? String(row[checkCol] || '') : '';
-    var mapped = ONEC_MAP[shop];
-    if (mapped && sum > 0) {
-      sales[mapped] = (sales[mapped] || 0) + sum;
-      if (check && check !== prevCheck) {
-        checks[mapped] = (checks[mapped] || 0) + 1;
-        prevCheck = check;
-      }
+  if(shopCol<0||sumCol<0){toast('Не удалось найти колонки в файле 1С',true);return;}
+  var prevCheck='';
+  for(var i=headerRow+1;i<onecRows.length;i++){
+    var row=onecRows[i];
+    var shop=String(row[shopCol]||'').trim();
+    var sum=Number(row[sumCol])||0;
+    var check=checkCol>=0?String(row[checkCol]||''):'';
+    var mapped=ONEC_MAP[shop];
+    if(mapped&&sum>0){
+      sales[mapped]=(sales[mapped]||0)+sum;
+      if(check&&check!==prevCheck){checks[mapped]=(checks[mapped]||0)+1;prevCheck=check;}
     }
   }
-
-  // Все филиалы
-  var allBranches = new Set([...Object.keys(visitors), ...Object.keys(sales)]);
-  var rows = Array.from(allBranches).map(b => ({
-    branch: b,
-    visitors: visitors[b] || 0,
-    checks: checks[b] || 0,
-    sales: sales[b] || 0,
-    pct: visitors[b] ? ((checks[b] || 0) / visitors[b] * 100) : 0
-  })).sort((a,b) => b.pct - a.pct);
-
-  document.getElementById('conv-empty').style.display = 'none';
-  document.getElementById('conv-result').style.display = 'block';
-  document.getElementById('conv-tbody').innerHTML = rows.map(r => {
-    var cls = r.pct >= 20 ? 'good' : r.pct >= 10 ? 'mid' : 'bad';
-    return `<tr>
-      <td style="font-weight:500">${r.branch}</td>
-      <td>${r.visitors.toLocaleString()}</td>
-      <td>${r.checks}</td>
-      <td>${r.sales.toLocaleString()} сум</td>
-      <td><span class="conv-pct ${cls}">${r.pct.toFixed(1)}%</span></td>
-    </tr>`;
+  var allBranches=new Set([...Object.keys(visitors),...Object.keys(sales)]);
+  var rows=Array.from(allBranches).map(b=>({branch:b,visitors:visitors[b]||0,checks:checks[b]||0,sales:sales[b]||0,pct:visitors[b]?((checks[b]||0)/visitors[b]*100):0})).sort((a,b)=>b.pct-a.pct);
+  document.getElementById('conv-empty').style.display='none';
+  document.getElementById('conv-result').style.display='block';
+  document.getElementById('conv-tbody').innerHTML=rows.map(r=>{
+    var cls=r.pct>=20?'good':r.pct>=10?'mid':'bad';
+    return `<tr><td style="font-weight:700;text-transform:uppercase">${r.branch}</td><td>${r.visitors.toLocaleString()}</td><td>${r.checks}</td><td>${r.sales.toLocaleString()} сум</td><td><span class="conv-pct ${cls}">${r.pct.toFixed(1)}%</span></td></tr>`;
   }).join('');
 }
 
-function clearConversion() {
-  macData = null; onecData = null;
-  document.getElementById('mac-name').innerHTML = '';
-  document.getElementById('onec-name').innerHTML = '';
-  document.getElementById('mac-file').value = '';
-  document.getElementById('onec-file').value = '';
-  document.getElementById('conv-result').style.display = 'none';
-  document.getElementById('conv-empty').style.display = 'block';
+function clearConversion(){
+  macData=null;onecData=null;
+  document.getElementById('mac-name').innerHTML='';
+  document.getElementById('onec-name').innerHTML='';
+  document.getElementById('mac-file').value='';
+  document.getElementById('onec-file').value='';
+  document.getElementById('conv-result').style.display='none';
+  document.getElementById('conv-empty').style.display='block';
 }
 
-async function loadKanban() {
-  var r = await fetch('/api/orders');
-  var orders = await r.json();
-  var cols = {'Новая':document.getElementById('cards-new'),'В работе':document.getElementById('cards-work'),'Выполнена':document.getElementById('cards-done')};
-  var counts = {'Новая':0,'В работе':0,'Выполнена':0};
-  Object.values(cols).forEach(c => c.innerHTML = '');
-  orders.forEach(o => {
-    counts[o.status] = (counts[o.status]||0) + 1;
-    var card = document.createElement('div');
-    card.className = 'kanban-card';
-    card.draggable = true;
-    card.innerHTML = `
-      <div class="kanban-card-branch">${o.branch}</div>
-      <div class="kanban-card-resp">👤 ${o.responsible}</div>
-      <div class="kanban-card-meta">${prioBadge(o.priority)}<span class="kanban-card-date">📅 ${o.date}</span>${o.filename?`<a href="/api/download/${o.id}" class="file-chip" onclick="event.stopPropagation()">📎</a>`:''}</div>
-    `;
-    card.addEventListener('dragstart', e => { dragId = o.id; setTimeout(()=>card.classList.add('dragging'),0); });
-    card.addEventListener('dragend', ()=>card.classList.remove('dragging'));
-    if (cols[o.status]) cols[o.status].appendChild(card);
+async function loadKanban(){
+  var r=await fetch('/api/orders');var orders=await r.json();
+  var cols={'Новая':document.getElementById('cards-new'),'В работе':document.getElementById('cards-work'),'Выполнена':document.getElementById('cards-done')};
+  var counts={'Новая':0,'В работе':0,'Выполнена':0};
+  Object.values(cols).forEach(c=>c.innerHTML='');
+  orders.forEach(o=>{
+    counts[o.status]=(counts[o.status]||0)+1;
+    var card=document.createElement('div');
+    card.className='kanban-card';card.draggable=true;
+    card.innerHTML=`<div class="kanban-card-branch">${o.branch}</div><div class="kanban-card-resp">👤 ${o.responsible}</div><div class="kanban-card-meta">${prioBadge(o.priority)}<span class="kanban-card-date">📅 ${o.date}</span>${o.filename?`<a href="/api/download/${o.id}" class="file-chip" onclick="event.stopPropagation()">📎</a>`:''}</div>`;
+    card.addEventListener('dragstart',e=>{dragId=o.id;setTimeout(()=>card.classList.add('dragging'),0);});
+    card.addEventListener('dragend',()=>card.classList.remove('dragging'));
+    if(cols[o.status])cols[o.status].appendChild(card);
   });
-  document.getElementById('cnt-new').textContent = counts['Новая']||0;
-  document.getElementById('cnt-work').textContent = counts['В работе']||0;
-  document.getElementById('cnt-done').textContent = counts['Выполнена']||0;
+  document.getElementById('cnt-new').textContent=counts['Новая']||0;
+  document.getElementById('cnt-work').textContent=counts['В работе']||0;
+  document.getElementById('cnt-done').textContent=counts['Выполнена']||0;
 }
 
-function onDragOver(e,col){e.preventDefault();col.classList.add('drag-over')}
-function onDragLeave(col){col.classList.remove('drag-over')}
+function onDragOver(e,col){e.preventDefault();col.classList.add('drag-over');}
+function onDragLeave(col){col.classList.remove('drag-over');}
 async function onDrop(e,status){
   e.preventDefault();
   document.querySelectorAll('.kanban-col').forEach(c=>c.classList.remove('drag-over'));
-  if(!dragId) return;
+  if(!dragId)return;
   await fetch('/api/orders/'+dragId+'/status',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
-  dragId=null; loadKanban(); loadStats(); toast('Статус обновлён');
+  dragId=null;loadKanban();loadStats();toast('Статус обновлён');
 }
 
 async function setStatus(id,status){
@@ -867,23 +731,12 @@ async function setStatus(id,status){
   loadOrders();
 }
 
-async function del(id){
-  if(!confirm('Удалить заявку?')) return;
-  await fetch('/api/orders/'+id+'/delete',{method:'DELETE'});
-  loadOrders(); toast('Заявка удалена');
-}
-
 function onFile(inp){
-  if(inp.files[0]){
-    selectedFile=inp.files[0];
-    document.getElementById('upload-name').innerHTML='✓ '+selectedFile.name;
-    document.getElementById('upload-zone').classList.remove('drag');
-  }
+  if(inp.files[0]){selectedFile=inp.files[0];document.getElementById('upload-name').innerHTML='✓ '+selectedFile.name;document.getElementById('upload-zone').classList.remove('drag');}
 }
 
 function handleDrop(e){
-  e.preventDefault();
-  document.getElementById('upload-zone').classList.remove('drag');
+  e.preventDefault();document.getElementById('upload-zone').classList.remove('drag');
   var f=e.dataTransfer.files[0];
   if(f){selectedFile=f;document.getElementById('upload-name').innerHTML='✓ '+f.name;}
 }
@@ -894,22 +747,20 @@ async function submitForm(){
   if(!branch){toast('Выберите филиал',true);return;}
   if(!responsible){toast('Укажите ответственного',true);return;}
   var fd=new FormData();
-  fd.append('branch',branch);
-  fd.append('responsible',responsible);
+  fd.append('branch',branch);fd.append('responsible',responsible);
   fd.append('date',document.getElementById('r-date').value);
   fd.append('priority',document.getElementById('r-priority').value);
   fd.append('note',document.getElementById('r-note').value);
-  if(selectedFile) fd.append('file',selectedFile);
+  if(selectedFile)fd.append('file',selectedFile);
   var r=await fetch('/api/orders',{method:'POST',body:fd});
   var d=await r.json();
   if(!r.ok){toast(d.error||'Ошибка',true);return;}
-  toast('Заявка отправлена!');
-  resetForm();
+  toast('Заявка отправлена!');resetForm();
   showPage('dash',document.querySelector('.nav-item'));
 }
 
 function resetForm(){
-  if(currentRole==='admin') document.getElementById('r-branch').value='';
+  if(currentRole==='admin')document.getElementById('r-branch').value='';
   document.getElementById('r-responsible').value='';
   document.getElementById('r-date').value=new Date().toISOString().slice(0,10);
   document.getElementById('r-priority').value='Обычный';
