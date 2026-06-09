@@ -370,15 +370,8 @@ def upload_catalog():
                 # Next row has 'Доступно' markers
                 avail_row = [str(c).strip() if c else '' for c in rows[i+1]]
                 for j, val in enumerate(row_vals):
-                    val_norm = val.replace('\u0421', 'C').replace('\u0441', 'c').replace('\u0415', 'E').replace('\u0435', 'e')
-                    matched = None
-                    for branch in BRANCHES:
-                        branch_norm = branch.replace('\u0421', 'C').replace('\u0441', 'c').replace('\u0415', 'E').replace('\u0435', 'e')
-                        if val_norm == branch_norm or val == branch:
-                            matched = branch
-                            break
-                    if matched:
-                        branch_cols[matched] = j
+                    if val in BRANCHES:
+                        branch_cols[val] = j
                     if val == 'Склад WMS':
                         wms_col = j
                 break
