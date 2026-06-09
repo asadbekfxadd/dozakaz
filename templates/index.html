@@ -30,12 +30,28 @@ nav{padding:12px 8px;flex:1}
 .nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.7}
 .nav-item.active svg{opacity:1}
 .nav-badge{margin-left:auto;background:var(--accent2);color:var(--accent);font-size:10px;padding:2px 6px;border-radius:20px;font-weight:600}
+.sidebar-footer{padding:12px 8px;border-top:1px solid var(--border)}
+.user-info{font-size:12px;color:var(--text2);padding:8px 12px;margin-bottom:4px}
+.user-info span{color:var(--text);font-weight:500}
 .main{flex:1;overflow:auto}
 .topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between}
 .topbar-title{font-size:18px;font-weight:600;color:var(--text)}
 .topbar-sub{font-size:12px;color:var(--text3);margin-top:2px}
 .content{padding:24px 28px}
 .page{display:none}.page.active{display:block}
+
+/* LOGIN */
+.login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;background:var(--bg)}
+.login-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:40px;width:100%;max-width:380px}
+.login-title{font-size:22px;font-weight:700;margin-bottom:6px}
+.login-sub{font-size:13px;color:var(--text2);margin-bottom:28px}
+.login-group{display:flex;flex-direction:column;gap:6px;margin-bottom:16px}
+.login-group label{font-size:12px;color:var(--text2)}
+.login-group input{width:100%;padding:10px 14px;font-size:14px}
+.login-btn{width:100%;padding:11px;background:var(--accent);color:#fff;border:none;border-radius:var(--radius-sm);font-size:14px;font-weight:500;cursor:pointer;margin-top:8px;font-family:inherit}
+.login-btn:hover{opacity:.85}
+.login-error{color:var(--red);font-size:12px;margin-top:8px;display:none}
+
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
 .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
 .stat-num{font-size:26px;font-weight:700;line-height:1}
@@ -123,7 +139,27 @@ td.muted{color:var(--text2)}
 </style>
 </head>
 <body>
-<div class="shell">
+
+<!-- LOGIN -->
+<div class="login-wrap" id="login-wrap">
+  <div class="login-card">
+    <div class="login-title">📦 Дозаказы</div>
+    <div class="login-sub">Войдите в систему</div>
+    <div class="login-group">
+      <label>Логин</label>
+      <input type="text" id="l-user" placeholder="Название филиала или admin">
+    </div>
+    <div class="login-group">
+      <label>Пароль</label>
+      <input type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
+    </div>
+    <button class="login-btn" onclick="doLogin()">Войти</button>
+    <div class="login-error" id="login-error">Неверный логин или пароль</div>
+  </div>
+</div>
+
+<!-- APP -->
+<div class="shell" id="app-wrap" style="display:none">
   <aside class="sidebar">
     <div class="logo">
       <div class="logo-title">📦 Дозаказы</div>
@@ -135,7 +171,7 @@ td.muted{color:var(--text2)}
         Все заявки
         <span class="nav-badge" id="nav-badge">0</span>
       </button>
-      <button class="nav-item" onclick="showPage('kanban',this)">
+      <button class="nav-item" id="nav-kanban" onclick="showPage('kanban',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18"/><rect x="10" y="3" width="5" height="11"/><rect x="17" y="3" width="5" height="15"/></svg>
         Канбан
       </button>
@@ -144,6 +180,13 @@ td.muted{color:var(--text2)}
         Новая заявка
       </button>
     </nav>
+    <div class="sidebar-footer">
+      <div class="user-info">Вы: <span id="ui-name"></span></div>
+      <button class="nav-item" onclick="doLogout()">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 21H5a2 2 0 01-2-2V5a2 2 0 012-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg>
+        Выйти
+      </button>
+    </div>
   </aside>
 
   <div class="main">
@@ -163,7 +206,7 @@ td.muted{color:var(--text2)}
           <div class="stat-card c-amber"><div class="stat-num" id="s-work">—</div><div class="stat-label">В работе</div></div>
           <div class="stat-card c-green"><div class="stat-num" id="s-done">—</div><div class="stat-label">Выполнены</div></div>
         </div>
-        <div class="filters">
+        <div class="filters" id="admin-filters">
           <select id="f-branch" onchange="loadOrders()">
             <option value="">Все филиалы</option>
             <option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option>
@@ -187,7 +230,7 @@ td.muted{color:var(--text2)}
             <thead>
               <tr>
                 <th>Филиал</th><th>Ответственный</th><th>Дата</th>
-                <th>Файл</th><th>Статус</th><th>Приоритет</th><th>Действия</th>
+                <th>Файл</th><th>Статус</th><th>Приоритет</th><th id="th-actions">Действия</th>
               </tr>
             </thead>
             <tbody id="orders-tbody">
@@ -198,7 +241,7 @@ td.muted{color:var(--text2)}
       </div>
     </div>
 
-    <!-- KANBAN -->
+    <!-- KANBAN (admin only) -->
     <div id="page-kanban" class="page">
       <div class="topbar">
         <div>
@@ -210,24 +253,15 @@ td.muted{color:var(--text2)}
       <div class="content">
         <div class="kanban">
           <div class="kanban-col" id="col-new" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(this)" ondrop="onDrop(event,'Новая')">
-            <div class="kanban-col-header h-new">
-              <span>🔵 Новая</span>
-              <span class="kanban-col-count" id="cnt-new">0</span>
-            </div>
+            <div class="kanban-col-header h-new"><span>🔵 Новая</span><span class="kanban-col-count" id="cnt-new">0</span></div>
             <div class="kanban-cards" id="cards-new"></div>
           </div>
           <div class="kanban-col" id="col-work" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(this)" ondrop="onDrop(event,'В работе')">
-            <div class="kanban-col-header h-work">
-              <span>🟡 В работе</span>
-              <span class="kanban-col-count" id="cnt-work">0</span>
-            </div>
+            <div class="kanban-col-header h-work"><span>🟡 В работе</span><span class="kanban-col-count" id="cnt-work">0</span></div>
             <div class="kanban-cards" id="cards-work"></div>
           </div>
           <div class="kanban-col" id="col-done" ondragover="onDragOver(event,this)" ondragleave="onDragLeave(this)" ondrop="onDrop(event,'Выполнена')">
-            <div class="kanban-col-header h-done">
-              <span>🟢 Выполнена</span>
-              <span class="kanban-col-count" id="cnt-done">0</span>
-            </div>
+            <div class="kanban-col-header h-done"><span>🟢 Выполнена</span><span class="kanban-col-count" id="cnt-done">0</span></div>
             <div class="kanban-cards" id="cards-done"></div>
           </div>
         </div>
@@ -247,7 +281,7 @@ td.muted{color:var(--text2)}
         <div class="form-card">
           <div class="form-section">Информация о заявке</div>
           <div class="form-row">
-            <div class="form-group">
+            <div class="form-group" id="branch-group">
               <label>Филиал<span class="required">*</span></label>
               <select id="r-branch">
                 <option value="">— выбрать —</option>
@@ -270,9 +304,7 @@ td.muted{color:var(--text2)}
             </div>
             <div class="form-group">
               <label>Приоритет</label>
-              <select id="r-priority">
-                <option>Обычный</option><option>Срочно</option>
-              </select>
+              <select id="r-priority"><option>Обычный</option><option>Срочно</option></select>
             </div>
           </div>
           <div class="form-group" style="margin-bottom:14px">
@@ -305,9 +337,61 @@ td.muted{color:var(--text2)}
 <script>
 var selectedFile = null;
 var dragId = null;
+var currentRole = null;
+var currentBranch = null;
 
 document.getElementById('topbar-date').textContent = new Date().toLocaleDateString('ru-RU', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
 document.getElementById('r-date').value = new Date().toISOString().slice(0,10);
+
+async function init() {
+  var r = await fetch('/api/me');
+  var d = await r.json();
+  if (d.logged_in) {
+    currentRole = d.role;
+    currentBranch = d.branch;
+    showApp(d);
+  } else {
+    document.getElementById('login-wrap').style.display = 'flex';
+  }
+}
+
+async function doLogin() {
+  var username = document.getElementById('l-user').value.trim();
+  var password = document.getElementById('l-pass').value;
+  var r = await fetch('/api/login', {method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+  var d = await r.json();
+  if (!r.ok) {
+    document.getElementById('login-error').style.display = 'block';
+    return;
+  }
+  document.getElementById('login-error').style.display = 'none';
+  currentRole = d.role;
+  currentBranch = d.branch;
+  showApp(d);
+}
+
+function showApp(d) {
+  document.getElementById('login-wrap').style.display = 'none';
+  document.getElementById('app-wrap').style.display = 'flex';
+  document.getElementById('ui-name').textContent = d.username;
+  if (d.role === 'user') {
+    document.getElementById('nav-kanban').style.display = 'none';
+    document.getElementById('admin-filters').style.display = 'none';
+    document.getElementById('th-actions').style.display = 'none';
+    if (d.branch) {
+      var sel = document.getElementById('r-branch');
+      sel.value = d.branch;
+      sel.disabled = true;
+    }
+  }
+  loadOrders();
+  loadStats();
+}
+
+async function doLogout() {
+  await fetch('/api/logout', {method:'POST'});
+  location.reload();
+}
 
 function showPage(name, btn) {
   document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
@@ -336,6 +420,7 @@ function clearFilters() {
 
 async function loadStats() {
   var r = await fetch('/api/stats');
+  if (!r.ok) return;
   var d = await r.json();
   document.getElementById('s-total').textContent = d.total;
   document.getElementById('s-new').textContent = d.new;
@@ -351,22 +436,25 @@ function statusBadge(s) {
 }
 
 function prioBadge(p) {
-  return p === 'Срочно'
-    ? '<span class="badge badge-urgent">⚡ Срочно</span>'
-    : '<span class="badge badge-normal">Обычный</span>';
+  return p === 'Срочно' ? '<span class="badge badge-urgent">⚡ Срочно</span>' : '<span class="badge badge-normal">Обычный</span>';
 }
 
 async function loadOrders() {
-  var branch = document.getElementById('f-branch').value;
-  var status = document.getElementById('f-status').value;
-  var responsible = document.getElementById('f-responsible').value.trim();
-  var dateFrom = document.getElementById('f-date-from').value;
-  var dateTo = document.getElementById('f-date-to').value;
-  var params = {branch, status};
-  if (responsible) params.responsible = responsible;
-  if (dateFrom) params.date_from = dateFrom;
-  if (dateTo) params.date_to = dateTo;
+  var params = {};
+  if (currentRole === 'admin') {
+    var branch = document.getElementById('f-branch').value;
+    var status = document.getElementById('f-status').value;
+    var responsible = document.getElementById('f-responsible').value.trim();
+    var dateFrom = document.getElementById('f-date-from').value;
+    var dateTo = document.getElementById('f-date-to').value;
+    if (branch) params.branch = branch;
+    if (status) params.status = status;
+    if (responsible) params.responsible = responsible;
+    if (dateFrom) params.date_from = dateFrom;
+    if (dateTo) params.date_to = dateTo;
+  }
   var r = await fetch('/api/orders?' + new URLSearchParams(params));
+  if (!r.ok) return;
   var orders = await r.json();
   var tbody = document.getElementById('orders-tbody');
   if (!orders.length) {
@@ -381,13 +469,12 @@ async function loadOrders() {
       <td>${o.filename ? `<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name.length>22?o.original_name.slice(0,20)+'…':o.original_name}</a>` : '<span style="color:var(--text3)">—</span>'}</td>
       <td>${statusBadge(o.status)}</td>
       <td>${prioBadge(o.priority)}</td>
-      <td>
+      <td>${currentRole === 'admin' ? `
         <div style="display:flex;gap:5px;flex-wrap:wrap">
           ${o.status!=='В работе'&&o.status!=='Выполнена'?`<button class="btn-icon" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>`:''}
           ${o.status!=='Выполнена'?`<button class="btn-icon success" onclick="setStatus(${o.id},'Выполнена')">✓</button>`:''}
           <button class="btn-icon danger" onclick="del(${o.id})">✕</button>
-        </div>
-      </td>
+        </div>` : '—'}</td>
     </tr>
   `).join('');
   loadStats();
@@ -396,11 +483,7 @@ async function loadOrders() {
 async function loadKanban() {
   var r = await fetch('/api/orders');
   var orders = await r.json();
-  var cols = {
-    'Новая': document.getElementById('cards-new'),
-    'В работе': document.getElementById('cards-work'),
-    'Выполнена': document.getElementById('cards-done')
-  };
+  var cols = {'Новая':document.getElementById('cards-new'),'В работе':document.getElementById('cards-work'),'Выполнена':document.getElementById('cards-done')};
   var counts = {'Новая':0,'В работе':0,'Выполнена':0};
   Object.values(cols).forEach(c => c.innerHTML = '');
   orders.forEach(o => {
@@ -418,10 +501,7 @@ async function loadKanban() {
         ${o.filename?`<a href="/api/download/${o.id}" class="file-chip" onclick="event.stopPropagation()">📎</a>`:''}
       </div>
     `;
-    card.addEventListener('dragstart', e => {
-      dragId = o.id;
-      setTimeout(() => card.classList.add('dragging'), 0);
-    });
+    card.addEventListener('dragstart', e => { dragId = o.id; setTimeout(() => card.classList.add('dragging'), 0); });
     card.addEventListener('dragend', () => card.classList.remove('dragging'));
     if (cols[o.status]) cols[o.status].appendChild(card);
   });
@@ -430,24 +510,14 @@ async function loadKanban() {
   document.getElementById('cnt-done').textContent = counts['Выполнена']||0;
 }
 
-function onDragOver(e, col) {
-  e.preventDefault();
-  col.classList.add('drag-over');
-}
-
-function onDragLeave(col) {
-  col.classList.remove('drag-over');
-}
+function onDragOver(e, col) { e.preventDefault(); col.classList.add('drag-over'); }
+function onDragLeave(col) { col.classList.remove('drag-over'); }
 
 async function onDrop(e, status) {
   e.preventDefault();
   document.querySelectorAll('.kanban-col').forEach(c => c.classList.remove('drag-over'));
   if (!dragId) return;
-  await fetch('/api/orders/' + dragId + '/status', {
-    method: 'PATCH',
-    headers: {'Content-Type':'application/json'},
-    body: JSON.stringify({status})
-  });
+  await fetch('/api/orders/' + dragId + '/status', {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
   dragId = null;
   loadKanban();
   loadStats();
@@ -502,7 +572,7 @@ async function submitForm() {
 }
 
 function resetForm() {
-  document.getElementById('r-branch').value = '';
+  if (currentRole === 'admin') document.getElementById('r-branch').value = '';
   document.getElementById('r-responsible').value = '';
   document.getElementById('r-date').value = new Date().toISOString().slice(0,10);
   document.getElementById('r-priority').value = 'Обычный';
@@ -512,8 +582,7 @@ function resetForm() {
   selectedFile = null;
 }
 
-loadOrders();
-loadStats();
+init();
 </script>
 </body>
 </html>

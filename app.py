@@ -1,13 +1,33 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory
+from flask import Flask, request, jsonify, render_template, send_from_directory, session, redirect
 import sqlite3, os
 from datetime import datetime
 from werkzeug.utils import secure_filename
+from functools import wraps
 
 app = Flask(__name__)
+app.secret_key = 'dozakaz-secret-key-2026'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
 ALLOWED = {'.xlsx', '.xls', '.csv'}
+
+USERS = {
+    'admin': {'password': '123456', 'role': 'admin', 'branch': None},
+    'ALAYSKIY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ALAYSKIY'},
+    'ATLAS CHIMGAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ATLAS CHIMGAN'},
+    'ECO PARK': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ECO PARK'},
+    'Family park': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Family park'},
+    'HIGH TOWN PLAZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'HIGH TOWN PLAZA'},
+    'M. BARAKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'M. BARAKA'},
+    'MAGIC CITY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MAGIC CITY'},
+    'MALIKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MALIKA'},
+    'NOVZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'NOVZA'},
+    'Scopus Mall': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Scopus Mall'},
+    'Shota Rustavely': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Shota Rustavely'},
+    'TASHKENT CITY MALL': {'password': 'LI-NING1', 'role': 'user', 'branch': 'TASHKENT CITY MALL'},
+    'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN'},
+    'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery'},
+}
 
 def get_db():
     db = sqlite3.connect('dozakaz.db')
@@ -34,11 +54,54 @@ def init_db():
 os.makedirs('uploads', exist_ok=True)
 init_db()
 
+def login_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'username' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        return f(*args, **kwargs)
+    return decorated
+
+def admin_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        if 'username' not in session:
+            return jsonify({'error': 'Unauthorized'}), 401
+        if session.get('role') != 'admin':
+            return jsonify({'error': 'Forbidden'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
 @app.route('/')
 def index():
     return render_template('index.html')
 
+@app.route('/api/login', methods=['POST'])
+def login():
+    data = request.get_json()
+    username = data.get('username', '').strip()
+    password = data.get('password', '').strip()
+    user = USERS.get(username)
+    if not user or user['password'] != password:
+        return jsonify({'error': 'Неверный логин или пароль'}), 401
+    session['username'] = username
+    session['role'] = user['role']
+    session['branch'] = user['branch']
+    return jsonify({'role': user['role'], 'branch': user['branch'], 'username': username})
+
+@app.route('/api/logout', methods=['POST'])
+def logout():
+    session.clear()
+    return jsonify({'ok': True})
+
+@app.route('/api/me')
+def me():
+    if 'username' not in session:
+        return jsonify({'logged_in': False})
+    return jsonify({'logged_in': True, 'role': session['role'], 'branch': session['branch'], 'username': session['username']})
+
 @app.route('/api/orders', methods=['GET'])
+@login_required
 def get_orders():
     branch = request.args.get('branch', '')
     status = request.args.get('status', '')
@@ -48,8 +111,11 @@ def get_orders():
     db = get_db()
     q = 'SELECT * FROM orders WHERE 1=1'
     params = []
-    if branch:
-        q += ' AND branch=?'; params.append(branch)
+    if session['role'] == 'user':
+        q += ' AND branch=?'; params.append(session['branch'])
+    else:
+        if branch:
+            q += ' AND branch=?'; params.append(branch)
     if status:
         q += ' AND status=?'; params.append(status)
     if responsible:
@@ -64,8 +130,9 @@ def get_orders():
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/orders', methods=['POST'])
+@login_required
 def create_order():
-    branch = request.form.get('branch', '').strip()
+    branch = session['branch'] if session['role'] == 'user' else request.form.get('branch', '').strip()
     responsible = request.form.get('responsible', '').strip()
     date = request.form.get('date', datetime.now().strftime('%Y-%m-%d'))
     priority = request.form.get('priority', 'Обычный')
@@ -94,6 +161,7 @@ def create_order():
     return jsonify(dict(row)), 201
 
 @app.route('/api/orders/<int:oid>/status', methods=['PATCH'])
+@admin_required
 def update_status(oid):
     data = request.get_json()
     status = data.get('status')
@@ -107,6 +175,7 @@ def update_status(oid):
     return jsonify(dict(row))
 
 @app.route('/api/orders/<int:oid>/delete', methods=['DELETE'])
+@admin_required
 def delete_order(oid):
     db = get_db()
     row = db.execute('SELECT filename FROM orders WHERE id=?', (oid,)).fetchone()
@@ -120,6 +189,7 @@ def delete_order(oid):
     return jsonify({'ok': True})
 
 @app.route('/api/download/<int:oid>')
+@login_required
 def download(oid):
     db = get_db()
     row = db.execute('SELECT * FROM orders WHERE id=?', (oid,)).fetchone()
@@ -130,12 +200,20 @@ def download(oid):
                                as_attachment=True, download_name=row['original_name'])
 
 @app.route('/api/stats')
+@login_required
 def stats():
     db = get_db()
-    total = db.execute('SELECT COUNT(*) FROM orders').fetchone()[0]
-    new = db.execute("SELECT COUNT(*) FROM orders WHERE status='Новая'").fetchone()[0]
-    inprog = db.execute("SELECT COUNT(*) FROM orders WHERE status='В работе'").fetchone()[0]
-    done = db.execute("SELECT COUNT(*) FROM orders WHERE status='Выполнена'").fetchone()[0]
+    if session['role'] == 'admin':
+        total = db.execute('SELECT COUNT(*) FROM orders').fetchone()[0]
+        new = db.execute("SELECT COUNT(*) FROM orders WHERE status='Новая'").fetchone()[0]
+        inprog = db.execute("SELECT COUNT(*) FROM orders WHERE status='В работе'").fetchone()[0]
+        done = db.execute("SELECT COUNT(*) FROM orders WHERE status='Выполнена'").fetchone()[0]
+    else:
+        b = session['branch']
+        total = db.execute('SELECT COUNT(*) FROM orders WHERE branch=?', (b,)).fetchone()[0]
+        new = db.execute("SELECT COUNT(*) FROM orders WHERE branch=? AND status='Новая'", (b,)).fetchone()[0]
+        inprog = db.execute("SELECT COUNT(*) FROM orders WHERE branch=? AND status='В работе'", (b,)).fetchone()[0]
+        done = db.execute("SELECT COUNT(*) FROM orders WHERE branch=? AND status='Выполнена'", (b,)).fetchone()[0]
     db.close()
     return jsonify({'total': total, 'new': new, 'in_progress': inprog, 'done': done})
 
