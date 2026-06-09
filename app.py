@@ -648,6 +648,54 @@ def analytics_orders():
     db.close()
     return jsonify({'top_articles': [dict(r) for r in top_articles], 'branch_totals': [dict(r) for r in branch_totals]})
 
+YADISK_TOKEN = os.environ.get('YADISK_TOKEN', '35a4110c9f5a4729ba8a54cf978276f4')
+YADISK_PUBLIC_KEY = 'https://disk.yandex.com/d/-plm2CMx-kHNuA'
+YADISK_FOLDER = '/06-White Background Pics'
+_photo_cache = {}
+
+@app.route('/api/photos/<article>')
+def get_photos(article):
+    import urllib.request, urllib.parse, json as _json
+    # Normalize article: strip trailing A for folder match
+    art_base = article.rstrip('A')
+    cache_key = art_base
+    if cache_key in _photo_cache:
+        return jsonify(_photo_cache[cache_key])
+
+    folder_path = f"{YADISK_FOLDER}/{art_base}"
+    url = (
+        "https://cloud-api.yandex.net/v1/disk/public/resources?"
+        + urllib.parse.urlencode({
+            'public_key': YADISK_PUBLIC_KEY,
+            'path': folder_path,
+            'limit': 20,
+            'preview_size': '400x400'
+        })
+    )
+    try:
+        req = urllib.request.Request(url, headers={'Authorization': f'OAuth {YADISK_TOKEN}'})
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = _json.loads(resp.read())
+        items = data.get('_embedded', {}).get('items', [])
+        photos = []
+        for item in items:
+            if item.get('media_type') in ('image', None) and item.get('name', '').lower().endswith(('.jpg','.jpeg','.png','.webp')):
+                # Get download link
+                dl_url = (
+                    "https://cloud-api.yandex.net/v1/disk/public/resources/download?"
+                    + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': f"{folder_path}/{item['name']}"})
+                )
+                req2 = urllib.request.Request(dl_url, headers={'Authorization': f'OAuth {YADISK_TOKEN}'})
+                with urllib.request.urlopen(req2, timeout=5) as r2:
+                    dl_data = _json.loads(r2.read())
+                photos.append({'url': dl_data.get('href', ''), 'name': item['name'], 'preview': item.get('preview', '')})
+        result = {'photos': photos}
+        _photo_cache[cache_key] = result
+        return jsonify(result)
+    except Exception as e:
+        return jsonify({'photos': [], 'error': str(e)})
+
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
