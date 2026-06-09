@@ -1,5 +1,5 @@
 from flask import Flask, request, jsonify, render_template, send_from_directory, session
-import sqlite3, os
+import sqlite3, os, io
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from functools import wraps
@@ -7,7 +7,7 @@ from functools import wraps
 app = Flask(__name__)
 app.secret_key = 'dozakaz-secret-key-2026'
 app.config['UPLOAD_FOLDER'] = 'uploads'
-app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
+app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
 ALLOWED = {'.xlsx', '.xls', '.csv'}
 
@@ -28,6 +28,10 @@ USERS = {
     'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN'},
     'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery'},
 }
+
+BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
+            'M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall',
+            'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery']
 
 def get_db():
     db = sqlite3.connect('dozakaz.db')
@@ -52,9 +56,28 @@ def init_db():
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         order_id INTEGER,
         article TEXT,
+        name TEXT,
         size TEXT,
         qty INTEGER,
+        wms_stock INTEGER DEFAULT 0,
         FOREIGN KEY(order_id) REFERENCES orders(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS catalog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article TEXT,
+        name TEXT,
+        size TEXT,
+        wms_stock INTEGER DEFAULT 0,
+        abc TEXT DEFAULT 'C',
+        sold INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS branch_stock (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article TEXT,
+        size TEXT,
+        branch TEXT,
+        qty INTEGER DEFAULT 0
     )''')
     db.execute('''CREATE TABLE IF NOT EXISTS top_products (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
@@ -145,6 +168,14 @@ def get_orders():
     db.close()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/orders/<int:oid>/items', methods=['GET'])
+@login_required
+def get_order_items(oid):
+    db = get_db()
+    rows = db.execute('SELECT * FROM order_items WHERE order_id=?', (oid,)).fetchall()
+    db.close()
+    return jsonify([dict(r) for r in rows])
+
 @app.route('/api/orders', methods=['POST'])
 @login_required
 def create_order():
@@ -153,11 +184,16 @@ def create_order():
     date = request.form.get('date', datetime.now().strftime('%Y-%m-%d'))
     priority = request.form.get('priority', 'Обычный')
     note = request.form.get('note', '').strip()
+    items_json = request.form.get('items', '[]')
+
     if not branch or not responsible:
         return jsonify({'error': 'Заполните обязательные поля'}), 400
+
+    import json
+    items = json.loads(items_json)
+
     filename = None
     original_name = None
-    items = []
     f = request.files.get('file')
     if f and f.filename:
         ext = os.path.splitext(f.filename)[1].lower()
@@ -165,43 +201,7 @@ def create_order():
             return jsonify({'error': 'Только .xlsx, .xls, .csv'}), 400
         original_name = f.filename
         filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{secure_filename(f.filename)}'
-        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        f.save(filepath)
-        # Parse items from Excel
-        try:
-            import openpyxl
-            wb = openpyxl.load_workbook(filepath, data_only=True)
-            ws = None
-            for sname in wb.sheetnames:
-                if 'WMS' in sname.upper() or 'СКЛАД' in sname.upper():
-                    ws = wb[sname]
-                    break
-            if not ws:
-                ws = wb.active
-            header_row = None
-            art_col = qty_col = size_col = None
-            for i, row in enumerate(ws.iter_rows(values_only=True), 1):
-                row_str = [str(c).strip() if c else '' for c in row]
-                if 'Артикул' in row_str:
-                    header_row = i
-                    art_col = row_str.index('Артикул')
-                    if 'Кол-во' in row_str:
-                        qty_col = row_str.index('Кол-во')
-                    if 'Характеристика' in row_str:
-                        size_col = row_str.index('Характеристика')
-                    break
-            if header_row and art_col is not None and qty_col is not None:
-                for row in ws.iter_rows(min_row=header_row+1, values_only=True):
-                    art = str(row[art_col]).strip() if row[art_col] else ''
-                    qty = row[qty_col]
-                    size = str(row[size_col]).strip() if size_col is not None and row[size_col] else ''
-                    if art and art != 'None' and qty and str(qty) != 'None':
-                        try:
-                            items.append({'article': art, 'size': size, 'qty': int(float(str(qty)))})
-                        except:
-                            pass
-        except Exception as e:
-            pass
+        f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
 
     db = get_db()
     cur = db.execute(
@@ -210,8 +210,8 @@ def create_order():
     )
     order_id = cur.lastrowid
     for item in items:
-        db.execute('INSERT INTO order_items (order_id,article,size,qty) VALUES (?,?,?,?)',
-                   (order_id, item['article'], item['size'], item['qty']))
+        db.execute('INSERT INTO order_items (order_id,article,name,size,qty,wms_stock) VALUES (?,?,?,?,?,?)',
+                   (order_id, item.get('article',''), item.get('name',''), item.get('size',''), item.get('qty',1), item.get('wms_stock',0)))
     db.commit()
     row = db.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
     db.close()
@@ -260,32 +260,186 @@ def stats():
     db.close()
     return jsonify({'total': total, 'new': new, 'in_progress': inprog, 'done': done})
 
-@app.route('/api/analytics/orders')
+@app.route('/api/catalog/upload', methods=['POST'])
 @admin_required
-def analytics_orders():
+def upload_catalog():
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Файл не найден'}), 400
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+        ws = wb.active
+
+        rows = list(ws.iter_rows(values_only=True))
+
+        # Find header row (row with 'Артикул')
+        header_idx = None
+        branch_cols = {}
+        wms_col = None
+
+        for i, row in enumerate(rows):
+            row_vals = [str(c).strip() if c else '' for c in row]
+            if 'Артикул' in row_vals:
+                header_idx = i
+                # Next row has 'Доступно' markers
+                avail_row = [str(c).strip() if c else '' for c in rows[i+1]]
+                for j, val in enumerate(row_vals):
+                    if val in BRANCHES:
+                        branch_cols[val] = j
+                    if val == 'Склад WMS':
+                        wms_col = j
+                break
+
+        if header_idx is None:
+            return jsonify({'error': 'Не найден заголовок таблицы'}), 400
+
+        # Find name column (Номенклатура, Характеристика)
+        header_row = [str(c).strip() if c else '' for c in rows[header_idx]]
+        name_col = None
+        art_col = 0
+        for j, val in enumerate(header_row):
+            if 'Номенклатура' in val or 'Характеристика' in val:
+                name_col = j
+                break
+
+        db = get_db()
+        db.execute('DELETE FROM catalog')
+        db.execute('DELETE FROM branch_stock')
+
+        catalog_items = []
+        branch_items = []
+
+        for row in rows[header_idx+2:]:
+            if not row or not row[art_col]:
+                continue
+            art = str(row[art_col]).strip()
+            if not art or art == 'None':
+                continue
+
+            name_full = str(row[name_col]).strip() if name_col and row[name_col] else ''
+            # Parse name and size: "AAFW021-3 Basketball Woven S/S Top Navy Blazer, L"
+            name = name_full
+            size = ''
+            if ', ' in name_full:
+                parts = name_full.rsplit(', ', 1)
+                name = parts[0].strip()
+                size = parts[1].strip()
+            # Remove article from name
+            if name.startswith(art.rstrip('A')):
+                name = name[len(art.rstrip('A')):].strip()
+
+            wms = int(float(str(row[wms_col]))) if wms_col and row[wms_col] and str(row[wms_col]) not in ('None','nan') else 0
+
+            catalog_items.append((art, name, size, wms))
+
+            for branch, col in branch_cols.items():
+                qty = row[col]
+                if qty and str(qty) not in ('None', 'nan'):
+                    try:
+                        q = int(float(str(qty)))
+                        if q > 0:
+                            branch_items.append((art, size, branch, q))
+                    except:
+                        pass
+
+        db.executemany('INSERT INTO catalog (article, name, size, wms_stock) VALUES (?,?,?,?)', catalog_items)
+        db.executemany('INSERT INTO branch_stock (article, size, branch, qty) VALUES (?,?,?,?)', branch_items)
+        db.commit()
+        db.close()
+        return jsonify({'ok': True, 'count': len(catalog_items)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/catalog', methods=['GET'])
+@login_required
+def get_catalog():
+    search = request.args.get('search', '')
+    page = int(request.args.get('page', 1))
+    per_page = 50
+    branch = session.get('branch') or request.args.get('branch', '')
+
     db = get_db()
-    # Топ артикулов по заявкам
-    top_articles = db.execute('''
-        SELECT article, SUM(qty) as total_qty, COUNT(DISTINCT order_id) as order_count
-        FROM order_items
-        WHERE article != '' AND article != 'None'
-        GROUP BY article
-        ORDER BY total_qty DESC
-        LIMIT 20
-    ''').fetchall()
-    # По филиалам
-    branch_totals = db.execute('''
-        SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
-        FROM orders o
-        JOIN order_items oi ON o.id = oi.order_id
-        GROUP BY o.branch
-        ORDER BY total_qty DESC
-    ''').fetchall()
+
+    # Get unique articles with their sizes
+    q = '''SELECT DISTINCT article, name FROM catalog WHERE 1=1'''
+    params = []
+    if search:
+        q += ' AND (article LIKE ? OR name LIKE ?)'
+        params.extend([f'%{search}%', f'%{search}%'])
+    q += ' ORDER BY article'
+    q += f' LIMIT {per_page} OFFSET {(page-1)*per_page}'
+
+    articles = db.execute(q, params).fetchall()
+
+    result = []
+    for art_row in articles:
+        art = art_row['article']
+        name = art_row['name']
+
+        # Get all sizes with WMS stock
+        sizes = db.execute('SELECT size, wms_stock FROM catalog WHERE article=? ORDER BY size', (art,)).fetchall()
+
+        # Get branch stock if branch provided
+        branch_stock = {}
+        if branch:
+            bs = db.execute('SELECT size, qty FROM branch_stock WHERE article=? AND branch=?', (art, branch)).fetchall()
+            branch_stock = {r['size']: r['qty'] for r in bs}
+
+        # Get ABC
+        abc_row = db.execute('SELECT abc, sold FROM catalog WHERE article=? LIMIT 1', (art,)).fetchone()
+        abc = abc_row['abc'] if abc_row else 'C'
+        sold = abc_row['sold'] if abc_row else 0
+
+        total_wms = sum(r['wms_stock'] for r in sizes)
+
+        result.append({
+            'article': art,
+            'name': name,
+            'abc': abc,
+            'sold': sold,
+            'total_wms': total_wms,
+            'sizes': [{'size': r['size'], 'wms': r['wms_stock'], 'branch': branch_stock.get(r['size'], 0)} for r in sizes]
+        })
+
     db.close()
-    return jsonify({
-        'top_articles': [dict(r) for r in top_articles],
-        'branch_totals': [dict(r) for r in branch_totals]
-    })
+    return jsonify(result)
+
+@app.route('/api/catalog/abc', methods=['POST'])
+@admin_required
+def update_abc():
+    '''Update ABC from top products file'''
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Файл не найден'}), 400
+    try:
+        import openpyxl
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+        db = get_db()
+        count = 0
+        for ws in wb.worksheets:
+            rows = list(ws.iter_rows(values_only=True))
+            art_col = sold_col = None
+            for i, row in enumerate(rows):
+                row_s = [str(c).strip() if c else '' for c in row]
+                if any(x in row_s for x in ['ITEM NO.', 'Одежда', 'Обувь']):
+                    for j, v in enumerate(row_s):
+                        if v in ('ITEM NO.', 'Одежда', 'Обувь'): art_col = j
+                        if v == 'Продано': sold_col = j
+                    for row2 in rows[i+1:]:
+                        if not row2 or not row2[art_col]: continue
+                        art = str(row2[art_col]).strip()
+                        if art in ('Одежда','Обувь','Аксессуары','nan',''): continue
+                        sold = int(float(str(row2[sold_col]))) if sold_col and row2[sold_col] else 0
+                        abc = 'A' if sold >= 25 else 'B' if sold >= 15 else 'C'
+                        db.execute('UPDATE catalog SET abc=?, sold=? WHERE article LIKE ?', (abc, sold, art+'%'))
+                        count += 1
+                    break
+        db.commit()
+        db.close()
+        return jsonify({'ok': True, 'updated': count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 @app.route('/api/products', methods=['GET'])
 @login_required
@@ -303,43 +457,36 @@ def upload_products():
         return jsonify({'error': 'Файл не найден'}), 400
     try:
         import openpyxl
-        import io
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         products = []
-        for sname in wb.sheetnames:
-            ws = wb[sname]
+        for ws in wb.worksheets:
+            rows = list(ws.iter_rows(values_only=True))
             art_col = sold_col = stock_col = cat_col = None
-            header_row = None
-            for i, row in enumerate(ws.iter_rows(values_only=True), 1):
+            header_row_idx = None
+            for i, row in enumerate(rows):
                 row_str = [str(c).strip() if c else '' for c in row]
                 if any(x in row_str for x in ['ITEM NO.', 'Одежда', 'Обувь']):
-                    header_row = i
+                    header_row_idx = i
                     for j, cell in enumerate(row_str):
-                        if cell in ('ITEM NO.', 'Одежда', 'Обувь', 'Аксессуары'):
-                            art_col = j
-                        if cell == 'Продано':
-                            sold_col = j
-                        if cell == 'Остаток':
-                            stock_col = j
-                        if j == 1:
-                            cat_col = j
+                        if cell in ('ITEM NO.', 'Одежда', 'Обувь', 'Аксессуары'): art_col = j
+                        if cell == 'Продано': sold_col = j
+                        if cell == 'Остаток': stock_col = j
+                        if j == 1: cat_col = j
                     break
-            if header_row and art_col is not None:
+            if header_row_idx is not None and art_col is not None:
                 current_cat = 'APP'
-                for row in ws.iter_rows(min_row=header_row+1, values_only=True):
-                    if not row or not row[art_col]:
-                        continue
+                for row in rows[header_row_idx+1:]:
+                    if not row or not row[art_col]: continue
                     art = str(row[art_col]).strip()
                     if art in ('Одежда', 'Обувь', 'Аксессуары', 'nan', ''):
                         if art == 'Обувь': current_cat = 'FTW'
                         elif art == 'Аксессуары': current_cat = 'ACC'
                         continue
-                    cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else current_cat
-                    sold = int(float(str(row[sold_col]))) if sold_col is not None and row[sold_col] and str(row[sold_col]) != 'None' else 0
-                    stock = int(float(str(row[stock_col]))) if stock_col is not None and row[stock_col] and str(row[stock_col]) != 'None' else 0
+                    cat = str(row[cat_col]).strip() if cat_col and row[cat_col] else current_cat
+                    sold = int(float(str(row[sold_col]))) if sold_col and row[sold_col] and str(row[sold_col]) != 'None' else 0
+                    stock = int(float(str(row[stock_col]))) if stock_col and row[stock_col] and str(row[stock_col]) != 'None' else 0
                     if art and art != 'None' and len(art) > 3:
                         products.append((art, cat, sold, stock))
-
         db = get_db()
         db.execute('DELETE FROM top_products')
         for p in products:
@@ -349,6 +496,23 @@ def upload_products():
         return jsonify({'ok': True, 'count': len(products)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/analytics/orders')
+@admin_required
+def analytics_orders():
+    db = get_db()
+    top_articles = db.execute('''
+        SELECT article, SUM(qty) as total_qty, COUNT(DISTINCT order_id) as order_count
+        FROM order_items WHERE article != '' AND article != 'None'
+        GROUP BY article ORDER BY total_qty DESC LIMIT 20
+    ''').fetchall()
+    branch_totals = db.execute('''
+        SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
+        FROM orders o JOIN order_items oi ON o.id = oi.order_id
+        GROUP BY o.branch ORDER BY total_qty DESC
+    ''').fetchall()
+    db.close()
+    return jsonify({'top_articles': [dict(r) for r in top_articles], 'branch_totals': [dict(r) for r in branch_totals]})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
