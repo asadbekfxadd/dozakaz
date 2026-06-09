@@ -72,8 +72,17 @@ def init_db():
         wms_stock INTEGER DEFAULT 0,
         abc TEXT DEFAULT 'C',
         sold INTEGER DEFAULT 0,
+        season TEXT DEFAULT '',
+        category TEXT DEFAULT '',
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
+    # Add columns if missing (migration)
+    try:
+        db.execute('ALTER TABLE catalog ADD COLUMN season TEXT DEFAULT ""')
+    except: pass
+    try:
+        db.execute('ALTER TABLE catalog ADD COLUMN category TEXT DEFAULT ""')
+    except: pass
     db.execute('''CREATE TABLE IF NOT EXISTS branch_stock (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         article TEXT,
@@ -370,8 +379,15 @@ def upload_catalog():
                 # Next row has 'Доступно' markers
                 avail_row = [str(c).strip() if c else '' for c in rows[i+1]]
                 for j, val in enumerate(row_vals):
-                    if val in BRANCHES:
-                        branch_cols[val] = j
+                    val_norm = val.replace('\u0421', 'C').replace('\u0441', 'c').replace('\u0415', 'E').replace('\u0435', 'e')
+                    matched = None
+                    for branch in BRANCHES:
+                        branch_norm = branch.replace('\u0421', 'C').replace('\u0441', 'c').replace('\u0415', 'E').replace('\u0435', 'e')
+                        if val_norm == branch_norm or val == branch:
+                            matched = branch
+                            break
+                    if matched:
+                        branch_cols[matched] = j
                     if val == 'Склад WMS':
                         wms_col = j
                 break
@@ -379,14 +395,29 @@ def upload_catalog():
         if header_idx is None:
             return jsonify({'error': 'Не найден заголовок таблицы'}), 400
 
-        # Find name column (Номенклатура, Характеристика)
+        # Detect columns
         header_row = [str(c).strip() if c else '' for c in rows[header_idx]]
         name_col = None
+        size_col = None
+        season_col = None
+        category_col = None
         art_col = 0
         for j, val in enumerate(header_row):
-            if 'Номенклатура' in val or 'Характеристика' in val:
-                name_col = j
-                break
+            if val == 'Характеристика' and size_col is None: size_col = j
+            if 'Номенклатура' in val and ',' in val and name_col is None: name_col = j
+            if 'Сезон' in val: season_col = j
+            if 'Вид' in val and category_col is None: category_col = j
+        # fallback: name_col = first col with 'Номенклатура'
+        if name_col is None:
+            for j, val in enumerate(header_row):
+                if 'Номенклатура' in val: name_col = j; break
+
+        # Skip subheader rows (Доступно)
+        data_start = header_idx + 1
+        for i in range(header_idx+1, min(header_idx+3, len(rows))):
+            rv = [str(c).strip() if c else '' for c in rows[i]]
+            if any('Доступно' in v for v in rv):
+                data_start = i + 1; break
 
         db = get_db()
         db.execute('DELETE FROM catalog')
@@ -395,28 +426,42 @@ def upload_catalog():
         catalog_items = []
         branch_items = []
 
-        for row in rows[header_idx+2:]:
+        for row in rows[data_start:]:
             if not row or not row[art_col]:
                 continue
             art = str(row[art_col]).strip()
-            if not art or art == 'None':
+            if not art or art in ('None','nan'):
                 continue
 
-            name_full = str(row[name_col]).strip() if name_col and row[name_col] else ''
-            # Parse name and size: "AAFW021-3 Basketball Woven S/S Top Navy Blazer, L"
-            name = name_full
+            # Size from dedicated col or parse from name
             size = ''
-            if ', ' in name_full:
-                parts = name_full.rsplit(', ', 1)
-                name = parts[0].strip()
-                size = parts[1].strip()
-            # Remove article from name
-            if name.startswith(art.rstrip('A')):
-                name = name[len(art.rstrip('A')):].strip()
+            if size_col is not None and row[size_col]:
+                size = str(row[size_col]).strip()
 
-            wms = int(float(str(row[wms_col]))) if wms_col and row[wms_col] and str(row[wms_col]) not in ('None','nan') else 0
+            # Name
+            name = ''
+            if name_col is not None and row[name_col]:
+                name_full = str(row[name_col]).strip()
+                if not size and ', ' in name_full:
+                    parts = name_full.rsplit(', ', 1)
+                    name_full = parts[0].strip()
+                    size = parts[1].strip()
+                art_base = art.rstrip('A')
+                if name_full.startswith(art_base):
+                    name_full = name_full[len(art_base):].strip()
+                name = name_full
 
-            catalog_items.append((art, name, size, wms))
+            # Season & category
+            season = str(row[season_col]).strip() if season_col is not None and row[season_col] and str(row[season_col]) not in ('None','nan') else ''
+            category = str(row[category_col]).strip() if category_col is not None and row[category_col] and str(row[category_col]) not in ('None','nan') else ''
+
+            # WMS
+            wms = 0
+            if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
+                try: wms = int(float(str(row[wms_col])))
+                except: pass
+
+            catalog_items.append((art, name, size, wms, season, category))
 
             for branch, col in branch_cols.items():
                 qty = row[col]
@@ -428,7 +473,7 @@ def upload_catalog():
                     except:
                         pass
 
-        db.executemany('INSERT INTO catalog (article, name, size, wms_stock) VALUES (?,?,?,?)', catalog_items)
+        db.executemany('INSERT INTO catalog (article, name, size, wms_stock, season, category) VALUES (?,?,?,?,?,?)', catalog_items)
         db.executemany('INSERT INTO branch_stock (article, size, branch, qty) VALUES (?,?,?,?)', branch_items)
         db.commit()
         db.close()
@@ -471,10 +516,12 @@ def get_catalog():
             bs = db.execute('SELECT size, qty FROM branch_stock WHERE article=? AND branch=?', (art, branch)).fetchall()
             branch_stock = {r['size']: r['qty'] for r in bs}
 
-        # Get ABC
-        abc_row = db.execute('SELECT abc, sold FROM catalog WHERE article=? LIMIT 1', (art,)).fetchone()
+        # Get ABC, season, category
+        abc_row = db.execute('SELECT abc, sold, season, category FROM catalog WHERE article=? LIMIT 1', (art,)).fetchone()
         abc = abc_row['abc'] if abc_row else 'C'
         sold = abc_row['sold'] if abc_row else 0
+        season = abc_row['season'] if abc_row and abc_row['season'] else ''
+        category = abc_row['category'] if abc_row and abc_row['category'] else ''
 
         total_wms = sum(r['wms_stock'] for r in sizes)
 
@@ -483,6 +530,8 @@ def get_catalog():
             'name': name,
             'abc': abc,
             'sold': sold,
+            'season': season,
+            'category': category,
             'total_wms': total_wms,
             'sizes': [{'size': r['size'], 'wms': r['wms_stock'], 'branch': branch_stock.get(r['size'], 0)} for r in sizes]
         })
