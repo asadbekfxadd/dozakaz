@@ -799,20 +799,19 @@ var _photoCache={};
 function loadYandexPhotos(article, cb){
   var artBase=article.replace(/A$/,'');
   if(_photoCache[artBase]!==undefined){ cb(_photoCache[artBase]); return; }
-  var token='35a4110c9f5a4729ba8a54cf978276f4';
   var pubKey='https://disk.yandex.com/d/-plm2CMx-kHNuA';
   var path='/06-White Background Pics/'+artBase;
   var url='https://cloud-api.yandex.net/v1/disk/public/resources?'
     +'public_key='+encodeURIComponent(pubKey)
     +'&path='+encodeURIComponent(path)
-    +'&limit=20';
-  fetch(url,{headers:{'Authorization':'OAuth '+token}})
+    +'&limit=20&preview_size=400x400&preview_crop=false';
+  fetch(url)
     .then(r=>r.json())
     .then(data=>{
       var items=(data._embedded||{}).items||[];
       var photos=items
         .filter(i=>i.name&&/\.(jpg|jpeg|png|webp)$/i.test(i.name))
-        .map(i=>i.file||i.preview||'')
+        .map(i=>i.preview||i.file||'')
         .filter(Boolean);
       _photoCache[artBase]=photos;
       cb(photos);
