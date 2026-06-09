@@ -1,435 +1,134 @@
-<!DOCTYPE html>
-<html lang="ru">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Дозаказы</title>
-<style>
-*{box-sizing:border-box;margin:0;padding:0}
-:root{
-  --bg:#0f1117;--bg2:#161b26;--bg3:#1e2433;
-  --border:#2a3044;--border2:#3a4460;
-  --text:#e8eaf6;--text2:#8892b0;--text3:#4a5568;
-  --accent:#4f8ef7;--accent2:#1a3a6e;
-  --green:#22c55e;--green2:#14532d;
-  --amber:#f59e0b;--amber2:#451a03;
-  --red:#ef4444;--red2:#450a0a;
-  --radius:10px;--radius-sm:6px;
-}
-body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',sans-serif;font-size:14px;min-height:100vh}
-a{color:var(--accent);text-decoration:none}
+from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
+import sqlite3, os, json
+from datetime import datetime
+from werkzeug.utils import secure_filename
 
-.shell{display:flex;min-height:100vh}
-.sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);padding:0;flex-shrink:0;display:flex;flex-direction:column}
-.logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
-.logo-title{font-size:16px;font-weight:600;color:var(--text);letter-spacing:-0.3px}
-.logo-sub{font-size:11px;color:var(--text3);margin-top:2px;text-transform:uppercase;letter-spacing:1px}
-nav{padding:12px 8px;flex:1}
-.nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;color:var(--text2);font-size:13px;transition:all .15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
-.nav-item:hover{background:var(--bg3);color:var(--text)}
-.nav-item.active{background:var(--accent2);color:var(--accent)}
-.nav-item svg{width:16px;height:16px;flex-shrink:0;opacity:.7}
-.nav-item.active svg{opacity:1}
-.nav-badge{margin-left:auto;background:var(--accent2);color:var(--accent);font-size:10px;padding:2px 6px;border-radius:20px;font-weight:600}
-.main{flex:1;overflow:auto}
-.topbar{background:var(--bg2);border-bottom:1px solid var(--border);padding:16px 28px;display:flex;align-items:center;justify-content:space-between}
-.topbar-title{font-size:18px;font-weight:600;color:var(--text)}
-.topbar-sub{font-size:12px;color:var(--text3);margin-top:2px}
-.content{padding:24px 28px}
+app = Flask(__name__)
+app.config['UPLOAD_FOLDER'] = 'uploads'
+app.config['MAX_CONTENT_LENGTH'] = 16 * 1024 * 1024
 
-.page{display:none}.page.active{display:block}
+ALLOWED = {'.xlsx', '.xls', '.csv'}
 
-.stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
-.stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px}
-.stat-num{font-size:26px;font-weight:700;line-height:1}
-.stat-label{font-size:11px;color:var(--text2);margin-top:4px;text-transform:uppercase;letter-spacing:.5px}
-.stat-card.c-blue .stat-num{color:var(--accent)}
-.stat-card.c-green .stat-num{color:var(--green)}
-.stat-card.c-amber .stat-num{color:var(--amber)}
+def get_db():
+    db = sqlite3.connect('dozakaz.db')
+    db.row_factory = sqlite3.Row
+    return db
 
-.filters{display:flex;gap:10px;margin-bottom:18px;flex-wrap:wrap;align-items:center}
-select,input,textarea{background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:8px 12px;border-radius:var(--radius-sm);font-size:13px;outline:none;font-family:inherit}
-select:focus,input:focus,textarea:focus{border-color:var(--accent)}
-select option{background:var(--bg3)}
-.filters select{min-width:160px}
+def init_db():
+    db = get_db()
+    db.execute('''CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        branch TEXT NOT NULL,
+        responsible TEXT NOT NULL,
+        date TEXT NOT NULL,
+        priority TEXT DEFAULT 'Обычный',
+        note TEXT DEFAULT '',
+        filename TEXT,
+        original_name TEXT,
+        status TEXT DEFAULT 'Новая',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )''')
+    db.commit()
+    db.close()
 
-.orders-wrap{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);overflow:hidden}
-table{width:100%;border-collapse:collapse}
-thead th{padding:10px 14px;font-size:11px;text-transform:uppercase;letter-spacing:.5px;color:var(--text3);background:var(--bg3);border-bottom:1px solid var(--border);text-align:left;font-weight:500}
-tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
-tbody tr:last-child{border-bottom:none}
-tbody tr:hover{background:var(--bg3)}
-td{padding:12px 14px;font-size:13px;color:var(--text)}
-td.muted{color:var(--text2)}
+init_db()
 
-.badge{display:inline-block;padding:3px 9px;border-radius:20px;font-size:11px;font-weight:500}
-.badge-new{background:var(--accent2);color:var(--accent)}
-.badge-work{background:#2a1f00;color:var(--amber)}
-.badge-done{background:var(--green2);color:var(--green)}
-.badge-urgent{background:#3a1a1a;color:#f87171;font-size:10px;padding:2px 7px}
-.badge-normal{background:var(--bg3);color:var(--text3);font-size:10px;padding:2px 7px}
+@app.route('/')
+def index():
+    return render_template('index.html')
 
-.file-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:20px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:pointer;transition:all .15s}
-.file-chip:hover{border-color:var(--accent);color:var(--accent)}
+@app.route('/api/orders', methods=['GET'])
+def get_orders():
+    branch = request.args.get('branch', '')
+    status = request.args.get('status', '')
+    db = get_db()
+    q = 'SELECT * FROM orders WHERE 1=1'
+    params = []
+    if branch:
+        q += ' AND branch=?'; params.append(branch)
+    if status:
+        q += ' AND status=?'; params.append(status)
+    q += ' ORDER BY created_at DESC'
+    rows = db.execute(q, params).fetchall()
+    db.close()
+    return jsonify([dict(r) for r in rows])
 
-.btn-icon{background:none;border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
-.btn-icon:hover{border-color:var(--border2);color:var(--text)}
-.btn-icon.danger:hover{border-color:var(--red);color:var(--red)}
-.btn-icon.success:hover{border-color:var(--green);color:var(--green)}
+@app.route('/api/orders', methods=['POST'])
+def create_order():
+    branch = request.form.get('branch', '').strip()
+    responsible = request.form.get('responsible', '').strip()
+    date = request.form.get('date', datetime.now().strftime('%Y-%m-%d'))
+    priority = request.form.get('priority', 'Обычный')
+    note = request.form.get('note', '').strip()
+    if not branch or not responsible:
+        return jsonify({'error': 'Заполните обязательные поля'}), 400
+    filename = None
+    original_name = None
+    f = request.files.get('file')
+    if f and f.filename:
+        ext = os.path.splitext(f.filename)[1].lower()
+        if ext not in ALLOWED:
+            return jsonify({'error': 'Только .xlsx, .xls, .csv'}), 400
+        original_name = f.filename
+        filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{secure_filename(f.filename)}'
+        f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+    db = get_db()
+    cur = db.execute(
+        'INSERT INTO orders (branch,responsible,date,priority,note,filename,original_name) VALUES (?,?,?,?,?,?,?)',
+        (branch, responsible, date, priority, note, filename, original_name)
+    )
+    order_id = cur.lastrowid
+    db.commit()
+    row = db.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
+    db.close()
+    return jsonify(dict(row)), 201
 
-.form-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:28px 32px;max-width:620px}
-.form-section{font-size:11px;text-transform:uppercase;letter-spacing:.8px;color:var(--text3);margin-bottom:12px;margin-top:24px;font-weight:500}
-.form-section:first-child{margin-top:0}
-.form-row{display:grid;grid-template-columns:1fr 1fr;gap:14px;margin-bottom:14px}
-.form-group{display:flex;flex-direction:column;gap:5px}
-.form-group label{font-size:12px;color:var(--text2)}
-.form-group input,.form-group select,.form-group textarea{width:100%}
-.form-group textarea{min-height:72px;resize:vertical}
-.required{color:var(--red);margin-left:2px}
+@app.route('/api/orders/<int:oid>/status', methods=['PATCH'])
+def update_status(oid):
+    data = request.get_json()
+    status = data.get('status')
+    if status not in ('Новая', 'В работе', 'Выполнена'):
+        return jsonify({'error': 'Invalid status'}), 400
+    db = get_db()
+    db.execute('UPDATE orders SET status=? WHERE id=?', (status, oid))
+    db.commit()
+    row = db.execute('SELECT * FROM orders WHERE id=?', (oid,)).fetchone()
+    db.close()
+    return jsonify(dict(row))
 
-.upload-zone{border:1.5px dashed var(--border2);border-radius:var(--radius);padding:28px;text-align:center;cursor:pointer;transition:all .15s;margin-top:4px}
-.upload-zone:hover,.upload-zone.drag{border-color:var(--accent);background:#0d1a33}
-.upload-zone-icon{font-size:28px;margin-bottom:8px;color:var(--text3)}
-.upload-zone p{font-size:13px;color:var(--text2)}
-.upload-zone small{font-size:11px;color:var(--text3)}
-.upload-name{color:var(--green);font-size:13px;font-weight:500;margin-top:6px}
+@app.route('/api/orders/<int:oid>/delete', methods=['DELETE'])
+def delete_order(oid):
+    db = get_db()
+    row = db.execute('SELECT filename FROM orders WHERE id=?', (oid,)).fetchone()
+    if row and row['filename']:
+        path = os.path.join(app.config['UPLOAD_FOLDER'], row['filename'])
+        if os.path.exists(path):
+            os.remove(path)
+    db.execute('DELETE FROM orders WHERE id=?', (oid,))
+    db.commit()
+    db.close()
+    return jsonify({'ok': True})
 
-.btn-primary{background:var(--accent);color:#fff;border:none;padding:10px 22px;border-radius:var(--radius-sm);font-size:14px;font-weight:500;cursor:pointer;transition:opacity .15s;font-family:inherit}
-.btn-primary:hover{opacity:.85}
-.btn-secondary{background:var(--bg3);color:var(--text2);border:1px solid var(--border);padding:10px 18px;border-radius:var(--radius-sm);font-size:14px;cursor:pointer;font-family:inherit}
-.btn-secondary:hover{color:var(--text);border-color:var(--border2)}
-.form-actions{display:flex;gap:10px;margin-top:20px}
+@app.route('/api/download/<int:oid>')
+def download(oid):
+    db = get_db()
+    row = db.execute('SELECT * FROM orders WHERE id=?', (oid,)).fetchone()
+    db.close()
+    if not row or not row['filename']:
+        return 'Not found', 404
+    return send_from_directory(app.config['UPLOAD_FOLDER'], row['filename'],
+                               as_attachment=True, download_name=row['original_name'])
 
-.toast{position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--green);color:var(--green);padding:12px 20px;border-radius:var(--radius);font-size:13px;display:none;align-items:center;gap:8px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.4)}
-.toast.error{border-color:var(--red);color:var(--red)}
-.toast.show{display:flex}
+@app.route('/api/stats')
+def stats():
+    db = get_db()
+    total = db.execute('SELECT COUNT(*) FROM orders').fetchone()[0]
+    new = db.execute("SELECT COUNT(*) FROM orders WHERE status='Новая'").fetchone()[0]
+    inprog = db.execute("SELECT COUNT(*) FROM orders WHERE status='В работе'").fetchone()[0]
+    done = db.execute("SELECT COUNT(*) FROM orders WHERE status='Выполнена'").fetchone()[0]
+    db.close()
+    return jsonify({'total': total, 'new': new, 'in_progress': inprog, 'done': done})
 
-<<<<<<< HEAD
-.empty-state{padding:48px;text-align:center;color:var(--text3)}
-.empty-state svg{width:40px;height:40px;margin:0 auto 12px;opacity:.3}
-
-.dot{width:7px;height:7px;border-radius:50%;display:inline-block;margin-right:6px;flex-shrink:0}
-.dot-new{background:var(--accent)}
-.dot-work{background:var(--amber)}
-.dot-done{background:var(--green)}
-
-@media(max-width:700px){
-  .sidebar{display:none}
-  .stats-grid{grid-template-columns:1fr 1fr}
-  .form-row{grid-template-columns:1fr}
-  .content{padding:16px}
-}
-</style>
-</head>
-<body>
-<div class="shell">
-  <aside class="sidebar">
-    <div class="logo">
-      <div class="logo-title">📦 Дозаказы</div>
-      <div class="logo-sub">Управление заявками</div>
-    </div>
-    <nav>
-      <button class="nav-item active" onclick="showPage('dash',this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        Все заявки
-        <span class="nav-badge" id="nav-badge">0</span>
-      </button>
-      <button class="nav-item" onclick="showPage('form',this)">
-        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
-        Новая заявка
-      </button>
-    </nav>
-  </aside>
-
-  <div class="main">
-    <!-- DASHBOARD -->
-    <div id="page-dash" class="page active">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title">Заявки на дозаказ</div>
-          <div class="topbar-sub" id="topbar-date"></div>
-        </div>
-        <button class="btn-primary" onclick="showPage('form',null)" style="font-size:13px;padding:8px 16px">+ Новая заявка</button>
-      </div>
-      <div class="content">
-        <div class="stats-grid">
-          <div class="stat-card"><div class="stat-num" id="s-total">—</div><div class="stat-label">Всего заявок</div></div>
-          <div class="stat-card c-blue"><div class="stat-num" id="s-new">—</div><div class="stat-label">Новые</div></div>
-          <div class="stat-card c-amber"><div class="stat-num" id="s-work">—</div><div class="stat-label">В работе</div></div>
-          <div class="stat-card c-green"><div class="stat-num" id="s-done">—</div><div class="stat-label">Выполнены</div></div>
-        </div>
-        <div class="filters">
-          <select id="f-branch" onchange="loadOrders()">
-            <option value="">Все филиалы</option>
-            <option>ALAYSKIY</option>
-            <option>ATLAS CHIMGAN</option>
-            <option>ECO PARK</option>
-            <option>Family park</option>
-            <option>HIGH TOWN PLAZA</option>
-            <option>M. BARAKA</option>
-            <option>MAGIC CITY</option>
-            <option>MALIKA</option>
-            <option>NOVZA</option>
-            <option>Scopus Mall</option>
-            <option>Shota Rustavely</option>
-            <option>TASHKENT CITY MALL</option>
-            <option>UZBEGIM ANDIJAN</option>
-            <option>Yunusabad gallery</option>
-          </select>
-          <select id="f-status" onchange="loadOrders()">
-            <option value="">Все статусы</option>
-            <option>Новая</option>
-            <option>В работе</option>
-            <option>Выполнена</option>
-          </select>
-          <button class="btn-secondary" onclick="loadOrders()" style="padding:8px 14px;font-size:13px">↻ Обновить</button>
-        </div>
-        <div class="orders-wrap">
-          <table>
-            <thead>
-              <tr>
-                <th>Филиал</th>
-                <th>Ответственный</th>
-                <th>Дата</th>
-                <th>Файл</th>
-                <th>Статус</th>
-                <th>Приоритет</th>
-                <th>Действия</th>
-              </tr>
-            </thead>
-            <tbody id="orders-tbody">
-              <tr><td colspan="7"><div class="empty-state">Загрузка...</div></td></tr>
-            </tbody>
-          </table>
-        </div>
-      </div>
-    </div>
-
-    <!-- FORM -->
-    <div id="page-form" class="page">
-      <div class="topbar">
-        <div>
-          <div class="topbar-title">Новая заявка на дозаказ</div>
-          <div class="topbar-sub">Заполните форму и прикрепите Excel файл</div>
-        </div>
-        <button class="btn-secondary" onclick="showPage('dash',null)" style="font-size:13px;padding:8px 14px">← Назад</button>
-      </div>
-      <div class="content">
-        <div class="form-card">
-          <div class="form-section">Информация о заявке</div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Филиал<span class="required">*</span></label>
-              <select id="r-branch">
-                <option value="">— выбрать —</option>
-                <option>ALAYSKIY</option>
-                <option>ATLAS CHIMGAN</option>
-                <option>ECO PARK</option>
-                <option>Family park</option>
-                <option>HIGH TOWN PLAZA</option>
-                <option>M. BARAKA</option>
-                <option>MAGIC CITY</option>
-                <option>MALIKA</option>
-                <option>NOVZA</option>
-                <option>Scopus Mall</option>
-                <option>Shota Rustavely</option>
-                <option>TASHKENT CITY MALL</option>
-                <option>UZBEGIM ANDIJAN</option>
-                <option>Yunusabad gallery</option>
-              </select>
-            </div>
-            <div class="form-group">
-              <label>Ответственный<span class="required">*</span></label>
-              <input type="text" id="r-responsible" placeholder="Ваше имя">
-            </div>
-          </div>
-          <div class="form-row">
-            <div class="form-group">
-              <label>Дата</label>
-              <input type="date" id="r-date">
-            </div>
-            <div class="form-group">
-              <label>Приоритет</label>
-              <select id="r-priority">
-                <option>Обычный</option>
-                <option>Срочно</option>
-              </select>
-            </div>
-          </div>
-          <div class="form-group" style="margin-bottom:14px">
-            <label>Комментарий</label>
-            <textarea id="r-note" placeholder="Особые пожелания, уточнения по товарам..."></textarea>
-          </div>
-
-          <div class="form-section">Excel файл с товарами</div>
-          <div class="upload-zone" id="upload-zone" onclick="document.getElementById('r-file').click()"
-               ondragover="event.preventDefault();this.classList.add('drag')"
-               ondragleave="this.classList.remove('drag')"
-               ondrop="handleDrop(event)">
-            <div class="upload-zone-icon">📊</div>
-            <p>Нажмите или перетащите файл сюда</p>
-            <small>.xlsx, .xls, .csv — до 16 МБ</small>
-            <div class="upload-name" id="upload-name"></div>
-          </div>
-          <input type="file" id="r-file" accept=".xlsx,.xls,.csv" style="display:none" onchange="onFile(this)">
-
-          <div class="form-actions">
-            <button class="btn-primary" onclick="submitForm()">Отправить заявку</button>
-            <button class="btn-secondary" onclick="resetForm()">Очистить</button>
-          </div>
-        </div>
-      </div>
-    </div>
-  </div>
-</div>
-
-<div class="toast" id="toast">
-  <span id="toast-msg"></span>
-</div>
-
-<script>
-var selectedFile = null;
-
-document.getElementById('topbar-date').textContent = new Date().toLocaleDateString('ru-RU', {weekday:'long',year:'numeric',month:'long',day:'numeric'});
-document.getElementById('r-date').value = new Date().toISOString().slice(0,10);
-
-function showPage(name, btn) {
-  document.querySelectorAll('.page').forEach(p => p.classList.remove('active'));
-  document.getElementById('page-' + name).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
-  if (btn) btn.classList.add('active');
-  if (name === 'dash') loadOrders();
-}
-
-function toast(msg, err) {
-  var t = document.getElementById('toast');
-  t.className = 'toast show' + (err ? ' error' : '');
-  document.getElementById('toast-msg').textContent = msg;
-  setTimeout(() => t.classList.remove('show'), 3000);
-}
-
-async function loadStats() {
-  var r = await fetch('/api/stats');
-  var d = await r.json();
-  document.getElementById('s-total').textContent = d.total;
-  document.getElementById('s-new').textContent = d.new;
-  document.getElementById('s-work').textContent = d.in_progress;
-  document.getElementById('s-done').textContent = d.done;
-  document.getElementById('nav-badge').textContent = d.total;
-}
-
-function statusBadge(s) {
-  if (s === 'Новая') return '<span class="badge badge-new"><span class="dot dot-new"></span>Новая</span>';
-  if (s === 'В работе') return '<span class="badge badge-work"><span class="dot dot-work"></span>В работе</span>';
-  return '<span class="badge badge-done"><span class="dot dot-done"></span>Выполнена</span>';
-}
-
-function prioBadge(p) {
-  return p === 'Срочно'
-    ? '<span class="badge badge-urgent">⚡ Срочно</span>'
-    : '<span class="badge badge-normal">Обычный</span>';
-}
-
-async function loadOrders() {
-  var branch = document.getElementById('f-branch').value;
-  var status = document.getElementById('f-status').value;
-  var url = '/api/orders?' + new URLSearchParams({branch, status});
-  var r = await fetch(url);
-  var orders = await r.json();
-  var tbody = document.getElementById('orders-tbody');
-  if (!orders.length) {
-    tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20 13V6a2 2 0 00-2-2H6a2 2 0 00-2 2v7m16 0v5a2 2 0 01-2 2H6a2 2 0 01-2-2v-5m16 0H4"/></svg>Заявок пока нет</div></td></tr>';
-    return;
-  }
-  tbody.innerHTML = orders.map(o => `
-    <tr>
-      <td style="font-weight:500">${o.branch}</td>
-      <td class="muted">${o.responsible}</td>
-      <td class="muted">${o.date}</td>
-      <td>${o.filename
-        ? `<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name.length > 22 ? o.original_name.slice(0,20)+'…' : o.original_name}</a>`
-        : '<span style="color:var(--text3)">—</span>'}</td>
-      <td>${statusBadge(o.status)}</td>
-      <td>${prioBadge(o.priority)}</td>
-      <td>
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${o.status !== 'В работе' && o.status !== 'Выполнена'
-            ? `<button class="btn-icon" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>` : ''}
-          ${o.status !== 'Выполнена'
-            ? `<button class="btn-icon success" onclick="setStatus(${o.id},'Выполнена')">✓</button>` : ''}
-          <button class="btn-icon danger" onclick="del(${o.id})">✕</button>
-        </div>
-      </td>
-    </tr>
-  `).join('');
-  loadStats();
-}
-
-async function setStatus(id, status) {
-  await fetch('/api/orders/' + id + '/status', {method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
-  loadOrders();
-}
-
-async function del(id) {
-  if (!confirm('Удалить заявку?')) return;
-  await fetch('/api/orders/' + id + '/delete', {method:'DELETE'});
-  loadOrders();
-  toast('Заявка удалена');
-}
-
-function onFile(inp) {
-  if (inp.files[0]) {
-    selectedFile = inp.files[0];
-    document.getElementById('upload-name').innerHTML = '✓ ' + selectedFile.name;
-    document.getElementById('upload-zone').classList.remove('drag');
-  }
-}
-
-function handleDrop(e) {
-  e.preventDefault();
-  document.getElementById('upload-zone').classList.remove('drag');
-  var f = e.dataTransfer.files[0];
-  if (f) { selectedFile = f; document.getElementById('upload-name').innerHTML = '✓ ' + f.name; }
-}
-
-async function submitForm() {
-  var branch = document.getElementById('r-branch').value;
-  var responsible = document.getElementById('r-responsible').value.trim();
-  if (!branch) { toast('Выберите филиал', true); return; }
-  if (!responsible) { toast('Укажите ответственного', true); return; }
-  var fd = new FormData();
-  fd.append('branch', branch);
-  fd.append('responsible', responsible);
-  fd.append('date', document.getElementById('r-date').value);
-  fd.append('priority', document.getElementById('r-priority').value);
-  fd.append('note', document.getElementById('r-note').value);
-  if (selectedFile) fd.append('file', selectedFile);
-  var r = await fetch('/api/orders', {method:'POST', body: fd});
-  var d = await r.json();
-  if (!r.ok) { toast(d.error || 'Ошибка', true); return; }
-  toast('Заявка отправлена!');
-  resetForm();
-  showPage('dash', document.querySelector('.nav-item'));
-}
-
-function resetForm() {
-  document.getElementById('r-branch').value = '';
-  document.getElementById('r-responsible').value = '';
-  document.getElementById('r-date').value = new Date().toISOString().slice(0,10);
-  document.getElementById('r-priority').value = 'Обычный';
-  document.getElementById('r-note').value = '';
-  document.getElementById('r-file').value = '';
-  document.getElementById('upload-name').innerHTML = '';
-  selectedFile = null;
-}
-
-loadOrders();
-loadStats();
-</script>
-</body>
-</html>
-=======
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
->>>>>>> db353c66d55ca1d90019ce7172d1166e3588babf
