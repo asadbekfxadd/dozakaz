@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory
-import sqlite3, os
+from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
+import sqlite3, os, json
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
@@ -42,9 +42,6 @@ def index():
 def get_orders():
     branch = request.args.get('branch', '')
     status = request.args.get('status', '')
-    responsible = request.args.get('responsible', '')
-    date_from = request.args.get('date_from', '')
-    date_to = request.args.get('date_to', '')
     db = get_db()
     q = 'SELECT * FROM orders WHERE 1=1'
     params = []
@@ -52,12 +49,6 @@ def get_orders():
         q += ' AND branch=?'; params.append(branch)
     if status:
         q += ' AND status=?'; params.append(status)
-    if responsible:
-        q += ' AND responsible LIKE ?'; params.append(f'%{responsible}%')
-    if date_from:
-        q += ' AND date >= ?'; params.append(date_from)
-    if date_to:
-        q += ' AND date <= ?'; params.append(date_to)
     q += ' ORDER BY created_at DESC'
     rows = db.execute(q, params).fetchall()
     db.close()
