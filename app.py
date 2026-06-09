@@ -1,4 +1,4 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory, session, redirect
+from flask import Flask, request, jsonify, render_template, send_from_directory, session
 import sqlite3, os
 from datetime import datetime
 from werkzeug.utils import secure_filename
@@ -47,6 +47,22 @@ def init_db():
         original_name TEXT,
         status TEXT DEFAULT 'Новая',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER,
+        article TEXT,
+        size TEXT,
+        qty INTEGER,
+        FOREIGN KEY(order_id) REFERENCES orders(id)
+    )''')
+    db.execute('''CREATE TABLE IF NOT EXISTS top_products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        article TEXT,
+        category TEXT,
+        sold INTEGER,
+        stock INTEGER,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
     db.commit()
     db.close()
@@ -141,6 +157,7 @@ def create_order():
         return jsonify({'error': 'Заполните обязательные поля'}), 400
     filename = None
     original_name = None
+    items = []
     f = request.files.get('file')
     if f and f.filename:
         ext = os.path.splitext(f.filename)[1].lower()
@@ -148,13 +165,53 @@ def create_order():
             return jsonify({'error': 'Только .xlsx, .xls, .csv'}), 400
         original_name = f.filename
         filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{secure_filename(f.filename)}'
-        f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        filepath = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        f.save(filepath)
+        # Parse items from Excel
+        try:
+            import openpyxl
+            wb = openpyxl.load_workbook(filepath, data_only=True)
+            ws = None
+            for sname in wb.sheetnames:
+                if 'WMS' in sname.upper() or 'СКЛАД' in sname.upper():
+                    ws = wb[sname]
+                    break
+            if not ws:
+                ws = wb.active
+            header_row = None
+            art_col = qty_col = size_col = None
+            for i, row in enumerate(ws.iter_rows(values_only=True), 1):
+                row_str = [str(c).strip() if c else '' for c in row]
+                if 'Артикул' in row_str:
+                    header_row = i
+                    art_col = row_str.index('Артикул')
+                    if 'Кол-во' in row_str:
+                        qty_col = row_str.index('Кол-во')
+                    if 'Характеристика' in row_str:
+                        size_col = row_str.index('Характеристика')
+                    break
+            if header_row and art_col is not None and qty_col is not None:
+                for row in ws.iter_rows(min_row=header_row+1, values_only=True):
+                    art = str(row[art_col]).strip() if row[art_col] else ''
+                    qty = row[qty_col]
+                    size = str(row[size_col]).strip() if size_col is not None and row[size_col] else ''
+                    if art and art != 'None' and qty and str(qty) != 'None':
+                        try:
+                            items.append({'article': art, 'size': size, 'qty': int(float(str(qty)))})
+                        except:
+                            pass
+        except Exception as e:
+            pass
+
     db = get_db()
     cur = db.execute(
         'INSERT INTO orders (branch,responsible,date,priority,note,filename,original_name) VALUES (?,?,?,?,?,?,?)',
         (branch, responsible, date, priority, note, filename, original_name)
     )
     order_id = cur.lastrowid
+    for item in items:
+        db.execute('INSERT INTO order_items (order_id,article,size,qty) VALUES (?,?,?,?)',
+                   (order_id, item['article'], item['size'], item['qty']))
     db.commit()
     row = db.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
     db.close()
@@ -173,20 +230,6 @@ def update_status(oid):
     row = db.execute('SELECT * FROM orders WHERE id=?', (oid,)).fetchone()
     db.close()
     return jsonify(dict(row))
-
-@app.route('/api/orders/<int:oid>/delete', methods=['DELETE'])
-@admin_required
-def delete_order(oid):
-    db = get_db()
-    row = db.execute('SELECT filename FROM orders WHERE id=?', (oid,)).fetchone()
-    if row and row['filename']:
-        path = os.path.join(app.config['UPLOAD_FOLDER'], row['filename'])
-        if os.path.exists(path):
-            os.remove(path)
-    db.execute('DELETE FROM orders WHERE id=?', (oid,))
-    db.commit()
-    db.close()
-    return jsonify({'ok': True})
 
 @app.route('/api/download/<int:oid>')
 @login_required
@@ -216,6 +259,96 @@ def stats():
         done = db.execute("SELECT COUNT(*) FROM orders WHERE branch=? AND status='Выполнена'", (b,)).fetchone()[0]
     db.close()
     return jsonify({'total': total, 'new': new, 'in_progress': inprog, 'done': done})
+
+@app.route('/api/analytics/orders')
+@admin_required
+def analytics_orders():
+    db = get_db()
+    # Топ артикулов по заявкам
+    top_articles = db.execute('''
+        SELECT article, SUM(qty) as total_qty, COUNT(DISTINCT order_id) as order_count
+        FROM order_items
+        WHERE article != '' AND article != 'None'
+        GROUP BY article
+        ORDER BY total_qty DESC
+        LIMIT 20
+    ''').fetchall()
+    # По филиалам
+    branch_totals = db.execute('''
+        SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
+        FROM orders o
+        JOIN order_items oi ON o.id = oi.order_id
+        GROUP BY o.branch
+        ORDER BY total_qty DESC
+    ''').fetchall()
+    db.close()
+    return jsonify({
+        'top_articles': [dict(r) for r in top_articles],
+        'branch_totals': [dict(r) for r in branch_totals]
+    })
+
+@app.route('/api/products', methods=['GET'])
+@login_required
+def get_products():
+    db = get_db()
+    rows = db.execute('SELECT * FROM top_products ORDER BY sold DESC').fetchall()
+    db.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/products/upload', methods=['POST'])
+@admin_required
+def upload_products():
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Файл не найден'}), 400
+    try:
+        import openpyxl
+        import io
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+        products = []
+        for sname in wb.sheetnames:
+            ws = wb[sname]
+            art_col = sold_col = stock_col = cat_col = None
+            header_row = None
+            for i, row in enumerate(ws.iter_rows(values_only=True), 1):
+                row_str = [str(c).strip() if c else '' for c in row]
+                if any(x in row_str for x in ['ITEM NO.', 'Одежда', 'Обувь']):
+                    header_row = i
+                    for j, cell in enumerate(row_str):
+                        if cell in ('ITEM NO.', 'Одежда', 'Обувь', 'Аксессуары'):
+                            art_col = j
+                        if cell == 'Продано':
+                            sold_col = j
+                        if cell == 'Остаток':
+                            stock_col = j
+                        if j == 1:
+                            cat_col = j
+                    break
+            if header_row and art_col is not None:
+                current_cat = 'APP'
+                for row in ws.iter_rows(min_row=header_row+1, values_only=True):
+                    if not row or not row[art_col]:
+                        continue
+                    art = str(row[art_col]).strip()
+                    if art in ('Одежда', 'Обувь', 'Аксессуары', 'nan', ''):
+                        if art == 'Обувь': current_cat = 'FTW'
+                        elif art == 'Аксессуары': current_cat = 'ACC'
+                        continue
+                    cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else current_cat
+                    sold = int(float(str(row[sold_col]))) if sold_col is not None and row[sold_col] and str(row[sold_col]) != 'None' else 0
+                    stock = int(float(str(row[stock_col]))) if stock_col is not None and row[stock_col] and str(row[stock_col]) != 'None' else 0
+                    if art and art != 'None' and len(art) > 3:
+                        products.append((art, cat, sold, stock))
+
+        db = get_db()
+        db.execute('DELETE FROM top_products')
+        for p in products:
+            db.execute('INSERT INTO top_products (article, category, sold, stock) VALUES (?,?,?,?)', p)
+        db.commit()
+        db.close()
+        return jsonify({'ok': True, 'count': len(products)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

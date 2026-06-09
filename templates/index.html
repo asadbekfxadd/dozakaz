@@ -22,7 +22,6 @@ a{color:var(--accent);text-decoration:none}
 .sidebar{width:220px;background:var(--bg2);border-right:1px solid var(--border);padding:0;flex-shrink:0;display:flex;flex-direction:column}
 .logo{padding:24px 20px 20px;border-bottom:1px solid var(--border)}
 .logo-brand{font-size:22px;font-weight:900;color:#fff;letter-spacing:3px;text-transform:uppercase}
-.logo-brand span{color:var(--accent)}
 .logo-sub{font-size:10px;color:var(--text3);margin-top:4px;text-transform:uppercase;letter-spacing:2px}
 nav{padding:12px 8px;flex:1}
 .nav-item{display:flex;align-items:center;gap:10px;padding:9px 12px;border-radius:var(--radius-sm);cursor:pointer;color:var(--text2);font-size:13px;transition:all .15s;margin-bottom:2px;border:none;background:none;width:100%;text-align:left}
@@ -41,10 +40,9 @@ nav{padding:12px 8px;flex:1}
 .content{padding:24px 28px}
 .page{display:none}.page.active{display:block}
 
-/* LOGIN */
 .login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0a0a0a;position:relative;overflow:hidden}
 .login-wrap::before{content:'';position:absolute;top:0;left:0;right:0;height:3px;background:var(--accent)}
-.login-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%, #2a000820 0%, transparent 70%)}
+.login-bg{position:absolute;inset:0;background:radial-gradient(ellipse at 50% 0%,#2a000820 0%,transparent 70%)}
 .login-card{background:#111;border:1px solid #222;border-radius:var(--radius);padding:48px 40px;width:100%;max-width:400px;position:relative;z-index:1}
 .login-logo{font-size:28px;font-weight:900;color:#fff;letter-spacing:4px;text-transform:uppercase;margin-bottom:4px}
 .login-logo span{color:var(--accent)}
@@ -57,7 +55,6 @@ nav{padding:12px 8px;flex:1}
 .login-btn:hover{opacity:.85}
 .login-error{color:var(--accent);font-size:12px;margin-top:10px;display:none;text-align:center}
 
-/* STATS */
 .stats-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:24px}
 .stat-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px 18px;position:relative;overflow:hidden}
 .stat-card::after{content:'';position:absolute;bottom:0;left:0;right:0;height:2px;background:var(--border)}
@@ -94,7 +91,6 @@ td.muted{color:var(--text2)}
 
 .file-chip{display:inline-flex;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:3px;padding:3px 10px;font-size:11px;color:var(--text2);cursor:pointer;transition:all .15s}
 .file-chip:hover{border-color:var(--accent);color:var(--accent)}
-
 .btn-icon{background:none;border:1px solid var(--border);color:var(--text2);padding:5px 10px;border-radius:var(--radius-sm);cursor:pointer;font-size:11px;transition:all .15s;display:inline-flex;align-items:center;gap:4px}
 .btn-icon:hover{border-color:var(--border2);color:var(--text)}
 .btn-icon.success:hover{border-color:var(--green);color:var(--green)}
@@ -125,14 +121,10 @@ td.muted{color:var(--text2)}
 .toast{position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--green);color:var(--green);padding:12px 20px;border-radius:var(--radius);font-size:13px;display:none;align-items:center;gap:8px;z-index:100;box-shadow:0 8px 24px rgba(0,0,0,.6)}
 .toast.error{border-color:var(--accent);color:var(--accent)}
 .toast.show{display:flex}
-
 .empty-state{padding:48px;text-align:center;color:var(--text3)}
 .empty-state svg{width:40px;height:40px;margin:0 auto 12px;opacity:.2}
-
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:6px;flex-shrink:0}
-.dot-new{background:var(--accent)}
-.dot-work{background:var(--amber)}
-.dot-done{background:var(--green)}
+.dot-new{background:var(--accent)}.dot-work{background:var(--amber)}.dot-done{background:var(--green)}
 
 /* KANBAN */
 .kanban{display:grid;grid-template-columns:repeat(3,1fr);gap:16px;align-items:start}
@@ -146,8 +138,8 @@ td.muted{color:var(--text2)}
 .kanban-card{background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);padding:12px;cursor:grab;transition:all .15s;user-select:none}
 .kanban-card:hover{border-color:var(--accent);transform:translateY(-1px);box-shadow:0 4px 12px rgba(227,24,55,.1)}
 .kanban-card.dragging{opacity:.4;cursor:grabbing}
-.kanban-col.drag-over .kanban-cards{background:rgba(227,24,55,.03);border-radius:var(--radius-sm)}
-.kanban-card-branch{font-weight:700;font-size:13px;margin-bottom:4px;text-transform:uppercase;letter-spacing:.3px}
+.kanban-col.drag-over .kanban-cards{background:rgba(227,24,55,.03)}
+.kanban-card-branch{font-weight:700;font-size:13px;margin-bottom:4px;text-transform:uppercase}
 .kanban-card-resp{font-size:11px;color:var(--text2);margin-bottom:6px}
 .kanban-card-meta{display:flex;gap:6px;align-items:center;flex-wrap:wrap}
 .kanban-card-date{font-size:10px;color:var(--text3)}
@@ -165,9 +157,27 @@ td.muted{color:var(--text2)}
 /* CONVERSION */
 .conv-upload-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:20px}
 .conv-pct{font-weight:700;font-size:14px}
-.conv-pct.good{color:var(--green)}
-.conv-pct.mid{color:var(--amber)}
-.conv-pct.bad{color:var(--accent)}
+.conv-pct.good{color:var(--green)}.conv-pct.mid{color:var(--amber)}.conv-pct.bad{color:var(--accent)}
+
+/* PRODUCTS */
+.products-toolbar{display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap;align-items:center}
+.products-grid{display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:12px}
+.product-card{background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:16px;transition:border-color .15s}
+.product-card:hover{border-color:var(--accent)}
+.product-article{font-size:13px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:4px}
+.product-cat{font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px}
+.product-stat{display:flex;justify-content:space-between;align-items:center;margin-bottom:6px}
+.product-stat-label{font-size:11px;color:var(--text2)}
+.product-stat-val{font-size:13px;font-weight:600}
+.stock-bar{height:4px;background:var(--bg3);border-radius:2px;margin-top:10px;overflow:hidden}
+.stock-fill{height:100%;border-radius:2px;transition:width .4s}
+.stock-high{background:var(--green)}
+.stock-mid{background:var(--amber)}
+.stock-low{background:var(--accent)}
+.cat-badge{display:inline-block;padding:2px 8px;border-radius:2px;font-size:10px;font-weight:700;text-transform:uppercase;letter-spacing:.5px}
+.cat-app{background:#1a1500;color:#f59e0b}
+.cat-ftw{background:#001a0a;color:#22c55e}
+.cat-acc{background:#00081a;color:#4f8ef7}
 
 @media(max-width:700px){
   .sidebar{display:none}
@@ -177,31 +187,24 @@ td.muted{color:var(--text2)}
   .kanban{grid-template-columns:1fr}
   .analytics-grid{grid-template-columns:1fr}
   .conv-upload-grid{grid-template-columns:1fr}
+  .products-grid{grid-template-columns:1fr 1fr}
 }
 </style>
 </head>
 <body>
 
-<!-- LOGIN -->
 <div class="login-wrap" id="login-wrap">
   <div class="login-bg"></div>
   <div class="login-card">
     <div class="login-logo">LI<span>-</span>NING</div>
     <div class="login-tagline">Supply Management System</div>
-    <div class="login-group">
-      <label>Логин</label>
-      <input type="text" id="l-user" placeholder="Введите логин">
-    </div>
-    <div class="login-group">
-      <label>Пароль</label>
-      <input type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()">
-    </div>
+    <div class="login-group"><label>Логин</label><input type="text" id="l-user" placeholder="Введите логин"></div>
+    <div class="login-group"><label>Пароль</label><input type="password" id="l-pass" placeholder="••••••••" onkeydown="if(event.key==='Enter')doLogin()"></div>
     <button class="login-btn" onclick="doLogin()">Войти</button>
     <div class="login-error" id="login-error">Неверный логин или пароль</div>
   </div>
 </div>
 
-<!-- APP -->
 <div class="shell" id="app-wrap" style="display:none">
   <aside class="sidebar">
     <div class="logo">
@@ -211,8 +214,11 @@ td.muted{color:var(--text2)}
     <nav>
       <button class="nav-item active" onclick="showPage('dash',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
-        Все заявки
-        <span class="nav-badge" id="nav-badge">0</span>
+        Все заявки<span class="nav-badge" id="nav-badge">0</span>
+      </button>
+      <button class="nav-item" onclick="showPage('products',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+        Топ товары
       </button>
       <button class="nav-item admin-only" onclick="showPage('kanban',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="5" height="18"/><rect x="10" y="3" width="5" height="11"/><rect x="17" y="3" width="5" height="15"/></svg>
@@ -244,10 +250,7 @@ td.muted{color:var(--text2)}
     <!-- DASHBOARD -->
     <div id="page-dash" class="page active">
       <div class="topbar">
-        <div>
-          <div class="topbar-title">Заявки на дозаказ</div>
-          <div class="topbar-sub" id="topbar-date"></div>
-        </div>
+        <div><div class="topbar-title">Заявки на дозаказ</div><div class="topbar-sub" id="topbar-date"></div></div>
         <button class="btn-primary" onclick="showPage('form',null)">+ Новая заявка</button>
       </div>
       <div class="content">
@@ -267,8 +270,7 @@ td.muted{color:var(--text2)}
             <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option>
           </select>
           <select id="f-status" onchange="loadOrders()">
-            <option value="">Все статусы</option>
-            <option>Новая</option><option>В работе</option><option>Выполнена</option>
+            <option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Выполнена</option>
           </select>
           <input type="text" id="f-responsible" placeholder="🔍 Сотрудник..." oninput="loadOrders()">
           <input type="date" id="f-date-from" onchange="loadOrders()" title="Дата с">
@@ -278,16 +280,52 @@ td.muted{color:var(--text2)}
         </div>
         <div class="orders-wrap">
           <table>
-            <thead>
-              <tr>
-                <th>Филиал</th><th>Ответственный</th><th>Дата</th>
-                <th>Файл</th><th>Статус</th><th>Приоритет</th><th id="th-actions">Действия</th>
-              </tr>
-            </thead>
-            <tbody id="orders-tbody">
-              <tr><td colspan="7"><div class="empty-state">Загрузка...</div></td></tr>
-            </tbody>
+            <thead><tr><th>Филиал</th><th>Ответственный</th><th>Дата</th><th>Файл</th><th>Статус</th><th>Приоритет</th><th id="th-actions">Действия</th></tr></thead>
+            <tbody id="orders-tbody"><tr><td colspan="7"><div class="empty-state">Загрузка...</div></td></tr></tbody>
           </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- TOP PRODUCTS -->
+    <div id="page-products" class="page">
+      <div class="topbar">
+        <div><div class="topbar-title">Топ товары</div><div class="topbar-sub">Продажи и остатки по артикулам</div></div>
+        <div style="display:flex;gap:10px;align-items:center">
+          <div class="admin-only" style="display:flex;gap:10px">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer">
+              <input type="file" id="products-file" accept=".xlsx" style="display:none" onchange="uploadProducts(this)">
+              <button class="btn-secondary" onclick="document.getElementById('products-file').click()">↑ Загрузить файл</button>
+            </label>
+          </div>
+          <button class="btn-secondary" onclick="loadProducts()">↻ Обновить</button>
+        </div>
+      </div>
+      <div class="content">
+        <div class="products-toolbar">
+          <select id="p-cat" onchange="renderProducts()">
+            <option value="">Все категории</option>
+            <option value="APP">Одежда (APP)</option>
+            <option value="FTW">Обувь (FTW)</option>
+            <option value="ACC">Аксессуары (ACC)</option>
+          </select>
+          <select id="p-sort" onchange="renderProducts()">
+            <option value="sold">По продажам</option>
+            <option value="stock">По остатку</option>
+            <option value="article">По артикулу</option>
+          </select>
+          <select id="p-stock" onchange="renderProducts()">
+            <option value="">Все остатки</option>
+            <option value="low">Мало (< 50)</option>
+            <option value="mid">Средне (50-200)</option>
+            <option value="high">Много (> 200)</option>
+          </select>
+          <input type="text" id="p-search" placeholder="🔍 Поиск артикула..." oninput="renderProducts()" style="min-width:180px">
+          <span id="p-count" style="font-size:12px;color:var(--text3)"></span>
+        </div>
+        <div id="products-grid" class="products-grid"></div>
+        <div id="products-empty" style="padding:48px;text-align:center;color:var(--text3);display:none">
+          Нет данных. Загрузите файл топ товаров.
         </div>
       </div>
     </div>
@@ -319,27 +357,23 @@ td.muted{color:var(--text2)}
     <!-- ANALYTICS -->
     <div id="page-analytics" class="page">
       <div class="topbar">
-        <div><div class="topbar-title">Аналитика</div><div class="topbar-sub">Статистика заявок по филиалам</div></div>
+        <div><div class="topbar-title">Аналитика</div><div class="topbar-sub">Статистика заявок и товаров</div></div>
         <button class="btn-secondary" onclick="loadAnalytics()">↻ Обновить</button>
       </div>
       <div class="content">
         <div class="analytics-grid">
-          <div class="analytics-card">
-            <h3>Заявок по филиалам</h3>
-            <div id="chart-branches"></div>
-          </div>
-          <div class="analytics-card">
-            <h3>По статусам</h3>
-            <div id="chart-statuses"></div>
-          </div>
+          <div class="analytics-card"><h3>Заявок по филиалам</h3><div id="chart-branches"></div></div>
+          <div class="analytics-card"><h3>По статусам</h3><div id="chart-statuses"></div></div>
+        </div>
+        <div class="analytics-grid">
+          <div class="analytics-card"><h3>Топ артикулов по заявкам</h3><div id="chart-articles"></div></div>
+          <div class="analytics-card"><h3>Единиц товара по филиалам</h3><div id="chart-branch-qty"></div></div>
         </div>
         <div class="analytics-card">
           <h3>Таблица по филиалам</h3>
           <div class="orders-wrap" style="margin-top:12px">
             <table>
-              <thead>
-                <tr><th>Филиал</th><th>Всего</th><th>Новые</th><th>В работе</th><th>Выполнены</th><th>Срочных</th></tr>
-              </thead>
+              <thead><tr><th>Филиал</th><th>Всего</th><th>Новые</th><th>В работе</th><th>Выполнены</th><th>Срочных</th></tr></thead>
               <tbody id="analytics-tbody"></tbody>
             </table>
           </div>
@@ -388,16 +422,12 @@ td.muted{color:var(--text2)}
         <div id="conv-result" style="display:none">
           <div class="orders-wrap">
             <table>
-              <thead>
-                <tr><th>Филиал</th><th>Посетители</th><th>Чеков</th><th>Сумма продаж</th><th>Конверсия %</th></tr>
-              </thead>
+              <thead><tr><th>Филиал</th><th>Посетители</th><th>Чеков</th><th>Сумма продаж</th><th>Конверсия %</th></tr></thead>
               <tbody id="conv-tbody"></tbody>
             </table>
           </div>
         </div>
-        <div id="conv-empty" style="padding:40px;text-align:center;color:var(--text3)">
-          Загрузите оба файла и нажмите "Рассчитать конверсию"
-        </div>
+        <div id="conv-empty" style="padding:40px;text-align:center;color:var(--text3)">Загрузите оба файла и нажмите "Рассчитать конверсию"</div>
       </div>
     </div>
 
@@ -428,14 +458,8 @@ td.muted{color:var(--text2)}
             </div>
           </div>
           <div class="form-row">
-            <div class="form-group">
-              <label>Дата</label>
-              <input type="date" id="r-date">
-            </div>
-            <div class="form-group">
-              <label>Приоритет</label>
-              <select id="r-priority"><option>Обычный</option><option>Срочно</option></select>
-            </div>
+            <div class="form-group"><label>Дата</label><input type="date" id="r-date"></div>
+            <div class="form-group"><label>Приоритет</label><select id="r-priority"><option>Обычный</option><option>Срочно</option></select></div>
           </div>
           <div class="form-group" style="margin-bottom:14px">
             <label>Комментарий</label>
@@ -465,7 +489,7 @@ td.muted{color:var(--text2)}
 <div class="toast" id="toast"><span id="toast-msg"></span></div>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
 <script>
-var selectedFile=null,dragId=null,currentRole=null,currentBranch=null,macData=null,onecData=null;
+var selectedFile=null,dragId=null,currentRole=null,currentBranch=null,macData=null,onecData=null,allProducts=[];
 
 document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 document.getElementById('r-date').value=new Date().toISOString().slice(0,10);
@@ -474,8 +498,7 @@ const BRANCH_MAP={'magic':'MAGIC CITY','novza':'NOVZA','atlas':'ATLAS CHIMGAN','
 const ONEC_MAP={'MAGIC CITY':'MAGIC CITY','NOVZA':'NOVZA','ATLAS CHIMGAN':'ATLAS CHIMGAN','Family park':'Family park','ALAYSKIY':'ALAYSKIY','TASHKENT CITY MALL':'TASHKENT CITY MALL','HIGH TOWN PLAZA':'HIGH TOWN PLAZA','MALIKA':'MALIKA','ECO PARK':'ECO PARK','Shota Rustavely':'Shota Rustavely','Scopus Mall':'Scopus Mall','UZBEGIM ANDIJAN':'UZBEGIM ANDIJAN','M. BARAKA':'M. BARAKA','Yunusabad gallery':'Yunusabad gallery'};
 
 async function init(){
-  var r=await fetch('/api/me');
-  var d=await r.json();
+  var r=await fetch('/api/me');var d=await r.json();
   if(d.logged_in){currentRole=d.role;currentBranch=d.branch;showApp(d);}
   else document.getElementById('login-wrap').style.display='flex';
 }
@@ -512,6 +535,7 @@ function showPage(name,btn){
   if(name==='dash')loadOrders();
   if(name==='kanban')loadKanban();
   if(name==='analytics')loadAnalytics();
+  if(name==='products')loadProducts();
 }
 
 function toast(msg,err){
@@ -541,10 +565,7 @@ function statusBadge(s){
   if(s==='В работе')return '<span class="badge badge-work"><span class="dot dot-work"></span>В работе</span>';
   return '<span class="badge badge-done"><span class="dot dot-done"></span>Выполнена</span>';
 }
-
-function prioBadge(p){
-  return p==='Срочно'?'<span class="badge badge-urgent">⚡ Срочно</span>':'<span class="badge badge-normal">Обычный</span>';
-}
+function prioBadge(p){return p==='Срочно'?'<span class="badge badge-urgent">⚡ Срочно</span>':'<span class="badge badge-normal">Обычный</span>';}
 
 async function loadOrders(){
   var params={};
@@ -554,11 +575,9 @@ async function loadOrders(){
     var responsible=document.getElementById('f-responsible').value.trim();
     var dateFrom=document.getElementById('f-date-from').value;
     var dateTo=document.getElementById('f-date-to').value;
-    if(branch)params.branch=branch;
-    if(status)params.status=status;
+    if(branch)params.branch=branch;if(status)params.status=status;
     if(responsible)params.responsible=responsible;
-    if(dateFrom)params.date_from=dateFrom;
-    if(dateTo)params.date_to=dateTo;
+    if(dateFrom)params.date_from=dateFrom;if(dateTo)params.date_to=dateTo;
   }
   var r=await fetch('/api/orders?'+new URLSearchParams(params));if(!r.ok)return;
   var orders=await r.json();
@@ -567,19 +586,83 @@ async function loadOrders(){
   tbody.innerHTML=orders.map(o=>`
     <tr>
       <td style="font-weight:700;text-transform:uppercase;letter-spacing:.3px">${o.branch}</td>
-      <td class="muted">${o.responsible}</td>
-      <td class="muted">${o.date}</td>
+      <td class="muted">${o.responsible}</td><td class="muted">${o.date}</td>
       <td>${o.filename?`<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name.length>22?o.original_name.slice(0,20)+'…':o.original_name}</a>`:'<span style="color:var(--text3)">—</span>'}</td>
-      <td>${statusBadge(o.status)}</td>
-      <td>${prioBadge(o.priority)}</td>
-      <td>${currentRole==='admin'?`
-        <div style="display:flex;gap:5px;flex-wrap:wrap">
-          ${o.status!=='В работе'&&o.status!=='Выполнена'?`<button class="btn-icon" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>`:''}
-          ${o.status!=='Выполнена'?`<button class="btn-icon success" onclick="setStatus(${o.id},'Выполнена')">✓ Готово</button>`:''}
-        </div>`:'—'}</td>
+      <td>${statusBadge(o.status)}</td><td>${prioBadge(o.priority)}</td>
+      <td>${currentRole==='admin'?`<div style="display:flex;gap:5px;flex-wrap:wrap">
+        ${o.status!=='В работе'&&o.status!=='Выполнена'?`<button class="btn-icon" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>`:''}
+        ${o.status!=='Выполнена'?`<button class="btn-icon success" onclick="setStatus(${o.id},'Выполнена')">✓ Готово</button>`:''}
+      </div>`:'—'}</td>
     </tr>
   `).join('');
   loadStats();
+}
+
+// TOP PRODUCTS
+async function loadProducts(){
+  var r=await fetch('/api/products');if(!r.ok)return;
+  allProducts=await r.json();
+  renderProducts();
+}
+
+function renderProducts(){
+  var cat=document.getElementById('p-cat').value;
+  var sort=document.getElementById('p-sort').value;
+  var stockFilter=document.getElementById('p-stock').value;
+  var search=document.getElementById('p-search').value.toLowerCase();
+  var filtered=allProducts.filter(p=>{
+    if(cat&&p.category!==cat)return false;
+    if(search&&!p.article.toLowerCase().includes(search))return false;
+    if(stockFilter==='low'&&p.stock>=50)return false;
+    if(stockFilter==='mid'&&(p.stock<50||p.stock>200))return false;
+    if(stockFilter==='high'&&p.stock<=200)return false;
+    return true;
+  });
+  filtered.sort((a,b)=>{
+    if(sort==='sold')return b.sold-a.sold;
+    if(sort==='stock')return b.stock-a.stock;
+    return a.article.localeCompare(b.article);
+  });
+  document.getElementById('p-count').textContent=`${filtered.length} товаров`;
+  var grid=document.getElementById('products-grid');
+  var empty=document.getElementById('products-empty');
+  if(!filtered.length){grid.innerHTML='';empty.style.display='block';return;}
+  empty.style.display='none';
+  var maxSold=Math.max(...filtered.map(p=>p.sold),1);
+  var maxStock=Math.max(...filtered.map(p=>p.stock),1);
+  var catClass={'APP':'cat-app','FTW':'cat-ftw','ACC':'cat-acc'};
+  var catName={'APP':'Одежда','FTW':'Обувь','ACC':'Аксессуары'};
+  var stockClass=p=>p.stock<50?'stock-low':p.stock<200?'stock-mid':'stock-high';
+  grid.innerHTML=filtered.map((p,i)=>`
+    <div class="product-card">
+      <div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px">
+        <div class="product-article">${p.article}</div>
+        <span style="font-size:11px;font-weight:700;color:var(--text3)">#${i+1}</span>
+      </div>
+      <div class="product-cat"><span class="cat-badge ${catClass[p.category]||'cat-app'}">${catName[p.category]||p.category}</span></div>
+      <div class="product-stat">
+        <span class="product-stat-label">Продано</span>
+        <span class="product-stat-val" style="color:var(--accent)">${p.sold}</span>
+      </div>
+      <div class="product-stat">
+        <span class="product-stat-label">Остаток</span>
+        <span class="product-stat-val" style="color:${p.stock<50?'var(--accent)':p.stock<200?'var(--amber)':'var(--green)'}">${p.stock}</span>
+      </div>
+      <div class="stock-bar"><div class="stock-fill ${stockClass(p)}" style="width:${Math.round(p.stock/maxStock*100)}%"></div></div>
+    </div>
+  `).join('');
+}
+
+async function uploadProducts(inp){
+  var file=inp.files[0];if(!file)return;
+  var fd=new FormData();fd.append('file',file);
+  toast('Загружаю...');
+  var r=await fetch('/api/products/upload',{method:'POST',body:fd});
+  var d=await r.json();
+  if(!r.ok){toast(d.error||'Ошибка',true);return;}
+  toast(`Загружено ${d.count} товаров`);
+  loadProducts();
+  inp.value='';
 }
 
 async function loadAnalytics(){
@@ -596,12 +679,10 @@ async function loadAnalytics(){
   });
   var sorted=Object.entries(byBranch).sort((a,b)=>b[1].total-a[1].total);
   var max=sorted.length?sorted[0][1].total:1;
-  document.getElementById('chart-branches').innerHTML=sorted.map(([branch,d],i)=>`
-    <div class="bar-row">
-      <div class="bar-label" title="${branch}">${branch}</div>
-      <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(d.total/max*100)}%;background:var(--accent)"></div></div>
-      <div class="bar-val">${d.total}</div>
-    </div>
+  document.getElementById('chart-branches').innerHTML=sorted.map(([branch,d])=>`
+    <div class="bar-row"><div class="bar-label" title="${branch}">${branch}</div>
+    <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(d.total/max*100)}%;background:var(--accent)"></div></div>
+    <div class="bar-val">${d.total}</div></div>
   `).join('');
   var total=orders.length||1;
   var newC=orders.filter(o=>o.status==='Новая').length;
@@ -615,15 +696,34 @@ async function loadAnalytics(){
   document.getElementById('analytics-tbody').innerHTML=sorted.map(([branch,d])=>`
     <tr>
       <td style="font-weight:700;text-transform:uppercase">${branch}</td>
-      <td>${d.total}</td>
-      <td><span class="badge badge-new">${d.new}</span></td>
-      <td><span class="badge badge-work">${d.work}</span></td>
-      <td><span class="badge badge-done">${d.done}</span></td>
+      <td>${d.total}</td><td><span class="badge badge-new">${d.new}</span></td>
+      <td><span class="badge badge-work">${d.work}</span></td><td><span class="badge badge-done">${d.done}</span></td>
       <td>${d.urgent?`<span class="badge badge-urgent">⚡ ${d.urgent}</span>`:'—'}</td>
     </tr>
   `).join('');
+
+  // Топ артикулов из заявок
+  try {
+    var r2=await fetch('/api/analytics/orders');
+    if(r2.ok){
+      var adata=await r2.json();
+      var maxArt=adata.top_articles.length?adata.top_articles[0].total_qty:1;
+      document.getElementById('chart-articles').innerHTML=adata.top_articles.length?adata.top_articles.map(a=>`
+        <div class="bar-row"><div class="bar-label" title="${a.article}">${a.article}</div>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(a.total_qty/maxArt*100)}%;background:var(--amber)"></div></div>
+        <div class="bar-val">${a.total_qty}</div></div>
+      `).join(''):'<div style="color:var(--text3);font-size:12px;padding:16px">Нет данных — загрузите Excel файлы в заявках</div>';
+      var maxBQ=adata.branch_totals.length?adata.branch_totals[0].total_qty:1;
+      document.getElementById('chart-branch-qty').innerHTML=adata.branch_totals.length?adata.branch_totals.map(b=>`
+        <div class="bar-row"><div class="bar-label" title="${b.branch}">${b.branch}</div>
+        <div class="bar-wrap"><div class="bar-fill" style="width:${Math.round(b.total_qty/maxBQ*100)}%;background:var(--green)"></div></div>
+        <div class="bar-val">${b.total_qty}</div></div>
+      `).join(''):'<div style="color:var(--text3);font-size:12px;padding:16px">Нет данных</div>';
+    }
+  } catch(e){}
 }
 
+// CONVERSION
 function onConvFile(inp,type){
   var file=inp.files[0];if(!file)return;
   var reader=new FileReader();
@@ -634,24 +734,17 @@ function onConvFile(inp,type){
   };
   reader.readAsArrayBuffer(file);
 }
-
 function handleConvDrop(e,type){
-  e.preventDefault();
-  document.getElementById(type==='mac'?'mac-zone':'onec-zone').classList.remove('drag');
+  e.preventDefault();document.getElementById(type==='mac'?'mac-zone':'onec-zone').classList.remove('drag');
   var f=e.dataTransfer.files[0];
   if(f){var inp=document.createElement('input');inp.type='file';var dt=new DataTransfer();dt.items.add(f);inp.files=dt.files;onConvFile(inp,type);}
 }
-
 function calcConversion(){
   if(!macData||!onecData){toast('Загрузите оба файла',true);return;}
   var macSheet=macData.Sheets['Входящие']||macData.Sheets[macData.SheetNames[0]];
   var macRows=XLSX.utils.sheet_to_json(macSheet);
   var visitors={};
-  macRows.forEach(row=>{
-    Object.entries(BRANCH_MAP).forEach(([col,branch])=>{
-      if(row[col]!==undefined&&row[col]!==null)visitors[branch]=(visitors[branch]||0)+(Number(row[col])||0);
-    });
-  });
+  macRows.forEach(row=>{Object.entries(BRANCH_MAP).forEach(([col,branch])=>{if(row[col]!==undefined&&row[col]!==null)visitors[branch]=(visitors[branch]||0)+(Number(row[col])||0);});});
   var onecSheet=onecData.Sheets[onecData.SheetNames[0]];
   var onecRows=XLSX.utils.sheet_to_json(onecSheet,{header:1});
   var sales={},checks={},headerRow=-1,shopCol=-1,sumCol=-1,checkCol=-1;
@@ -667,15 +760,9 @@ function calcConversion(){
   if(shopCol<0||sumCol<0){toast('Не удалось найти колонки в файле 1С',true);return;}
   var prevCheck='';
   for(var i=headerRow+1;i<onecRows.length;i++){
-    var row=onecRows[i];
-    var shop=String(row[shopCol]||'').trim();
-    var sum=Number(row[sumCol])||0;
-    var check=checkCol>=0?String(row[checkCol]||''):'';
-    var mapped=ONEC_MAP[shop];
-    if(mapped&&sum>0){
-      sales[mapped]=(sales[mapped]||0)+sum;
-      if(check&&check!==prevCheck){checks[mapped]=(checks[mapped]||0)+1;prevCheck=check;}
-    }
+    var row=onecRows[i];var shop=String(row[shopCol]||'').trim();var sum=Number(row[sumCol])||0;
+    var check=checkCol>=0?String(row[checkCol]||''):'';var mapped=ONEC_MAP[shop];
+    if(mapped&&sum>0){sales[mapped]=(sales[mapped]||0)+sum;if(check&&check!==prevCheck){checks[mapped]=(checks[mapped]||0)+1;prevCheck=check;}}
   }
   var allBranches=new Set([...Object.keys(visitors),...Object.keys(sales)]);
   var rows=Array.from(allBranches).map(b=>({branch:b,visitors:visitors[b]||0,checks:checks[b]||0,sales:sales[b]||0,pct:visitors[b]?((checks[b]||0)/visitors[b]*100):0})).sort((a,b)=>b.pct-a.pct);
@@ -686,15 +773,11 @@ function calcConversion(){
     return `<tr><td style="font-weight:700;text-transform:uppercase">${r.branch}</td><td>${r.visitors.toLocaleString()}</td><td>${r.checks}</td><td>${r.sales.toLocaleString()} сум</td><td><span class="conv-pct ${cls}">${r.pct.toFixed(1)}%</span></td></tr>`;
   }).join('');
 }
-
 function clearConversion(){
   macData=null;onecData=null;
-  document.getElementById('mac-name').innerHTML='';
-  document.getElementById('onec-name').innerHTML='';
-  document.getElementById('mac-file').value='';
-  document.getElementById('onec-file').value='';
-  document.getElementById('conv-result').style.display='none';
-  document.getElementById('conv-empty').style.display='block';
+  document.getElementById('mac-name').innerHTML='';document.getElementById('onec-name').innerHTML='';
+  document.getElementById('mac-file').value='';document.getElementById('onec-file').value='';
+  document.getElementById('conv-result').style.display='none';document.getElementById('conv-empty').style.display='block';
 }
 
 async function loadKanban(){
@@ -704,8 +787,7 @@ async function loadKanban(){
   Object.values(cols).forEach(c=>c.innerHTML='');
   orders.forEach(o=>{
     counts[o.status]=(counts[o.status]||0)+1;
-    var card=document.createElement('div');
-    card.className='kanban-card';card.draggable=true;
+    var card=document.createElement('div');card.className='kanban-card';card.draggable=true;
     card.innerHTML=`<div class="kanban-card-branch">${o.branch}</div><div class="kanban-card-resp">👤 ${o.responsible}</div><div class="kanban-card-meta">${prioBadge(o.priority)}<span class="kanban-card-date">📅 ${o.date}</span>${o.filename?`<a href="/api/download/${o.id}" class="file-chip" onclick="event.stopPropagation()">📎</a>`:''}</div>`;
     card.addEventListener('dragstart',e=>{dragId=o.id;setTimeout(()=>card.classList.add('dragging'),0);});
     card.addEventListener('dragend',()=>card.classList.remove('dragging'));
@@ -719,8 +801,7 @@ async function loadKanban(){
 function onDragOver(e,col){e.preventDefault();col.classList.add('drag-over');}
 function onDragLeave(col){col.classList.remove('drag-over');}
 async function onDrop(e,status){
-  e.preventDefault();
-  document.querySelectorAll('.kanban-col').forEach(c=>c.classList.remove('drag-over'));
+  e.preventDefault();document.querySelectorAll('.kanban-col').forEach(c=>c.classList.remove('drag-over'));
   if(!dragId)return;
   await fetch('/api/orders/'+dragId+'/status',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
   dragId=null;loadKanban();loadStats();toast('Статус обновлён');
@@ -731,15 +812,8 @@ async function setStatus(id,status){
   loadOrders();
 }
 
-function onFile(inp){
-  if(inp.files[0]){selectedFile=inp.files[0];document.getElementById('upload-name').innerHTML='✓ '+selectedFile.name;document.getElementById('upload-zone').classList.remove('drag');}
-}
-
-function handleDrop(e){
-  e.preventDefault();document.getElementById('upload-zone').classList.remove('drag');
-  var f=e.dataTransfer.files[0];
-  if(f){selectedFile=f;document.getElementById('upload-name').innerHTML='✓ '+f.name;}
-}
+function onFile(inp){if(inp.files[0]){selectedFile=inp.files[0];document.getElementById('upload-name').innerHTML='✓ '+selectedFile.name;document.getElementById('upload-zone').classList.remove('drag');}}
+function handleDrop(e){e.preventDefault();document.getElementById('upload-zone').classList.remove('drag');var f=e.dataTransfer.files[0];if(f){selectedFile=f;document.getElementById('upload-name').innerHTML='✓ '+f.name;}}
 
 async function submitForm(){
   var branch=document.getElementById('r-branch').value;
@@ -755,8 +829,7 @@ async function submitForm(){
   var r=await fetch('/api/orders',{method:'POST',body:fd});
   var d=await r.json();
   if(!r.ok){toast(d.error||'Ошибка',true);return;}
-  toast('Заявка отправлена!');resetForm();
-  showPage('dash',document.querySelector('.nav-item'));
+  toast('Заявка отправлена!');resetForm();showPage('dash',document.querySelector('.nav-item'));
 }
 
 function resetForm(){
