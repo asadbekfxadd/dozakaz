@@ -853,7 +853,7 @@ function openModal(item){
         sliderPhotos=data.photos;
         showSlide(0);
         document.getElementById('modal-thumbs').innerHTML=data.photos.map((p,i)=>
-          `<img src="${p.url}" onclick="showSlide(${i})" style="height:50px;width:50px;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0" id="thumb-${i}">`
+          `<img src="${p}" onclick="showSlide(${i})" style="height:50px;width:50px;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0" id="thumb-${i}">`
         ).join('');
       } else {
         loadingSpan.textContent='Фото не найдено';
