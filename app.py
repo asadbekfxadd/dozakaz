@@ -1,5 +1,5 @@
-from flask import Flask, request, jsonify, send_file, render_template, send_from_directory
-import sqlite3, os, json
+from flask import Flask, request, jsonify, render_template, send_from_directory
+import sqlite3, os
 from datetime import datetime
 from werkzeug.utils import secure_filename
 
