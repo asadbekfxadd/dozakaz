@@ -415,6 +415,9 @@ def upload_catalog():
                 art_base = art.rstrip('A')
                 if name_full.startswith(art_base):
                     name_full = name_full[len(art_base):].strip()
+                # Remove size from name if present at end
+                if size and name_full.endswith(f', {size}'):
+                    name_full = name_full[:-len(f', {size}')].strip()
                 name = name_full
             season = str(row[season_col]).strip() if season_col is not None and row[season_col] and str(row[season_col]) not in ('None','nan') else ''
             category = str(row[category_col]).strip() if category_col is not None and row[category_col] and str(row[category_col]) not in ('None','nan') else ''
@@ -445,15 +448,18 @@ def get_catalog():
     per_page = 50
     branch = session.get('branch') or request.args.get('branch', '')
     conn = get_db(); cur = conn.cursor()
-    q = 'SELECT DISTINCT article, name FROM catalog WHERE 1=1'
+
+    # FIX: group by article to avoid duplicates
+    q = 'SELECT article, MIN(name) as name FROM catalog WHERE 1=1'
     params = []
     if search:
         q += ' AND (article ILIKE %s OR name ILIKE %s)'
         params.extend([f'%{search}%', f'%{search}%'])
-    q += ' ORDER BY article'
+    q += ' GROUP BY article ORDER BY article'
     q += f' LIMIT {per_page} OFFSET {(page-1)*per_page}'
     cur.execute(q, params)
     articles = cur.fetchall()
+
     result = []
     for art_row in articles:
         art = art_row['article']
@@ -581,7 +587,7 @@ def analytics_orders():
     cur.close(); conn.close()
     return jsonify({'top_articles': [dict(r) for r in top_articles], 'branch_totals': [dict(r) for r in branch_totals]})
 
-# ===== SALES ANALYTICS =====
+# ===== SALES =====
 
 @app.route('/api/sales/upload', methods=['POST'])
 @admin_required
@@ -593,23 +599,16 @@ def upload_sales():
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
-
-        # Find header row
         header_idx = None
         for i, row in enumerate(rows):
             row_s = [str(c).strip() if c else '' for c in row]
             if 'Арт' in row_s or 'Артикул' in row_s:
-                header_idx = i
-                break
-
+                header_idx = i; break
         if header_idx is None:
             return jsonify({'error': 'Не найден заголовок'}), 400
-
         h1 = [str(c).strip() if c else '' for c in rows[header_idx]]
         h2 = [str(c).strip() if c else '' for c in rows[header_idx+1]] if header_idx+1 < len(rows) else []
-
         season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
-
         for j, v in enumerate(h1):
             if v == 'Арт': art_col = j
             if v == 'Магазин': branch_col = j
@@ -617,52 +616,43 @@ def upload_sales():
             if v == 'Количество': qty_col = j
             if v == 'Цена': price_col = j
             if v == 'Сумма': amount_col = j
-
         for j, v in enumerate(h2):
             if 'Сезон' in v: season_col = j
             if 'Артикул' in v and art_col is None: art_col = j
             if 'Вид' in v: cat_col = j
-
         replace = request.form.get('replace', 'false') == 'true'
         conn = get_db(); cur = conn.cursor()
         if replace:
             cur.execute('DELETE FROM sales')
-
         inserted = 0
         for row in rows[header_idx+2:]:
             if not row: continue
             art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
             if not art or art in ('None','nan',''): continue
-
             season = str(row[season_col]).strip() if season_col is not None and row[season_col] else ''
             cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
             branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
             ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-
             try: qty = int(float(str(row[qty_col]))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
             except: qty = 1
             try: price = float(str(row[price_col])) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
             except: price = 0
             try: amount = float(str(row[amount_col])) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
             except: amount = 0
-
             sale_date = None
             m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
             if m:
                 try: sale_date = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
                 except: pass
-
             cur.execute(
                 'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
                 (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
             )
             inserted += 1
-
         conn.commit(); cur.close(); conn.close()
         return jsonify({'ok': True, 'inserted': inserted})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
 
 @app.route('/api/sales/analytics', methods=['GET'])
 @login_required
@@ -671,9 +661,7 @@ def sales_analytics():
     category = request.args.get('category', '')
     branch = request.args.get('branch', '')
     limit = int(request.args.get('limit', 20))
-
     conn = get_db(); cur = conn.cursor()
-
     extra = ''
     params = []
     if period == 'week':
@@ -682,40 +670,30 @@ def sales_analytics():
         extra += " AND sale_date >= CURRENT_DATE - INTERVAL '30 days'"
     elif period == 'season':
         extra += " AND sale_date >= CURRENT_DATE - INTERVAL '90 days'"
-
     if category:
         extra += ' AND category = %s'; params.append(category)
     if branch:
         extra += ' AND branch = %s'; params.append(branch)
-
     cur.execute(f'''SELECT article, category,
         SUM(qty) as total_qty, SUM(amount) as total_amount, COUNT(*) as tx_count
         FROM sales WHERE 1=1 {extra}
         GROUP BY article, category ORDER BY total_qty DESC LIMIT %s
     ''', params + [limit])
     top_articles = cur.fetchall()
-
     cur.execute(f'''SELECT branch, SUM(qty) as total_qty, SUM(amount) as total_amount
-        FROM sales WHERE 1=1 {extra}
-        GROUP BY branch ORDER BY total_qty DESC
+        FROM sales WHERE 1=1 {extra} GROUP BY branch ORDER BY total_qty DESC
     ''', params)
     by_branch = cur.fetchall()
-
     cur.execute(f'''SELECT category, SUM(qty) as total_qty, SUM(amount) as total_amount
-        FROM sales WHERE 1=1 {extra}
-        GROUP BY category ORDER BY total_qty DESC
+        FROM sales WHERE 1=1 {extra} GROUP BY category ORDER BY total_qty DESC
     ''', params)
     by_category = cur.fetchall()
-
     cur.execute(f'''SELECT SUM(qty) as total_qty, SUM(amount) as total_amount, COUNT(*) as tx_count
         FROM sales WHERE 1=1 {extra}
     ''', params)
     totals = cur.fetchone()
-
-    # Min/max dates in DB
     cur.execute('SELECT MIN(sale_date) as min_date, MAX(sale_date) as max_date FROM sales')
     dates = cur.fetchone()
-
     cur.close(); conn.close()
     return jsonify({
         'top_articles': [dict(r) for r in top_articles],
@@ -726,7 +704,6 @@ def sales_analytics():
                   'max': str(dates['max_date']) if dates and dates['max_date'] else None}
     })
 
-
 @app.route('/api/sales/info')
 @admin_required
 def sales_info():
@@ -735,7 +712,6 @@ def sales_info():
     cur.execute('SELECT MIN(sale_date) as mn, MAX(sale_date) as mx FROM sales'); dates = cur.fetchone()
     cur.close(); conn.close()
     return jsonify({'total': total, 'min_date': str(dates['mn']) if dates['mn'] else None, 'max_date': str(dates['mx']) if dates['mx'] else None})
-
 
 # ===== PHOTOS =====
 
