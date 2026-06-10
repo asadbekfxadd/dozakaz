@@ -415,7 +415,6 @@ def upload_catalog():
                 art_base = art.rstrip('A')
                 if name_full.startswith(art_base):
                     name_full = name_full[len(art_base):].strip()
-                # Remove size from name if present at end
                 if size and name_full.endswith(f', {size}'):
                     name_full = name_full[:-len(f', {size}')].strip()
                 name = name_full
@@ -448,8 +447,6 @@ def get_catalog():
     per_page = 50
     branch = session.get('branch') or request.args.get('branch', '')
     conn = get_db(); cur = conn.cursor()
-
-    # FIX: group by article to avoid duplicates
     q = 'SELECT article, MIN(name) as name FROM catalog WHERE 1=1'
     params = []
     if search:
@@ -459,7 +456,6 @@ def get_catalog():
     q += f' LIMIT {per_page} OFFSET {(page-1)*per_page}'
     cur.execute(q, params)
     articles = cur.fetchall()
-
     result = []
     for art_row in articles:
         art = art_row['article']
@@ -517,6 +513,27 @@ def update_abc():
         return jsonify({'ok': True, 'updated': count})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
+
+@app.route('/api/catalog/abc-sync', methods=['POST'])
+@admin_required
+def abc_sync():
+    data = request.get_json()
+    updates = data.get('updates', [])
+    if not updates:
+        return jsonify({'error': 'Нет данных'}), 400
+    conn = get_db(); cur = conn.cursor()
+    count = 0
+    for u in updates:
+        art = u.get('article', '')
+        abc = u.get('abc', 'C')
+        sold = u.get('sold', 0)
+        # Update both with and without trailing A
+        cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
+        count += cur.rowcount
+        cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art + 'A'))
+        count += cur.rowcount
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True, 'updated': count})
 
 @app.route('/api/products', methods=['GET'])
 @login_required
