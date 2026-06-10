@@ -2,3 +2,4 @@ flask>=3.0.0
 werkzeug>=3.0.0
 gunicorn
 openpyxl
+psycopg2-binary
