@@ -361,6 +361,9 @@ td.muted{color:var(--text2)}
             <option value="yes">Есть на складе</option>
             <option value="no">Нет на складе</option>
           </select>
+          <select id="cat-season" onchange="loadCatalog()">
+            <option value="">Все сезоны</option>
+          </select>
           <button class="btn-secondary" onclick="loadCatalog()" style="padding:8px 14px">↻ Обновить</button>
           <span id="cat-count" style="font-size:12px;color:var(--text3)"></span>
         </div>
@@ -554,6 +557,15 @@ td.muted{color:var(--text2)}
   <div class="modal">
     <div class="modal-title" id="modal-article"></div>
     <div class="modal-sub" id="modal-name"></div>
+    <div id="modal-photos" style="display:none;margin-bottom:14px">
+      <div id="modal-slider" style="position:relative;width:100%;height:240px;background:var(--surface2);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center">
+        <img id="modal-main-img" src="" style="max-width:100%;max-height:240px;object-fit:contain;display:none">
+        <span id="modal-img-loading" style="color:var(--text3);font-size:13px">Загрузка фото...</span>
+        <button onclick="sliderPrev()" style="position:absolute;left:6px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.4);color:#fff;border:none;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px">‹</button>
+        <button onclick="sliderNext()" style="position:absolute;right:6px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,0.4);color:#fff;border:none;border-radius:50%;width:30px;height:30px;cursor:pointer;font-size:16px">›</button>
+      </div>
+      <div id="modal-thumbs" style="display:flex;gap:6px;margin-top:8px;overflow-x:auto;padding-bottom:4px"></div>
+    </div>
     <div class="modal-sizes" id="modal-sizes"></div>
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Закрыть</button>
@@ -675,7 +687,7 @@ async function loadOrders(){
     <tr>
       <td style="font-weight:700;text-transform:uppercase">${o.branch}</td>
       <td class="muted">${o.responsible}</td><td class="muted">${o.date}</td>
-      <td>${o.filename?`<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name.length>20?o.original_name.slice(0,18)+'…':o.original_name}</a>`:'<span style="color:var(--text3)">—</span>'}</td>
+      <td>${o.filename?`<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name.length>20?o.original_name.slice(0,18)+'…':o.original_name}</a>`:''}<a href="/api/orders/${o.id}/excel" class="file-chip" download style="margin-left:2px">📥 Excel</a></td>
       <td>${statusBadge(o.status)}</td><td>${prioBadge(o.priority)}</td>
       <td>${currentRole==='admin'?`<div style="display:flex;gap:5px;flex-wrap:wrap">
         ${o.status!=='В работе'&&o.status!=='Выполнена'?`<button class="btn-icon" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>`:''}
@@ -699,10 +711,21 @@ async function loadCatalog(){
   if(!r.ok)return;
   var items=await r.json();
 
+  // Populate season dropdown
+  var seasons=[...new Set(items.map(i=>i.season).filter(Boolean))].sort();
+  var sel=document.getElementById('cat-season');
+  var cur=sel.value;
+  if(seasons.length!==sel.options.length-1){
+    sel.innerHTML='<option value="">Все сезоны</option>'+seasons.map(s=>`<option value="${s}">${s}</option>`).join('');
+    if(cur)sel.value=cur;
+  }
+  var season=sel.value;
+
   // Client-side ABC and stock filter
   if(abc)items=items.filter(i=>i.abc===abc);
   if(stock==='yes')items=items.filter(i=>i.total_wms>0);
   if(stock==='no')items=items.filter(i=>i.total_wms===0);
+  if(season)items=items.filter(i=>i.season===season);
 
   var grid=document.getElementById('catalog-grid');
   var empty=document.getElementById('catalog-empty');
@@ -716,10 +739,17 @@ async function loadCatalog(){
     var cartQty=inCart?Object.values(inCart.sizes).reduce((s,v)=>s+v.qty,0):0;
     return `
     <div class="catalog-card" onclick="openModal(${JSON.stringify(item).replace(/"/g,'&quot;')})">
+      <div id="card-img-${item.article}" style="width:100%;height:140px;background:var(--surface2);border-radius:6px;margin-bottom:8px;overflow:hidden;display:flex;align-items:center;justify-content:center">
+        <img src="" alt="" style="max-width:100%;max-height:140px;object-fit:contain;display:none"
+          onerror="this.parentElement.style.display='none'"
+          onload="this.style.display='block'"
+          data-article="${item.article}">
+        <span style="color:var(--text3);font-size:11px">📷</span>
+      </div>
       <div class="catalog-card-header">
         <div>
-          <div class="catalog-article">${item.article} ${abcBadge(item.abc)}</div>
-          <div class="catalog-name">${item.name}</div>
+          <div class="catalog-article">${item.article} ${abcBadge(item.abc)}${item.season?`<span style="background:var(--surface2);color:var(--text2);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">${item.season}</span>`:''}</div>
+          <div class="catalog-name">${item.name}${item.category?`<span style="color:var(--text3);font-size:11px;margin-left:6px">${item.category}</span>`:''}</div>
         </div>
         ${cartQty>0?`<span style="background:var(--accent);color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">${cartQty} в корзине</span>`:''}
       </div>
@@ -746,6 +776,37 @@ async function loadCatalog(){
     <span style="color:var(--text2);font-size:13px;padding:8px 12px">Страница ${catalogPage}</span>
     ${items.length>=50?`<button class="btn-secondary" onclick="catalogPage++;loadCatalog()" style="padding:8px 16px">Далее →</button>`:''}
   `;
+
+  // Lazy load first photo for each card
+  items.forEach(item=>{
+    var container=document.getElementById('card-img-'+item.article);
+    if(!container) return;
+    var img=container.querySelector('img');
+    loadYandexPhotos(item.article, function(photos){
+      if(photos.length>0){
+        img.src=photos[0];
+        container.querySelector('span').style.display='none';
+      } else {
+        container.style.display='none';
+      }
+    });
+  });
+}
+
+var sliderPhotos=[], sliderIdx=0;
+var _photoCache={};
+
+function loadYandexPhotos(article, cb){
+  var artBase=article.replace(/A$/,'');
+  if(_photoCache[artBase]!==undefined){ cb(_photoCache[artBase]); return; }
+  fetch('/api/photos/'+article)
+    .then(r=>r.json())
+    .then(data=>{
+      var photos=(data.photos||[]);
+      _photoCache[artBase]=photos;
+      cb(photos);
+    })
+    .catch(()=>{ _photoCache[artBase]=[]; cb([]); });
 }
 
 function openModal(item){
@@ -763,7 +824,52 @@ function openModal(item){
     </div>
   `).join('');
   document.getElementById('modal-overlay').classList.add('open');
+
+  // Load photos
+  sliderPhotos=[]; sliderIdx=0;
+  var photosDiv=document.getElementById('modal-photos');
+  var mainImg=document.getElementById('modal-main-img');
+  var loadingSpan=document.getElementById('modal-img-loading');
+  photosDiv.style.display='block';
+  mainImg.style.display='none';
+  loadingSpan.style.display='block';
+  loadingSpan.textContent='Загрузка фото...';
+  document.getElementById('modal-thumbs').innerHTML='';
+
+  fetch('/api/photos/'+item.article)
+    .then(r=>r.json())
+    .then(data=>{
+      if(data.photos && data.photos.length>0){
+        sliderPhotos=data.photos;
+        showSlide(0);
+        document.getElementById('modal-thumbs').innerHTML=data.photos.map((p,i)=>
+          `<img src="${p}" onclick="showSlide(${i})" style="height:50px;width:50px;object-fit:cover;border-radius:4px;cursor:pointer;border:2px solid transparent;flex-shrink:0" id="thumb-${i}">`
+        ).join('');
+      } else {
+        loadingSpan.textContent='Фото не найдено';
+        mainImg.style.display='none';
+      }
+    })
+    .catch(()=>{ loadingSpan.textContent='Ошибка загрузки'; });
 }
+
+function showSlide(idx){
+  if(!sliderPhotos.length) return;
+  sliderIdx=idx;
+  var img=document.getElementById('modal-main-img');
+  var loading=document.getElementById('modal-img-loading');
+  loading.style.display='block'; loading.textContent='';
+  img.style.display='none';
+  img.onload=function(){ loading.style.display='none'; img.style.display='block'; };
+  img.src=typeof sliderPhotos[idx]==='string'?sliderPhotos[idx]:(sliderPhotos[idx].url||'');
+  // Highlight active thumb
+  document.querySelectorAll('#modal-thumbs img').forEach((t,i)=>{
+    t.style.border=i===idx?'2px solid var(--accent)':'2px solid transparent';
+  });
+}
+
+function sliderPrev(){ if(sliderPhotos.length) showSlide((sliderIdx-1+sliderPhotos.length)%sliderPhotos.length); }
+function sliderNext(){ if(sliderPhotos.length) showSlide((sliderIdx+1)%sliderPhotos.length); }
 
 function abcLabel(a){
   if(a==='A')return '⭐ A-товар';
