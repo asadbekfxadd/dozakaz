@@ -51,7 +51,7 @@ _photo_url_cache = {}
 # Auto-sync config
 SYNC_TOKEN = os.environ.get('SYNC_YADISK_TOKEN', 'y0__wgBEMqV35IIGNuWAyCth5vyF4mF73xoNyGCf7QJ3fjdgKw2YKVk')
 SYNC_FOLDER = '/li-ning-sync/остатки'
-SYNC_FILENAME = 'остатки_для_сайта.xlsx'
+SYNC_FILENAME = 'остатки для сайта.xlsx'
 SYNC_INTERVAL_HOURS = 2
 _last_sync = None
 
