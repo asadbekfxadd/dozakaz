@@ -1159,6 +1159,113 @@ def recommendations_excel():
     return send_file(buf, as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
+@app.route('/api/recommendations/cross')
+@login_required
+def cross_recommendations():
+    '''Товары которые топ в других филиалах но отсутствуют в данном'''
+    branch = session.get('branch') or request.args.get('branch', '')
+    if not branch:
+        return jsonify([])
+    conn = get_db(); cur = conn.cursor()
+
+    # Топ продаж по другим филиалам
+    cur.execute('''
+        SELECT s.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               SUM(s.qty) as total_sold, SUM(s.amount) as total_amount,
+               MIN(c.season) as season, MIN(c.category) as category,
+               array_agg(DISTINCT s.branch) as top_branches
+        FROM sales s
+        JOIN catalog c ON c.article = s.article OR c.article = s.article || 'A'
+        WHERE s.branch != %s
+        GROUP BY s.article
+        HAVING SUM(s.qty) >= 5
+        ORDER BY SUM(s.qty) DESC
+        LIMIT 300
+    ''', (branch,))
+    top_elsewhere = cur.fetchall()
+
+    if not top_elsewhere:
+        cur.close(); conn.close()
+        return jsonify([])
+
+    art_list = [r['article'] for r in top_elsewhere]
+    art_list_a = [a+'A' for a in art_list] + art_list
+
+    # Продажи в данном филиале
+    cur.execute('''
+        SELECT article, SUM(qty) as sold
+        FROM sales WHERE branch=%s AND article = ANY(%s)
+        GROUP BY article
+    ''', (branch, art_list + [a+'A' for a in art_list]))
+    branch_sales = {r['article']: r['sold'] for r in cur.fetchall()}
+
+    # Остатки в данном филиале
+    cur.execute('''
+        SELECT article, SUM(qty) as stock
+        FROM branch_stock WHERE branch=%s AND article = ANY(%s)
+        GROUP BY article
+    ''', (branch, art_list_a))
+    branch_stock = {r['article']: r['stock'] for r in cur.fetchall()}
+
+    # WMS остатки
+    cur.execute('''
+        SELECT article, array_agg(size ORDER BY size) as sizes,
+               array_agg(wms_stock ORDER BY size) as wms_stocks,
+               SUM(wms_stock) as total_wms
+        FROM catalog WHERE article = ANY(%s)
+        GROUP BY article
+    ''', (art_list_a,))
+    wms_data = {r['article']: r for r in cur.fetchall()}
+
+    cur.close(); conn.close()
+
+    result = []
+    for art_row in top_elsewhere:
+        art = art_row['article']
+        art_a = art + 'A'
+
+        # Продажи в данном филиале
+        my_sold = branch_sales.get(art, 0) + branch_sales.get(art_a, 0)
+        # Остатки в данном филиале
+        my_stock = branch_stock.get(art, 0) + branch_stock.get(art_a, 0)
+
+        # Пропускаем если уже хорошо продаётся
+        if my_sold >= art_row['total_sold'] * 0.3:
+            continue
+
+        # WMS данные
+        wms = wms_data.get(art) or wms_data.get(art_a)
+        total_wms = int(wms['total_wms']) if wms and wms['total_wms'] else 0
+        sizes = []
+        if wms:
+            for s, w in zip(wms['sizes'] or [], wms['wms_stocks'] or []):
+                if (w or 0) > 0:
+                    sizes.append({'size': s, 'wms': int(w or 0)})
+
+        if not sizes and total_wms == 0:
+            continue
+
+        # Топ филиалы где продаётся
+        top_branches = [b for b in (art_row['top_branches'] or []) if b != branch][:3]
+
+        result.append({
+            'article': art,
+            'name': art_row['name'] or '',
+            'abc': art_row['abc'] or 'C',
+            'season': art_row['season'] or '',
+            'category': art_row['category'] or '',
+            'total_sold_elsewhere': int(art_row['total_sold'] or 0),
+            'my_sold': my_sold,
+            'my_stock': my_stock,
+            'total_wms': total_wms,
+            'sizes': sizes,
+            'top_branches': top_branches
+        })
+
+    # Сортировка: больший разрыв продаж → сначала
+    result.sort(key=lambda x: -(x['total_sold_elsewhere'] - x['my_sold']))
+    return jsonify(result[:80])
+
 # ===== TRANSFERS =====
 
 @app.route('/api/transfers', methods=['GET'])

@@ -972,8 +972,16 @@ td.muted{color:var(--text2)}
       </div>
       <div class="content">
         <div id="rec-empty" style="padding:48px;text-align:center;color:var(--text3)">Выберите филиал или войдите как филиал</div>
-        <div id="rec-stats" style="display:none;margin-bottom:16px"></div>
+        <div id="rec-stats" style="display:none;margin-bottom:20px"></div>
+        <!-- Tab switcher -->
+        <div id="rec-tabs" style="display:none;margin-bottom:20px">
+          <div style="display:flex;gap:8px">
+            <button class="period-tab active" id="rec-tab-missing" onclick="switchRecTab('missing',this)">&#9888; Неполная сетка</button>
+            <button class="period-tab" id="rec-tab-cross" onclick="switchRecTab('cross',this)">&#128200; Топ у других филиалов</button>
+          </div>
+        </div>
         <div id="rec-grid" class="catalog-grid"></div>
+        <div id="rec-cross-grid" class="catalog-grid" style="display:none"></div>
       </div>
     </div>
 
@@ -1837,6 +1845,81 @@ async function loadTransferBadge(){
   }catch(e){}
 }
 
+var recTab = 'missing';
+
+function switchRecTab(tab, btn){
+  recTab = tab;
+  document.querySelectorAll('#rec-tabs .period-tab').forEach(b=>b.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  document.getElementById('rec-grid').style.display = tab==='missing'?'grid':'none';
+  document.getElementById('rec-cross-grid').style.display = tab==='cross'?'grid':'none';
+  if(tab==='cross') loadCrossRecs();
+}
+
+async function loadCrossRecs(){
+  var branch = currentBranch;
+  if(!branch && currentRole==='admin') branch = document.getElementById('rec-branch').value;
+  if(!branch) return;
+
+  var el = document.getElementById('rec-cross-grid');
+  el.innerHTML = '<div style="padding:32px;text-align:center;color:var(--text3)">Анализирую продажи...</div>';
+
+  var r = await fetch('/api/recommendations/cross?branch='+encodeURIComponent(branch));
+  if(!r.ok){el.innerHTML='<div style="padding:32px;text-align:center;color:var(--text3)">Нет данных продаж</div>';return;}
+  var items = await r.json();
+
+  if(!items.length){
+    el.innerHTML='<div style="padding:32px;text-align:center;color:var(--text3)">Нет рекомендаций — вы уже продаёте все топ товары!</div>';
+    return;
+  }
+
+  el.innerHTML = items.map(item=>{
+    var itemJson = JSON.stringify({
+      article:item.article, name:item.name, abc:item.abc,
+      season:item.season, category:item.category, total_wms:item.total_wms,
+      sizes: item.sizes.map(s=>({size:s.size, wms:s.wms, branch:0}))
+    }).replace(/"/g,'&quot;');
+
+    var sizesHtml = item.sizes.slice(0,8).map(s=>
+      '<div class="size-chip has-wms"><div class="size-label">'+s.size+'</div><div class="size-wms">WMS: '+s.wms+'</div></div>'
+    ).join('');
+
+    var branchHtml = item.top_branches.map(b=>
+      '<span style="background:var(--bg4);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--text2)">'+b+'</span>'
+    ).join('');
+
+    return '<div class="catalog-card" onclick="openModal('+itemJson+')">'+
+      '<div class="catalog-card-header">'+
+      '<div>'+
+      '<div class="catalog-article">'+item.article+' '+abcBadge(item.abc)+
+      (item.season?'<span style="background:var(--bg3);color:var(--text2);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">'+item.season+'</span>':'')+'</div>'+
+      '<div class="catalog-name">'+item.name+(item.category?'<span style="color:var(--text3);font-size:11px;margin-left:6px">'+item.category+'</span>':'')+'</div>'+
+      '</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:10px;margin-bottom:12px;flex-wrap:wrap">'+
+      '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:6px;padding:8px 12px;text-align:center">'+
+      '<div style="font-size:18px;font-weight:800;color:var(--green)">'+item.total_sold_elsewhere+'</div>'+
+      '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Продано у других</div>'+
+      '</div>'+
+      '<div style="background:var(--accent2);border:1px solid rgba(255,23,68,.2);border-radius:6px;padding:8px 12px;text-align:center">'+
+      '<div style="font-size:18px;font-weight:800;color:var(--accent)">'+item.my_sold+'</div>'+
+      '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">Ваши продажи</div>'+
+      '</div>'+
+      '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:8px 12px;text-align:center">'+
+      '<div style="font-size:18px;font-weight:800;color:var(--amber)">'+item.total_wms+'</div>'+
+      '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">На WMS</div>'+
+      '</div>'+
+      '</div>'+
+      (item.top_branches.length?'<div style="margin-bottom:10px;display:flex;gap:4px;flex-wrap:wrap">'+
+      '<span style="font-size:10px;color:var(--text3);margin-right:4px">Топ в:</span>'+branchHtml+'</div>':'')+''+
+      '<div class="catalog-sizes" style="margin-bottom:12px">'+sizesHtml+'</div>'+
+      '<div class="catalog-card-footer">'+
+      '<span style="font-size:11px;color:var(--text3)">Остаток у вас: '+item.my_stock+' шт</span>'+
+      '<button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="event.stopPropagation();openModal('+itemJson+')">+ Заказать</button>'+
+      '</div></div>';
+  }).join('');
+}
+
 function downloadRecExcel(){
   var branch = currentBranch;
   if(!branch && currentRole==='admin'){
@@ -1873,6 +1956,7 @@ async function loadRecommendations(){
   }
 
   document.getElementById('rec-empty').style.display='none';
+  document.getElementById('rec-tabs').style.display='block';
 
   // Stats
   var totalMissing = items.reduce((s,i)=>s+i.missing_sizes.length,0);
