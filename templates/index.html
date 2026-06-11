@@ -633,6 +633,7 @@ td.muted{color:var(--text2)}
             <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option>
           </select>
           <button class="btn-secondary" onclick="loadRecommendations()">&#8635; Обновить</button>
+          <button class="btn-primary" onclick="downloadRecExcel()" style="padding:8px 16px">&#128229; Скачать Excel</button>
         </div>
       </div>
       <div class="content">
@@ -1496,6 +1497,15 @@ async function loadTransferBadge(){
     var badge = document.getElementById('transfer-badge');
     if(badge&&d.new>0){badge.style.display='inline';badge.textContent=d.new;badge.className='nav-badge badge-blink';}
   }catch(e){}
+}
+
+function downloadRecExcel(){
+  var branch = currentBranch;
+  if(!branch && currentRole==='admin'){
+    branch = document.getElementById('rec-branch').value;
+  }
+  if(!branch){toast('Выберите филиал',true);return;}
+  window.location.href = '/api/recommendations/excel?branch=' + encodeURIComponent(branch);
 }
 
 async function loadRecommendations(){

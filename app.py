@@ -1057,6 +1057,108 @@ def get_recommendations():
     result.sort(key=lambda x: (-len(x['available_missing']), x['abc'], -x['sold']))
     return jsonify(result[:100])
 
+@app.route('/api/recommendations/excel')
+@login_required
+def recommendations_excel():
+    branch = session.get('branch') or request.args.get('branch', '')
+    if not branch:
+        return jsonify({'error': 'Филиал не указан'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''
+        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               MAX(c.sold) as sold, MIN(c.season) as season, MIN(c.category) as category,
+               array_agg(c.size ORDER BY c.size) as all_sizes,
+               array_agg(c.wms_stock ORDER BY c.size) as wms_stocks
+        FROM catalog c
+        WHERE c.abc IN ('A', 'B', 'C')
+        GROUP BY c.article
+        HAVING COUNT(c.size) >= 3
+        ORDER BY MIN(c.abc), MAX(c.sold) DESC
+        LIMIT 200
+    ''')
+    articles = cur.fetchall()
+    art_list = [r['article'] for r in articles]
+    cur.execute('SELECT article, size, qty FROM branch_stock WHERE article = ANY(%s) AND branch = %s AND qty > 0', (art_list, branch))
+    branch_stock = {}
+    for r in cur.fetchall():
+        branch_stock.setdefault(r['article'], {})[r['size']] = r['qty']
+    cur.close(); conn.close()
+
+    # Build recommendations
+    recs = []
+    for art_row in articles:
+        art = art_row['article']
+        all_sizes = art_row['all_sizes'] or []
+        wms_stocks = art_row['wms_stocks'] or []
+        branch_sizes = branch_stock.get(art, {})
+        missing = []
+        for i, size in enumerate(all_sizes):
+            if size not in branch_sizes or branch_sizes[size] == 0:
+                wms = wms_stocks[i] if i < len(wms_stocks) else 0
+                if wms > 0:
+                    missing.append({'size': size, 'wms': wms})
+        if missing:
+            for m in missing:
+                recs.append({
+                    'article': art,
+                    'name': art_row['name'] or '',
+                    'abc': art_row['abc'] or 'C',
+                    'season': art_row['season'] or '',
+                    'category': art_row['category'] or '',
+                    'size': m['size'],
+                    'wms': m['wms'],
+                    'qty': 1
+                })
+
+    # Generate Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Рекомендации'
+    thin = Side(style='thin')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    header_fill = PatternFill('solid', fgColor='E31837')
+    # Title
+    ws.merge_cells('A1:H1')
+    title = ws['A1']
+    title.value = f'Рекомендации к дозаказу — {branch}'
+    title.font = Font(name='Arial', bold=True, size=12, color='FFFFFF')
+    title.fill = PatternFill('solid', fgColor='E31837')
+    title.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 24
+    # Headers
+    headers = ['№', 'Артикул', 'Название', 'Категория', 'Сезон', 'ABC', 'Размер', 'WMS склад', 'Заказать (шт)']
+    col_widths = [4, 16, 35, 12, 10, 6, 8, 10, 12]
+    for j, (h, w) in enumerate(zip(headers, col_widths), 1):
+        c = ws.cell(row=2, column=j, value=h)
+        c.font = Font(name='Arial', bold=True, size=10, color='FFFFFF')
+        c.fill = header_fill
+        c.alignment = Alignment(horizontal='center', vertical='center')
+        c.border = border
+        ws.column_dimensions[c.column_letter].width = w
+    ws.row_dimensions[2].height = 18
+    # ABC colors
+    abc_colors = {'A': 'FFF3CD', 'B': 'D4EDDA', 'C': 'F8F9FA'}
+    for i, rec in enumerate(recs, 1):
+        row = i + 2
+        vals = [i, rec['article'], rec['name'], rec['category'], rec['season'], rec['abc'], rec['size'], rec['wms'], 1]
+        fill_color = abc_colors.get(rec['abc'], 'FFFFFF')
+        for j, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=j, value=val)
+            c.font = Font(name='Arial', size=10)
+            c.border = border
+            c.fill = PatternFill('solid', fgColor=fill_color)
+            if j in (1, 6, 7, 8, 9):
+                c.alignment = Alignment(horizontal='center')
+        ws.row_dimensions[row].height = 15
+
+    buf = io.BytesIO()
+    wb.save(buf)
+    buf.seek(0)
+    ts = datetime.now().strftime('%Y%m%d_%H%M')
+    fname = f'Рекомендации_{branch.replace(" ","_")}_{ts}.xlsx'
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
 # ===== TRANSFERS =====
 
 @app.route('/api/transfers', methods=['GET'])
