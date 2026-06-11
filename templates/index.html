@@ -280,7 +280,11 @@ td.muted{color:var(--text2)}
     <div id="page-dash" class="page active">
       <div class="topbar">
         <div><div class="topbar-title">Заявки на дозаказ</div><div class="topbar-sub" id="topbar-date"></div></div>
-        <button class="btn-primary" onclick="showPage('form',null)">+ Новая заявка</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <span id="sync-status" class="admin-only" style="font-size:11px;color:var(--text3)"></span>
+          <button class="btn-secondary admin-only" onclick="syncNow()" style="padding:8px 14px">&#8635; Синхронизировать</button>
+          <button class="btn-primary" onclick="showPage('form',null)">+ Новая заявка</button>
+        </div>
       </div>
       <div class="content">
         <div class="stats-grid">
@@ -1112,7 +1116,27 @@ function resetForm(){
   selectedFile=null;
 }
 
+async function syncNow(){
+  var btn=event.target;btn.disabled=true;btn.textContent='Синхронизирую...';
+  var r=await fetch('/api/sync/now',{method:'POST'});
+  var d=await r.json();
+  btn.disabled=false;btn.textContent='&#8635; Синхронизировать';
+  if(d.ok){toast('Каталог синхронизирован: '+d.last_sync);loadCatalog();}
+  else toast('Ошибка синхронизации',true);
+}
+
+async function loadSyncStatus(){
+  try{
+    var r=await fetch('/api/sync/status');
+    if(!r.ok)return;
+    var d=await r.json();
+    var el=document.getElementById('sync-status');
+    if(el&&d.last_sync)el.textContent='Последняя синхронизация: '+d.last_sync;
+  }catch(e){}
+}
+
 init();
+loadSyncStatus();
 </script>
 </body>
 </html>

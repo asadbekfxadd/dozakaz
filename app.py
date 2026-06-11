@@ -7,6 +7,8 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import psycopg2
 from psycopg2.extras import RealDictCursor
+from threading import Thread
+import time
 
 app = Flask(__name__)
 app.secret_key = 'dozakaz-secret-key-2026'
@@ -45,6 +47,13 @@ YADISK_PUBLIC_KEY = 'https://disk.yandex.com/d/-plm2CMx-kHNuA'
 YADISK_FOLDER = '/06-White Background Pics'
 _photo_cache = {}
 _photo_url_cache = {}
+
+# Auto-sync config
+SYNC_TOKEN = os.environ.get('SYNC_YADISK_TOKEN', 'y0__wgBEMqV35IIGNuWAyCth5vyF4mF73xoNyGCf7QJ3fjdgKw2YKVk')
+SYNC_FOLDER = '/li-ning-sync/остатки'
+SYNC_FILENAME = 'остатки_для_сайта.xlsx'
+SYNC_INTERVAL_HOURS = 2
+_last_sync = None
 
 def get_db():
     conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
@@ -825,6 +834,126 @@ def photo_proxy(art_base, filename):
         return resp
     except:
         return 'Error', 500
+
+def sync_catalog_from_yadisk():
+    import urllib.request, urllib.parse, json as _json
+    global _last_sync
+    try:
+        # Get download link
+        url = ('https://cloud-api.yandex.net/v1/disk/resources/download?'
+               + urllib.parse.urlencode({'path': f'{SYNC_FOLDER}/{SYNC_FILENAME}'}))
+        req = urllib.request.Request(url, headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            href = _json.loads(r.read()).get('href', '')
+        if not href:
+            print('[SYNC] No download link')
+            return False
+        # Download file
+        req2 = urllib.request.Request(href)
+        with urllib.request.urlopen(req2, timeout=60) as r2:
+            file_data = r2.read()
+        # Process file — reuse upload_catalog logic
+        with app.app_context():
+            wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            header_idx = None
+            branch_cols = {}
+            wms_col = None
+            for i, row in enumerate(rows):
+                row_vals = [str(c).strip() if c else '' for c in row]
+                if 'Артикул' in row_vals:
+                    header_idx = i
+                    for j, val in enumerate(row_vals):
+                        val_norm = val.replace('С','C').replace('с','c').replace('Е','E').replace('е','e')
+                        for branch in BRANCHES:
+                            branch_norm = branch.replace('С','C').replace('с','c').replace('Е','E').replace('е','e')
+                            if val_norm == branch_norm or val == branch:
+                                branch_cols[branch] = j; break
+                        if val == 'Склад WMS': wms_col = j
+                    break
+            if header_idx is None:
+                print('[SYNC] Header not found'); return False
+            header_row = [str(c).strip() if c else '' for c in rows[header_idx]]
+            name_col = size_col = season_col = category_col = None
+            art_col = 0
+            for j, val in enumerate(header_row):
+                if val == 'Характеристика' and size_col is None: size_col = j
+                if 'Номенклатура' in val and (',' in val or '.' in val) and 'Сезон' not in val and 'Вид' not in val and name_col is None: name_col = j
+                if 'Сезон' in val: season_col = j
+                if 'Вид' in val and category_col is None: category_col = j
+            if name_col is None:
+                for j, val in enumerate(header_row):
+                    if 'Номенклатура' in val and 'Сезон' not in val and 'Вид' not in val: name_col = j; break
+            data_start = header_idx + 1
+            for i in range(header_idx+1, min(header_idx+3, len(rows))):
+                rv = [str(c).strip() if c else '' for c in rows[i]]
+                if any('Доступно' in v for v in rv):
+                    data_start = i + 1; break
+            conn = get_db(); cur = conn.cursor()
+            cur.execute('DELETE FROM catalog')
+            cur.execute('DELETE FROM branch_stock')
+            catalog_items = []
+            branch_items = []
+            for row in rows[data_start:]:
+                if not row or not row[art_col]: continue
+                art = str(row[art_col]).strip()
+                if not art or art in ('None','nan'): continue
+                size = ''
+                if size_col is not None and row[size_col]: size = str(row[size_col]).strip()
+                name = ''
+                if name_col is not None and row[name_col]:
+                    name_full = str(row[name_col]).strip()
+                    if not size and ', ' in name_full:
+                        parts = name_full.rsplit(', ', 1); name_full = parts[0].strip(); size = parts[1].strip()
+                    art_base = art.rstrip('A')
+                    if name_full.startswith(art_base): name_full = name_full[len(art_base):].strip()
+                    if size and name_full.endswith(f', {size}'): name_full = name_full[:-len(f', {size}')].strip()
+                    name = name_full
+                season = str(row[season_col]).strip() if season_col is not None and row[season_col] and str(row[season_col]) not in ('None','nan') else ''
+                category = str(row[category_col]).strip() if category_col is not None and row[category_col] and str(row[category_col]) not in ('None','nan') else ''
+                wms = 0
+                if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
+                    try: wms = int(float(str(row[wms_col])))
+                    except: pass
+                catalog_items.append((art, name, size, wms, season, category))
+                for branch, col in branch_cols.items():
+                    qty = row[col]
+                    if qty and str(qty) not in ('None','nan'):
+                        try:
+                            q = int(float(str(qty)))
+                            if q > 0: branch_items.append((art, size, branch, q))
+                        except: pass
+            cur.executemany('INSERT INTO catalog (article,name,size,wms_stock,season,category) VALUES (%s,%s,%s,%s,%s,%s)', catalog_items)
+            cur.executemany('INSERT INTO branch_stock (article,size,branch,qty) VALUES (%s,%s,%s,%s)', branch_items)
+            conn.commit(); cur.close(); conn.close()
+            _last_sync = datetime.now().strftime('%Y-%m-%d %H:%M')
+            print(f'[SYNC] Done: {len(catalog_items)} items at {_last_sync}')
+            return True
+    except Exception as e:
+        print(f'[SYNC] Error: {e}')
+        return False
+
+def sync_scheduler():
+    time.sleep(10)  # wait for app to start
+    while True:
+        sync_catalog_from_yadisk()
+        time.sleep(SYNC_INTERVAL_HOURS * 3600)
+
+# Start background sync thread
+sync_thread = Thread(target=sync_scheduler, daemon=True)
+sync_thread.start()
+
+@app.route('/api/sync/status')
+@admin_required
+def sync_status():
+    return jsonify({'last_sync': _last_sync, 'interval_hours': SYNC_INTERVAL_HOURS, 'folder': SYNC_FOLDER})
+
+@app.route('/api/sync/now', methods=['POST'])
+@admin_required
+def sync_now():
+    ok = sync_catalog_from_yadisk()
+    return jsonify({'ok': ok, 'last_sync': _last_sync})
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
