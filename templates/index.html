@@ -9,7 +9,7 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="LI-NING">
-<link rel="apple-touch-icon" href="/static/icon-192.png">
+
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -1624,7 +1624,7 @@ loadOrders = async function(){
   if(!orders.length){
     tbody.innerHTML='<tr><td colspan="7"><div class="empty-state">Заявок не найдено</div></td></tr>';
   } else {
-    tbody.innerHTML=orders.map(o=>'<tr><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">📎 '+(o.original_name?.length>20?o.original_name.slice(0,18)+'…':o.original_name||'файл')+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">📥 Excel</a></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+','В работе')">▶ В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+','Выполнена')">✓ Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
+    tbody.innerHTML=orders.map(o=>'<tr><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">📎 '+(o.original_name?.length>20?o.original_name.slice(0,18)+'…':o.original_name||'файл')+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">📥 Excel</a></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">▶ В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">✓ Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
   }
   // Mobile cards
   renderMobileOrders(orders);

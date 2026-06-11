@@ -146,6 +146,7 @@ def init_db():
     conn.close()
 
 os.makedirs('uploads', exist_ok=True)
+os.makedirs('static', exist_ok=True)
 init_db()
 
 def login_required(f):
