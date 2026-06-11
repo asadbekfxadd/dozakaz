@@ -971,7 +971,7 @@ def get_recommendations():
                array_agg(c.wms_stock ORDER BY c.size) as wms_stocks,
                SUM(c.wms_stock) as total_wms
         FROM catalog c
-        WHERE c.abc IN ('A', 'B')
+        WHERE c.abc IN ('A', 'B', 'C')
         GROUP BY c.article
         HAVING COUNT(c.size) >= 3
         ORDER BY MIN(c.abc), MAX(c.sold) DESC
@@ -1014,8 +1014,8 @@ def get_recommendations():
                 wms = wms_stocks[i] if i < len(wms_stocks) else 0
                 missing.append({'size': size, 'wms': wms, 'available': wms > 0})
 
-        # Only recommend if branch has less than 70% of full grid
-        if not missing or branch_has >= full_grid * 0.7:
+        # Show if any missing sizes available on WMS
+        if not missing:
             continue
 
         result.append({
