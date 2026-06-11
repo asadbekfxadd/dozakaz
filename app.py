@@ -223,10 +223,10 @@ def get_orders():
         q += ' AND branch=%s'; params.append(session['branch'])
     elif session['role'] == 'regional':
         bs = session.get('branches', [])
-        if bs:
-            q += ' AND branch = ANY(%s)'; params.append(bs)
         if branch and branch in bs:
             q += ' AND branch=%s'; params.append(branch)
+        elif bs:
+            q += ' AND branch = ANY(%s)'; params.append(bs)
     else:
         if branch: q += ' AND branch=%s'; params.append(branch)
     if status: q += ' AND status=%s'; params.append(status)
@@ -452,6 +452,9 @@ def upload_catalog():
             if any('Доступно' in v for v in rv):
                 data_start = i + 1; break
         conn = get_db(); cur = conn.cursor()
+        # Save existing ABC/sold data
+        cur.execute('SELECT article, MIN(abc) as abc, MAX(sold) as sold FROM catalog GROUP BY article')
+        abc_data = {r['article']: (r['abc'], r['sold']) for r in cur.fetchall()}
         cur.execute('DELETE FROM catalog')
         cur.execute('DELETE FROM branch_stock')
         catalog_items = []
@@ -492,6 +495,10 @@ def upload_catalog():
                     except: pass
         cur.executemany('INSERT INTO catalog (article,name,size,wms_stock,season,category) VALUES (%s,%s,%s,%s,%s,%s)', catalog_items)
         cur.executemany('INSERT INTO branch_stock (article,size,branch,qty) VALUES (%s,%s,%s,%s)', branch_items)
+        # Restore ABC/sold data
+        for art, (abc, sold) in abc_data.items():
+            if abc and abc != 'C':
+                cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
         conn.commit(); cur.close(); conn.close()
         return jsonify({'ok': True, 'count': len(catalog_items)})
     except Exception as e:
@@ -859,11 +866,12 @@ def sales_analytics():
         extra += " AND sale_date >= CURRENT_DATE - INTERVAL '90 days'"
     if session['role'] == 'regional':
         bs = session.get('branches', [])
-        extra += ' AND branch = ANY(%s)'; params.append(bs)
+        if bs:
+            extra += ' AND branch = ANY(%s)'; params.append(bs)
+    elif branch:
+        extra += ' AND branch = %s'; params.append(branch)
     if category:
         extra += ' AND category = %s'; params.append(category)
-    if branch:
-        extra += ' AND branch = %s'; params.append(branch)
     cur.execute(f'''SELECT article, category,
         SUM(qty) as total_qty, SUM(amount) as total_amount, COUNT(*) as tx_count
         FROM sales WHERE 1=1 {extra}
@@ -1225,6 +1233,9 @@ def sync_catalog_from_yadisk():
                 if any('Доступно' in v for v in rv):
                     data_start = i + 1; break
             conn = get_db(); cur = conn.cursor()
+            # Save existing ABC/sold data before delete
+            cur.execute('SELECT article, MIN(abc) as abc, MAX(sold) as sold FROM catalog GROUP BY article')
+            abc_data = {r['article']: (r['abc'], r['sold']) for r in cur.fetchall()}
             cur.execute('DELETE FROM catalog')
             cur.execute('DELETE FROM branch_stock')
             catalog_items = []
@@ -1260,6 +1271,10 @@ def sync_catalog_from_yadisk():
                         except: pass
             cur.executemany('INSERT INTO catalog (article,name,size,wms_stock,season,category) VALUES (%s,%s,%s,%s,%s,%s)', catalog_items)
             cur.executemany('INSERT INTO branch_stock (article,size,branch,qty) VALUES (%s,%s,%s,%s)', branch_items)
+            # Restore ABC/sold data
+            for art, (abc, sold) in abc_data.items():
+                if abc and abc != 'C':
+                    cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
             conn.commit(); cur.close(); conn.close()
             _last_sync = datetime.now().strftime('%Y-%m-%d %H:%M')
             print(f'[SYNC] Done: {len(catalog_items)} items at {_last_sync}')
