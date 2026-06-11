@@ -42,6 +42,8 @@ BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA
             'M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall',
             'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery']
 
+FLAGMANS = ['TASHKENT CITY MALL','ATLAS CHIMGAN','ALAYSKIY','Shota Rustavely']
+
 YADISK_TOKEN = os.environ.get('YADISK_TOKEN', '35a4110c9f5a4729ba8a54cf978276f4')
 YADISK_PUBLIC_KEY = 'https://disk.yandex.com/d/-plm2CMx-kHNuA'
 YADISK_FOLDER = '/06-White Background Pics'
@@ -120,6 +122,17 @@ def init_db():
         qty INTEGER DEFAULT 1,
         price NUMERIC DEFAULT 0,
         amount NUMERIC DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS transfers (
+        id SERIAL PRIMARY KEY,
+        from_branch TEXT NOT NULL,
+        to_branch TEXT NOT NULL,
+        article TEXT NOT NULL,
+        size TEXT NOT NULL,
+        qty INTEGER NOT NULL,
+        status TEXT DEFAULT 'Новая',
+        note TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
     # Indexes for performance
@@ -939,6 +952,125 @@ def photo_proxy(art_base, filename):
         return resp
     except:
         return 'Error', 500
+
+# ===== TRANSFERS =====
+
+@app.route('/api/transfers', methods=['GET'])
+@login_required
+def get_transfers():
+    conn = get_db(); cur = conn.cursor()
+    role = session.get('role')
+    branch = session.get('branch')
+    if role == 'admin':
+        cur.execute('SELECT * FROM transfers ORDER BY created_at DESC')
+    elif branch in FLAGMANS:
+        cur.execute('SELECT * FROM transfers WHERE to_branch=%s OR from_branch=%s ORDER BY created_at DESC', (branch, branch))
+    else:
+        cur.execute('SELECT * FROM transfers WHERE from_branch=%s ORDER BY created_at DESC', (branch,))
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/transfers', methods=['POST'])
+@login_required
+def create_transfer():
+    # Only flagmans can create transfer requests
+    branch = session.get('branch')
+    if branch not in FLAGMANS and session.get('role') != 'admin':
+        return jsonify({'error': 'Только флагманы могут создавать заявки на перемещение'}), 403
+    data = request.get_json()
+    from_branch = data.get('from_branch')
+    to_branch = branch or data.get('to_branch')
+    article = data.get('article')
+    size = data.get('size')
+    qty = data.get('qty', 1)
+    note = data.get('note', '')
+    if not all([from_branch, to_branch, article, size]):
+        return jsonify({'error': 'Заполните все поля'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('INSERT INTO transfers (from_branch,to_branch,article,size,qty,note) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id',
+               (from_branch, to_branch, article, size, qty, note))
+    tid = cur.fetchone()['id']
+    conn.commit()
+    cur.execute('SELECT * FROM transfers WHERE id=%s', (tid,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return jsonify(dict(row)), 201
+
+@app.route('/api/transfers/<int:tid>/status', methods=['PATCH'])
+@admin_required
+def update_transfer_status(tid):
+    data = request.get_json()
+    status = data.get('status')
+    if status not in ('Новая', 'Подтверждена', 'Отклонена', 'Выполнена'):
+        return jsonify({'error': 'Invalid status'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE transfers SET status=%s WHERE id=%s', (status, tid))
+    conn.commit()
+    cur.execute('SELECT * FROM transfers WHERE id=%s', (tid,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return jsonify(dict(row))
+
+@app.route('/api/transfers/suggestions', methods=['GET'])
+@login_required
+def transfer_suggestions():
+    '''For flagmans: show A-category items with low stock, sorted by other branches sales (low to high)'''
+    branch = session.get('branch')
+    if branch not in FLAGMANS and session.get('role') != 'admin':
+        return jsonify([])
+    target_branch = request.args.get('branch', branch)
+    conn = get_db(); cur = conn.cursor()
+    # Get A-category items where target branch has low stock
+    cur.execute('''
+        SELECT DISTINCT c.article, MIN(c.name) as name, MIN(c.abc) as abc, MAX(c.sold) as sold
+        FROM catalog c
+        WHERE c.abc = 'A'
+        GROUP BY c.article
+        ORDER BY MAX(c.sold) DESC
+        LIMIT 50
+    ''')
+    a_articles = cur.fetchall()
+    result = []
+    for art_row in a_articles:
+        art = art_row['article']
+        # Get stock at target branch
+        cur.execute('SELECT size, qty FROM branch_stock WHERE article=%s AND branch=%s', (art, target_branch))
+        target_stock = {r['size']: r['qty'] for r in cur.fetchall()}
+        # Get stock at other branches with their sales
+        cur.execute('''
+            SELECT bs.branch, bs.size, bs.qty,
+                   COALESCE(s.total_sold, 0) as branch_sold
+            FROM branch_stock bs
+            LEFT JOIN (
+                SELECT branch, SUM(qty) as total_sold
+                FROM sales WHERE article=%s
+                GROUP BY branch
+            ) s ON s.branch = bs.branch
+            WHERE bs.article=%s AND bs.branch != %s AND bs.qty > 0
+            ORDER BY branch_sold ASC, bs.qty DESC
+        ''', (art, art, target_branch))
+        donors = cur.fetchall()
+        if donors:
+            result.append({
+                'article': art,
+                'name': art_row['name'],
+                'abc': art_row['abc'],
+                'sold': art_row['sold'],
+                'target_stock': target_stock,
+                'donors': [dict(d) for d in donors]
+            })
+    cur.close(); conn.close()
+    return jsonify(result)
+
+@app.route('/api/transfers/stats')
+@login_required
+def transfer_stats():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) as c FROM transfers WHERE status='Новая'")
+    new = cur.fetchone()['c']
+    cur.close(); conn.close()
+    return jsonify({'new': new})
 
 def sync_catalog_from_yadisk():
     import urllib.request, urllib.parse, json as _json

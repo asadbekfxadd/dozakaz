@@ -196,6 +196,9 @@ td.muted{color:var(--text2)}
 .period-tab{background:var(--bg3);border:1px solid var(--border);color:var(--text2);padding:8px 18px;border-radius:var(--radius-sm);cursor:pointer;font-size:13px;font-family:inherit;font-weight:600;text-transform:uppercase;letter-spacing:.5px;transition:all .15s}
 .period-tab.active{background:var(--accent2);color:var(--accent);border-color:var(--accent)}
 .sales-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
+.badge-blink{animation:blink 1s infinite;background:var(--accent)!important}
+.transfer-new{border-left:3px solid var(--accent);animation:blink 2s infinite}
 .sales-top-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 .top-rank{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px}
 .rank-num{font-size:18px;font-weight:900;color:var(--text3);width:28px;flex-shrink:0}
@@ -244,6 +247,10 @@ td.muted{color:var(--text2)}
       <button class="nav-item" onclick="showPage('catalog',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
         Каталог
+      </button>
+      <button class="nav-item flagman-only" onclick="showPage('transfers',this)" id="nav-transfers">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M5 12h14M12 5l7 7-7 7"/></svg>
+        Перемещение<span class="nav-badge" id="transfer-badge" style="display:none">0</span>
       </button>
       <button class="nav-item admin-only" onclick="showPage('topsales',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/></svg>
@@ -387,6 +394,59 @@ td.muted{color:var(--text2)}
             <table><thead><tr><th>#</th><th>Артикул</th><th>Категория</th><th>Продано шт</th><th>Выручка</th><th>ABC</th></tr></thead>
             <tbody id="sales-table-tbody"></tbody></table>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- TRANSFERS -->
+    <div id="page-transfers" class="page">
+      <div class="topbar">
+        <div><div class="topbar-title">Перемещение товаров</div><div class="topbar-sub">Заявки на переброску A-товаров между филиалами</div></div>
+        <button class="btn-secondary" onclick="loadTransfers()">&#8635; Обновить</button>
+      </div>
+      <div class="content">
+        <!-- Suggestions for flagmans -->
+        <div id="transfer-suggestions-wrap" style="display:none;margin-bottom:24px">
+          <div style="font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:12px">&#128293; A-товары — рекомендации к перемещению</div>
+          <div id="transfer-suggestions" style="display:flex;flex-direction:column;gap:8px"></div>
+        </div>
+        <!-- New transfer request -->
+        <div id="transfer-form-wrap" style="display:none;margin-bottom:24px">
+          <div class="form-card" style="padding:20px;max-width:600px">
+            <div class="form-section">Новая заявка на перемещение</div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Забрать из филиала</label>
+                <select id="tf-from"></select>
+              </div>
+              <div class="form-group">
+                <label>Артикул</label>
+                <input type="text" id="tf-article" placeholder="Напр. ARBW017-3">
+              </div>
+            </div>
+            <div class="form-row">
+              <div class="form-group">
+                <label>Размер</label>
+                <input type="text" id="tf-size" placeholder="Напр. 42">
+              </div>
+              <div class="form-group">
+                <label>Количество</label>
+                <input type="number" id="tf-qty" value="1" min="1">
+              </div>
+            </div>
+            <div class="form-group" style="margin-bottom:14px">
+              <label>Комментарий</label>
+              <input type="text" id="tf-note" placeholder="Причина перемещения...">
+            </div>
+            <button class="btn-primary" onclick="submitTransfer()">Создать заявку</button>
+          </div>
+        </div>
+        <!-- Transfers list -->
+        <div class="orders-wrap">
+          <table>
+            <thead><tr><th>Артикул</th><th>Размер</th><th>Кол-во</th><th>Откуда</th><th>Куда</th><th>Статус</th><th>Дата</th><th id="th-transfer-actions">Действия</th></tr></thead>
+            <tbody id="transfers-tbody"><tr><td colspan="8"><div class="empty-state">Загрузка...</div></td></tr></tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -598,21 +658,32 @@ function showApp(d){
   document.getElementById('login-wrap').style.display='none';
   document.getElementById('app-wrap').style.display='flex';
   document.getElementById('ui-name').textContent=d.username;
-  if(d.role==='user'){
+
+  // Hide flagman-only by default
+  document.querySelectorAll('.flagman-only').forEach(el=>el.style.display='none');
+
+  if(d.role==='admin'){
+    // Admin sees everything + transfer badge
+    loadTransferBadge();
+    document.querySelectorAll('.flagman-only').forEach(el=>el.style.display='flex');
+  } else if(d.role==='user'){
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
     document.getElementById('th-actions').style.display='none';
     document.getElementById('catalog-upload-btns').style.display='none';
     if(d.branch){var sel=document.getElementById('r-branch');sel.value=d.branch;sel.disabled=true;}
+    // Show transfers for flagmans
+    if(FLAGMANS.includes(d.branch)){
+      document.querySelectorAll('.flagman-only').forEach(el=>el.style.display='flex');
+      loadTransferBadge();
+    }
   } else if(d.role==='regional'){
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
     document.getElementById('th-actions').style.display='none';
     document.getElementById('catalog-upload-btns').style.display='none';
     window.currentBranches=d.branches||[];
-    // Фильтруем select филиалов в форме новой заявки
     if(d.branches&&d.branches.length){
       var sel=document.getElementById('r-branch');
       sel.innerHTML='<option value="">— выбрать —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
-      // Фильтруем select в корзине каталога
       var cartBranchSel=document.getElementById('cart-branch-sel');
       if(cartBranchSel) cartBranchSel.innerHTML='<option value="">— выбрать филиал —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
     }
@@ -622,17 +693,7 @@ function showApp(d){
 
 async function doLogout(){await fetch('/api/logout',{method:'POST'});location.reload();}
 
-function showPage(name,btn){
-  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
-  document.getElementById('page-'+name).classList.add('active');
-  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
-  if(btn)btn.classList.add('active');
-  if(name==='dash')loadOrders();
-  if(name==='kanban')loadKanban();
-  if(name==='analytics')loadAnalytics();
-  if(name==='catalog'){catalogPage=1;loadCatalog();}
-  if(name==='topsales')loadTopSales();
-}
+// showPage defined below
 
 function toast(msg,err){
   var t=document.getElementById('toast');
@@ -1146,6 +1207,147 @@ async function loadSyncStatus(){
     var d=await r.json();
     var el=document.getElementById('sync-status');
     if(el&&d.last_sync)el.textContent='Последняя синхронизация: '+d.last_sync;
+  }catch(e){}
+}
+
+
+var FLAGMANS = ['TASHKENT CITY MALL','ATLAS CHIMGAN','ALAYSKIY','Shota Rustavely'];
+
+function showPage(name,btn){
+  document.querySelectorAll('.page').forEach(p=>p.classList.remove('active'));
+  document.getElementById('page-'+name).classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
+  if(btn)btn.classList.add('active');
+  if(name==='dash')loadOrders();
+  if(name==='kanban')loadKanban();
+  if(name==='analytics')loadAnalytics();
+  if(name==='catalog'){catalogPage=1;loadCatalog();}
+  if(name==='topsales')loadTopSales();
+  if(name==='transfers')loadTransfers();
+}
+
+async function loadTransfers(){
+  // Show form and suggestions for flagmans
+  var isFlagman = FLAGMANS.includes(currentBranch);
+  var formWrap = document.getElementById('transfer-form-wrap');
+  var sugWrap = document.getElementById('transfer-suggestions-wrap');
+  if(formWrap) formWrap.style.display = (isFlagman||currentRole==='admin')?'block':'none';
+  if(sugWrap) sugWrap.style.display = isFlagman?'block':'none';
+
+  // Populate from-branch select (all branches except own)
+  var fromSel = document.getElementById('tf-from');
+  if(fromSel){
+    var branches = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA','M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall','Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery'];
+    fromSel.innerHTML = branches.filter(b=>b!==currentBranch).map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+  }
+
+  // Load suggestions for flagmans
+  if(isFlagman){
+    var r = await fetch('/api/transfers/suggestions?branch='+encodeURIComponent(currentBranch));
+    if(r.ok){
+      var suggestions = await r.json();
+      renderSuggestions(suggestions);
+    }
+  }
+
+  // Load transfers list
+  var r2 = await fetch('/api/transfers');
+  if(!r2.ok) return;
+  var transfers = await r2.json();
+  var tbody = document.getElementById('transfers-tbody');
+  if(!transfers.length){
+    tbody.innerHTML='<tr><td colspan="8"><div class="empty-state">Нет заявок на перемещение</div></td></tr>';
+    return;
+  }
+  tbody.innerHTML = transfers.map(t=>{
+    var isNew = t.status==='Новая';
+    var statusColor = t.status==='Новая'?'var(--accent)':t.status==='Подтверждена'?'var(--amber)':t.status==='Выполнена'?'var(--green)':'var(--text3)';
+    return '<tr class="'+(isNew?'transfer-new':'')+'">'+
+      '<td style="font-weight:700">'+t.article+'</td>'+
+      '<td>'+t.size+'</td>'+
+      '<td style="font-weight:700;color:var(--accent)">'+t.qty+'</td>'+
+      '<td style="color:var(--text2)">'+t.from_branch+'</td>'+
+      '<td style="color:var(--green)">'+t.to_branch+'</td>'+
+      '<td><span style="color:'+statusColor+';font-weight:700;font-size:11px;text-transform:uppercase">'+t.status+'</span></td>'+
+      '<td class="muted">'+(t.created_at?t.created_at.toString().slice(0,10):'')+'</td>'+
+      '<td>'+(currentRole==='admin'&&t.status==='Новая'?
+        '<div style="display:flex;gap:5px">'+
+        '<button class="btn-icon success" onclick="updateTransfer('+t.id+','Подтверждена')">&#10003; Подтвердить</button>'+
+        '<button class="btn-icon" onclick="updateTransfer('+t.id+','Отклонена')" style="color:var(--accent)">&#10005; Отклонить</button>'+
+        '</div>':
+        currentRole==='admin'&&t.status==='Подтверждена'?
+        '<button class="btn-icon success" onclick="updateTransfer('+t.id+','Выполнена')">&#9654; Выполнена</button>':
+        '—')+'</td>'+
+      '</tr>';
+  }).join('');
+
+  // Update badge
+  var newCount = transfers.filter(t=>t.status==='Новая').length;
+  var badge = document.getElementById('transfer-badge');
+  if(badge){
+    if(newCount>0){badge.style.display='inline';badge.textContent=newCount;badge.className='nav-badge badge-blink';}
+    else badge.style.display='none';
+  }
+}
+
+function renderSuggestions(suggestions){
+  var el = document.getElementById('transfer-suggestions');
+  if(!suggestions.length){el.innerHTML='<div style="color:var(--text3);font-size:12px">Нет рекомендаций</div>';return;}
+  el.innerHTML = suggestions.slice(0,10).map(s=>{
+    var donorHtml = s.donors.slice(0,3).map(d=>
+      '<button onclick="fillTransferForm(''+s.article+'',''+d.size+'',''+d.branch+'')" '+
+      'style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin:2px">'+
+      d.branch+' ('+d.size+': '+d.qty+'шт, продаж: '+d.branch_sold+')</button>'
+    ).join('');
+    return '<div style="background:var(--bg2);border:1px solid var(--accent2);border-radius:8px;padding:12px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<span style="font-weight:700;text-transform:uppercase">'+s.article+'</span>'+
+      '<span style="font-size:11px;color:var(--amber)">A — '+s.sold+' продаж</span></div>'+
+      '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">'+s.name+'</div>'+
+      '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Доноры (от меньших продаж):</div>'+
+      '<div style="display:flex;flex-wrap:wrap;gap:4px">'+donorHtml+'</div></div>';
+  }).join('');
+}
+
+function fillTransferForm(article, size, fromBranch){
+  document.getElementById('tf-article').value = article;
+  document.getElementById('tf-size').value = size;
+  document.getElementById('tf-from').value = fromBranch;
+  document.getElementById('transfer-form-wrap').scrollIntoView({behavior:'smooth'});
+}
+
+async function submitTransfer(){
+  var from_branch = document.getElementById('tf-from').value;
+  var article = document.getElementById('tf-article').value.trim();
+  var size = document.getElementById('tf-size').value.trim();
+  var qty = parseInt(document.getElementById('tf-qty').value)||1;
+  var note = document.getElementById('tf-note').value.trim();
+  if(!from_branch||!article||!size){toast('Заполните все поля',true);return;}
+  var r = await fetch('/api/transfers',{method:'POST',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({from_branch,article,size,qty,note})});
+  var d = await r.json();
+  if(!r.ok){toast(d.error||'Ошибка',true);return;}
+  toast('Заявка на перемещение создана!');
+  document.getElementById('tf-article').value='';
+  document.getElementById('tf-size').value='';
+  document.getElementById('tf-qty').value='1';
+  document.getElementById('tf-note').value='';
+  loadTransfers();
+}
+
+async function updateTransfer(id, status){
+  var r = await fetch('/api/transfers/'+id+'/status',{method:'PATCH',headers:{'Content-Type':'application/json'},body:JSON.stringify({status})});
+  if(r.ok){toast('Статус обновлён');loadTransfers();}
+}
+
+async function loadTransferBadge(){
+  if(currentRole!=='admin') return;
+  try{
+    var r = await fetch('/api/transfers/stats');
+    if(!r.ok) return;
+    var d = await r.json();
+    var badge = document.getElementById('transfer-badge');
+    if(badge&&d.new>0){badge.style.display='inline';badge.textContent=d.new;badge.className='nav-badge badge-blink';}
   }catch(e){}
 }
 
