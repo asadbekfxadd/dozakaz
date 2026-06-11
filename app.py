@@ -658,7 +658,6 @@ def upload_sales():
         h2 = [str(c).strip() if c else '' for c in rows[header_idx+1]] if header_idx+1 < len(rows) else []
         season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
         for j, v in enumerate(h1):
-            if v == 'Арт': art_col = j
             if v == 'Магазин': branch_col = j
             if v == 'Ссылка': ref_col = j
             if v == 'Количество': qty_col = j
@@ -666,7 +665,7 @@ def upload_sales():
             if v == 'Сумма': amount_col = j
         for j, v in enumerate(h2):
             if 'Сезон' in v: season_col = j
-            if 'Артикул' in v and art_col is None: art_col = j
+            if 'Артикул' in v: art_col = j
             if 'Вид' in v: cat_col = j
         replace = request.form.get('replace', 'false') == 'true'
         conn = get_db(); cur = conn.cursor()
