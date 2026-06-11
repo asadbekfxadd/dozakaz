@@ -170,6 +170,18 @@ def admin_required(f):
 def index():
     return render_template('index.html')
 
+@app.route('/manifest.json')
+def manifest():
+    return send_from_directory('.', 'manifest.json', mimetype='application/manifest+json')
+
+@app.route('/sw.js')
+def service_worker():
+    return send_from_directory('.', 'sw.js', mimetype='application/javascript')
+
+@app.route('/static/<path:filename>')
+def static_files(filename):
+    return send_from_directory('static', filename)
+
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()

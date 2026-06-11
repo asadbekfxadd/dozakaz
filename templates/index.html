@@ -2,8 +2,14 @@
 <html lang="ru">
 <head>
 <meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>LI-NING | Дозаказы</title>
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#e31837">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+<meta name="apple-mobile-web-app-title" content="LI-NING">
+<link rel="apple-touch-icon" href="/static/icon-192.png">
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{
@@ -211,12 +217,64 @@ td.muted{color:var(--text2)}
 .abc-sync-card h3{font-size:12px;font-weight:700;text-transform:uppercase;letter-spacing:.5px;margin-bottom:8px}
 @media(max-width:700px){
   .sidebar{display:none}.stats-grid{grid-template-columns:1fr 1fr}
-  .form-row{grid-template-columns:1fr}.content{padding:16px}
+  .form-row{grid-template-columns:1fr}.content{padding:12px}
   .kanban{grid-template-columns:1fr}.analytics-grid{grid-template-columns:1fr}
   .conv-upload-grid{grid-template-columns:1fr}.catalog-grid{grid-template-columns:1fr}
   .cart-panel{width:100%}.sales-top-grid{grid-template-columns:1fr}
   .sales-stats-grid{grid-template-columns:1fr 1fr}
+  .topbar{padding:12px 16px}
+  .topbar-title{font-size:16px}
+  .content{padding:12px;padding-bottom:80px}
+  .mobile-nav{display:flex!important}
+  .main{padding-bottom:0}
+  /* Mobile cards instead of table */
+  .mobile-orders{display:block!important}
+  .desktop-orders{display:none!important}
+  /* Bigger touch targets */
+  .btn-primary,.btn-secondary{padding:12px 16px;font-size:14px}
+  .size-chip{min-width:52px;padding:8px}
+  /* Hide some topbar buttons on mobile */
+  .topbar-sync-btn{display:none}
 }
+@media(min-width:701px){
+  .mobile-nav{display:none!important}
+  .mobile-orders{display:none!important}
+  .desktop-orders{display:block!important}
+}
+
+/* Mobile bottom nav */
+.mobile-nav{
+  position:fixed;bottom:0;left:0;right:0;
+  background:var(--bg2);border-top:1px solid var(--border);
+  display:none;z-index:40;
+  padding:0;padding-bottom:env(safe-area-inset-bottom);
+}
+.mobile-nav-inner{display:flex;justify-content:space-around;align-items:center;height:56px}
+.mobile-nav-btn{
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  gap:3px;flex:1;height:56px;background:none;border:none;
+  color:var(--text3);cursor:pointer;font-family:inherit;font-size:10px;
+  text-transform:uppercase;letter-spacing:.3px;transition:color .15s;
+  position:relative;
+}
+.mobile-nav-btn.active{color:var(--accent)}
+.mobile-nav-btn svg{width:20px;height:20px}
+.mobile-nav-badge{
+  position:absolute;top:6px;right:calc(50% - 16px);
+  background:var(--accent);color:#fff;font-size:9px;
+  padding:1px 4px;border-radius:10px;font-weight:700;
+}
+
+/* Mobile order cards */
+.mobile-orders{display:none}
+.order-card-mobile{
+  background:var(--bg2);border:1px solid var(--border);
+  border-radius:var(--radius);padding:14px;margin-bottom:10px;
+}
+.order-card-mobile-header{display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:8px}
+.order-card-mobile-branch{font-size:15px;font-weight:700;text-transform:uppercase}
+.order-card-mobile-meta{display:flex;gap:8px;flex-wrap:wrap;align-items:center;margin-bottom:10px}
+.order-card-mobile-actions{display:flex;gap:8px}
 </style>
 </head>
 <body>
@@ -313,12 +371,15 @@ td.muted{color:var(--text2)}
           <button class="btn-secondary" onclick="clearFilters()" style="padding:8px 14px">✕ Сброс</button>
           <button class="btn-secondary" onclick="loadOrders()" style="padding:8px 14px">↻</button>
         </div>
-        <div class="orders-wrap">
+        <!-- Desktop table -->
+        <div class="orders-wrap desktop-orders">
           <table>
             <thead><tr><th>Филиал</th><th>Ответственный</th><th>Дата</th><th>Файл</th><th>Статус</th><th>Приоритет</th><th id="th-actions">Действия</th></tr></thead>
             <tbody id="orders-tbody"><tr><td colspan="7"><div class="empty-state">Загрузка...</div></td></tr></tbody>
           </table>
         </div>
+        <!-- Mobile cards -->
+        <div class="mobile-orders" id="orders-mobile"></div>
       </div>
     </div>
 
@@ -599,6 +660,42 @@ td.muted{color:var(--text2)}
       </div>
     </div>
   </div>
+</div>
+
+<!-- MOBILE BOTTOM NAV -->
+<nav class="mobile-nav" id="mobile-nav">
+  <div class="mobile-nav-inner">
+    <button class="mobile-nav-btn active" onclick="showPage('dash',this)" id="mnav-dash">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="3" y="3" width="7" height="7"/><rect x="14" y="3" width="7" height="7"/><rect x="14" y="14" width="7" height="7"/><rect x="3" y="14" width="7" height="7"/></svg>
+      Заявки<span class="mobile-nav-badge" id="mnav-badge" style="display:none">0</span>
+    </button>
+    <button class="mobile-nav-btn" onclick="showPage('catalog',this)" id="mnav-catalog">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20 7H4a2 2 0 00-2 2v6a2 2 0 002 2h16a2 2 0 002-2V9a2 2 0 00-2-2z"/><path d="M16 21V5a2 2 0 00-2-2h-4a2 2 0 00-2 2v16"/></svg>
+      Каталог
+    </button>
+    <button class="mobile-nav-btn" onclick="showPage('recommendations',this)" id="mnav-recs">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+      Рекоменд.
+    </button>
+    <button class="mobile-nav-btn" onclick="showPage('form',this)" id="mnav-form">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+      Заявка
+    </button>
+    <button class="mobile-nav-btn" onclick="openMobileMenu()" id="mnav-more">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="5" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="12" cy="19" r="1"/></svg>
+      Ещё
+    </button>
+  </div>
+</nav>
+
+<!-- MOBILE MORE MENU -->
+<div id="mobile-more-menu" style="display:none;position:fixed;bottom:56px;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);z-index:39;padding:8px">
+  <button class="nav-item" onclick="showPage('transfers',null);closeMobileMenu()" style="width:100%">&#8594; Перемещение</button>
+  <button class="nav-item admin-only" onclick="showPage('topsales',null);closeMobileMenu()" style="width:100%">&#8599; Топ продаж</button>
+  <button class="nav-item admin-only" onclick="showPage('kanban',null);closeMobileMenu()" style="width:100%">&#9634; Канбан</button>
+  <button class="nav-item admin-only" onclick="showPage('analytics',null);closeMobileMenu()" style="width:100%">&#126; Аналитика</button>
+  <button class="nav-item admin-only" onclick="showPage('conversion',null);closeMobileMenu()" style="width:100%">&#124; Конверсия</button>
+  <button class="nav-item" onclick="doLogout()" style="width:100%">&#8592; Выйти</button>
 </div>
 
 <!-- CART PANEL -->
@@ -1454,6 +1551,95 @@ async function loadRecommendations(){
       '<button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="event.stopPropagation();openModal('+itemJson+')">+ Заказать</button>' +
       '</div></div>';
   }).join('');
+}
+
+function openMobileMenu(){
+  var m=document.getElementById('mobile-more-menu');
+  m.style.display=m.style.display==='none'?'block':'none';
+}
+function closeMobileMenu(){
+  document.getElementById('mobile-more-menu').style.display='none';
+}
+
+// Override showPage to also update mobile nav
+var _origShowPage = showPage;
+function showPage(name, btn){
+  _origShowPage(name, btn);
+  closeMobileMenu();
+  // Update mobile nav active state
+  document.querySelectorAll('.mobile-nav-btn').forEach(b=>b.classList.remove('active'));
+  var mnavMap = {dash:'mnav-dash',catalog:'mnav-catalog',recommendations:'mnav-recs',form:'mnav-form'};
+  if(mnavMap[name]) document.getElementById(mnavMap[name])?.classList.add('active');
+}
+
+// Render mobile order cards
+function renderMobileOrders(orders){
+  var el = document.getElementById('orders-mobile');
+  if(!el) return;
+  if(!orders.length){
+    el.innerHTML='<div style="padding:32px;text-align:center;color:var(--text3)">Заявок не найдено</div>';
+    return;
+  }
+  el.innerHTML = orders.map(o=>`
+    <div class="order-card-mobile">
+      <div class="order-card-mobile-header">
+        <div class="order-card-mobile-branch">${o.branch}</div>
+        ${statusBadge(o.status)}
+      </div>
+      <div class="order-card-mobile-meta">
+        <span style="font-size:12px;color:var(--text2)">👤 ${o.responsible}</span>
+        <span style="font-size:12px;color:var(--text3)">📅 ${o.date}</span>
+        ${prioBadge(o.priority)}
+      </div>
+      <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
+        ${o.filename?`<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name?.slice(0,20)||'файл'}...</a>`:''}
+        <a href="/api/orders/${o.id}/excel" class="file-chip" download>📥 Excel</a>
+      </div>
+      ${currentRole==='admin'?`<div class="order-card-mobile-actions">
+        ${o.status!=='В работе'&&o.status!=='Выполнена'?`<button class="btn-secondary" style="flex:1;padding:10px" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>`:''}
+        ${o.status!=='Выполнена'?`<button class="btn-primary" style="flex:1;padding:10px" onclick="setStatus(${o.id},'Выполнена')">✓ Готово</button>`:''}
+      </div>`:''}
+    </div>
+  `).join('');
+}
+
+// Patch loadOrders to also render mobile
+var _origLoadOrders = loadOrders;
+loadOrders = async function(){
+  var params={};
+  if(currentRole==='admin'){
+    var branch=document.getElementById('f-branch').value;
+    var status=document.getElementById('f-status').value;
+    var responsible=document.getElementById('f-responsible').value.trim();
+    var dateFrom=document.getElementById('f-date-from').value;
+    var dateTo=document.getElementById('f-date-to').value;
+    if(branch)params.branch=branch;if(status)params.status=status;
+    if(responsible)params.responsible=responsible;
+    if(dateFrom)params.date_from=dateFrom;if(dateTo)params.date_to=dateTo;
+  }
+  var r=await fetch('/api/orders?'+new URLSearchParams(params));if(!r.ok)return;
+  var orders=await r.json();
+  // Desktop table
+  var tbody=document.getElementById('orders-tbody');
+  if(!orders.length){
+    tbody.innerHTML='<tr><td colspan="7"><div class="empty-state">Заявок не найдено</div></td></tr>';
+  } else {
+    tbody.innerHTML=orders.map(o=>'<tr><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">📎 '+(o.original_name?.length>20?o.original_name.slice(0,18)+'…':o.original_name||'файл')+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">📥 Excel</a></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+','В работе')">▶ В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+','Выполнена')">✓ Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
+  }
+  // Mobile cards
+  renderMobileOrders(orders);
+  // Update badge
+  var badge=document.getElementById('mnav-badge');
+  var newCount=orders.filter(o=>o.status==='Новая').length;
+  if(badge){badge.style.display=newCount>0?'block':'none';badge.textContent=newCount;}
+  loadStats();
+}
+
+// Service Worker registration
+if('serviceWorker' in navigator){
+  window.addEventListener('load', ()=>{
+    navigator.serviceWorker.register('/sw.js').catch(()=>{});
+  });
 }
 
 init();
