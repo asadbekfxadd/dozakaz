@@ -1799,11 +1799,9 @@ function renderSuggestions(suggestions){
     });
     var donorHtml = Object.values(byBranch).slice(0,4).map(d=>{
       var sizeHtml = d.sizes.slice(0,4).map(sz=>
-        '<button onclick="fillTransferForm(''+s.article+'',''+sz.size+'',''+d.branch+'')" '+
-        'style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;transition:all .15s" '+
-        'onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" '+
-        'onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text)'">'+
-        sz.size+' ('+sz.stock+'шт)</button>'
+        '<button onclick="fillTransferForm(\''+s.article+'\',\''+sz.size+'\',\''+d.branch+'\')" '+
+        'style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600">'+
+        sz.size+' ('+sz.stock+'\u0448\u0442)</button>'
       ).join('');
       return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:6px">'+
         '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
