@@ -840,8 +840,9 @@ def sync_catalog_from_yadisk():
     global _last_sync
     try:
         # Get download link
-        url = ('https://cloud-api.yandex.net/v1/disk/resources/download?'
-               + urllib.parse.urlencode({'path': f'{SYNC_FOLDER}/{SYNC_FILENAME}'}))
+        full_path = SYNC_FOLDER + '/' + SYNC_FILENAME
+        url = ('https://cloud-api.yandex.net/v1/disk/resources/download?path='
+               + urllib.parse.quote(full_path, safe=''))
         req = urllib.request.Request(url, headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
         with urllib.request.urlopen(req, timeout=15) as r:
             href = _json.loads(r.read()).get('href', '')
