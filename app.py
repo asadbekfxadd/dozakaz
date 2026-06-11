@@ -478,7 +478,9 @@ def get_catalog():
     if search:
         q += ' AND (article ILIKE %s OR name ILIKE %s)'
         params.extend([f'%{search}%', f'%{search}%'])
-    q += ' GROUP BY article ORDER BY article'
+    q += ''' GROUP BY article ORDER BY
+        CASE MIN(abc) WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END,
+        article'''
     q += f' LIMIT {per_page} OFFSET {(page-1)*per_page}'
     cur.execute(q, params)
     articles = cur.fetchall()
