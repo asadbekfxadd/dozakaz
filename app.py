@@ -399,12 +399,12 @@ def upload_catalog():
         art_col = 0
         for j, val in enumerate(header_row):
             if val == 'Характеристика' and size_col is None: size_col = j
-            if 'Номенклатура' in val and ',' in val and name_col is None: name_col = j
+            if 'Номенклатура' in val and (',' in val or '.' in val) and 'Сезон' not in val and 'Вид' not in val and name_col is None: name_col = j
             if 'Сезон' in val: season_col = j
             if 'Вид' in val and category_col is None: category_col = j
         if name_col is None:
             for j, val in enumerate(header_row):
-                if 'Номенклатура' in val: name_col = j; break
+                if 'Номенклатура' in val and 'Сезон' not in val and 'Вид' not in val: name_col = j; break
         data_start = header_idx + 1
         for i in range(header_idx+1, min(header_idx+3, len(rows))):
             rv = [str(c).strip() if c else '' for c in rows[i]]
