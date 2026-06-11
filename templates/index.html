@@ -1342,6 +1342,11 @@ function showPage(name,btn){
   document.getElementById('page-'+name).classList.add('active');
   document.querySelectorAll('.nav-item').forEach(n=>n.classList.remove('active'));
   if(btn)btn.classList.add('active');
+  // Mobile nav
+  document.querySelectorAll('.mobile-nav-btn').forEach(b=>b.classList.remove('active'));
+  var mnavMap={dash:'mnav-dash',catalog:'mnav-catalog',recommendations:'mnav-recs',form:'mnav-form'};
+  if(mnavMap[name]){var mb=document.getElementById(mnavMap[name]);if(mb)mb.classList.add('active');}
+  closeMobileMenu();
   if(name==='dash')loadOrders();
   if(name==='kanban')loadKanban();
   if(name==='analytics')loadAnalytics();
@@ -1561,16 +1566,7 @@ function closeMobileMenu(){
   document.getElementById('mobile-more-menu').style.display='none';
 }
 
-// Override showPage to also update mobile nav
-var _origShowPage = showPage;
-function showPage(name, btn){
-  _origShowPage(name, btn);
-  closeMobileMenu();
-  // Update mobile nav active state
-  document.querySelectorAll('.mobile-nav-btn').forEach(b=>b.classList.remove('active'));
-  var mnavMap = {dash:'mnav-dash',catalog:'mnav-catalog',recommendations:'mnav-recs',form:'mnav-form'};
-  if(mnavMap[name]) document.getElementById(mnavMap[name])?.classList.add('active');
-}
+// Mobile nav update handled in showPage
 
 // Render mobile order cards
 function renderMobileOrders(orders){
@@ -1603,9 +1599,8 @@ function renderMobileOrders(orders){
   `).join('');
 }
 
-// Patch loadOrders to also render mobile
-var _origLoadOrders = loadOrders;
-loadOrders = async function(){
+// loadOrders with mobile support
+async function loadOrdersWithMobile(){
   var params={};
   if(currentRole==='admin'){
     var branch=document.getElementById('f-branch').value;
@@ -1635,6 +1630,7 @@ loadOrders = async function(){
   loadStats();
 }
 
+loadOrders = loadOrdersWithMobile;
 // Service Worker registration
 if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
