@@ -318,7 +318,8 @@ td.muted{color:var(--text2)}
         <div style="display:flex;gap:10px;align-items:center;flex-wrap:wrap">
           <div id="catalog-upload-btns" style="display:flex;gap:8px">
             <label style="cursor:pointer"><input type="file" id="catalog-file" accept=".xlsx" style="display:none" onchange="uploadCatalog(this)"><span class="btn-secondary" onclick="document.getElementById('catalog-file').click()">↑ Остатки</span></label>
-            <label style="cursor:pointer"><input type="file" id="abc-file" accept=".xlsx" style="display:none" onchange="uploadABC(this)"><span class="btn-secondary" onclick="document.getElementById('abc-file').click()">↑ ABC</span></label>
+            <label style="cursor:pointer"><input type="file" id="abc-file" accept=".xlsx" style="display:none" onchange="uploadABC(this)"><span class="btn-secondary" onclick="document.getElementById('abc-file').click()">&#8593; ABC</span></label>
+            <label style="cursor:pointer"><input type="file" id="abc-full-file" accept=".xlsx" style="display:none" onchange="uploadABCFile(this)"><span class="btn-secondary" onclick="document.getElementById('abc-full-file').click()">&#8593; ABC файл</span></label>
           </div>
           <button class="btn-secondary" onclick="openCart()">🛒 Корзина <span id="cart-count-btn">0</span></button>
         </div>
