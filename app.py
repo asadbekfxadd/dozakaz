@@ -1328,53 +1328,88 @@ def update_transfer_status(tid):
 @app.route('/api/transfers/suggestions', methods=['GET'])
 @login_required
 def transfer_suggestions():
-    '''For flagmans: show A-category items with low stock, sorted by other branches sales (low to high)'''
+    '''Smart suggestions: A-items that sell well at flagman but poorly at donor branches'''
     branch = session.get('branch')
     if branch not in FLAGMANS and session.get('role') != 'admin':
         return jsonify([])
     target_branch = request.args.get('branch', branch)
     conn = get_db(); cur = conn.cursor()
-    # Get A-category items where target branch has low stock
+
+    # Get A articles with their sales at target branch
     cur.execute('''
-        SELECT DISTINCT c.article, MIN(c.name) as name, MIN(c.abc) as abc, MAX(c.sold) as sold
+        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               MAX(c.sold) as total_sold,
+               COALESCE(SUM(CASE WHEN bs.branch=%s THEN bs.qty ELSE 0 END), 0) as my_stock
         FROM catalog c
-        WHERE c.abc = 'A'
+        LEFT JOIN branch_stock bs ON bs.article=c.article
+        WHERE c.abc='A'
         GROUP BY c.article
         ORDER BY MAX(c.sold) DESC
-        LIMIT 50
-    ''')
+        LIMIT 60
+    ''', (target_branch,))
     a_articles = cur.fetchall()
+
+    art_list = [r['article'] for r in a_articles]
+
+    # Sales at target branch
+    cur.execute('''
+        SELECT article, SUM(qty) as sold FROM sales
+        WHERE branch=%s AND article = ANY(%s)
+        GROUP BY article
+    ''', (target_branch, art_list))
+    my_sales = {r['article']: r['sold'] for r in cur.fetchall()}
+
+    # Sales + stock at ALL other branches
+    cur.execute('''
+        SELECT bs.article, bs.branch, bs.size, bs.qty as stock,
+               COALESCE(s.branch_sold, 0) as branch_sold
+        FROM branch_stock bs
+        LEFT JOIN (
+            SELECT article, branch, SUM(qty) as branch_sold
+            FROM sales WHERE article = ANY(%s)
+            GROUP BY article, branch
+        ) s ON s.article=bs.article AND s.branch=bs.branch
+        WHERE bs.article = ANY(%s) AND bs.branch != %s AND bs.qty > 0
+        ORDER BY bs.article, branch_sold ASC, bs.qty DESC
+    ''', (art_list, art_list, target_branch))
+    donor_rows = cur.fetchall()
+
+    # Group donors by article
+    donors_by_art = {}
+    for r in donor_rows:
+        donors_by_art.setdefault(r['article'], []).append(dict(r))
+
+    cur.close(); conn.close()
+
     result = []
     for art_row in a_articles:
         art = art_row['article']
-        # Get stock at target branch
-        cur.execute('SELECT size, qty FROM branch_stock WHERE article=%s AND branch=%s', (art, target_branch))
-        target_stock = {r['size']: r['qty'] for r in cur.fetchall()}
-        # Get stock at other branches with their sales
-        cur.execute('''
-            SELECT bs.branch, bs.size, bs.qty,
-                   COALESCE(s.total_sold, 0) as branch_sold
-            FROM branch_stock bs
-            LEFT JOIN (
-                SELECT branch, SUM(qty) as total_sold
-                FROM sales WHERE article=%s
-                GROUP BY branch
-            ) s ON s.branch = bs.branch
-            WHERE bs.article=%s AND bs.branch != %s AND bs.qty > 0
-            ORDER BY branch_sold ASC, bs.qty DESC
-        ''', (art, art, target_branch))
-        donors = cur.fetchall()
-        if donors:
-            result.append({
-                'article': art,
-                'name': art_row['name'],
-                'abc': art_row['abc'],
-                'sold': art_row['sold'],
-                'target_stock': target_stock,
-                'donors': [dict(d) for d in donors]
-            })
-    cur.close(); conn.close()
-    return jsonify(result)
+        donors = donors_by_art.get(art, [])
+        if not donors:
+            continue
+
+        my_sold = my_sales.get(art, 0)
+        my_stock = int(art_row['my_stock'] or 0)
+
+        # Only suggest if target branch sells well (or has demand) but low stock
+        # OR if donors have stock but poor sales
+        weak_donors = [d for d in donors if d['branch_sold'] < (my_sold * 0.5 + 1)]
+        if not weak_donors:
+            weak_donors = donors[:3]  # fallback: show worst performers
+
+        result.append({
+            'article': art,
+            'name': art_row['name'] or '',
+            'abc': art_row['abc'] or 'A',
+            'total_sold': int(art_row['total_sold'] or 0),
+            'my_sold': my_sold,
+            'my_stock': my_stock,
+            'donors': weak_donors[:5]  # top 5 weak donors
+        })
+
+    # Sort: biggest gap between my sales and donor sales first
+    result.sort(key=lambda x: -(x['my_sold'] - min((d['branch_sold'] for d in x['donors']), default=0)))
+    return jsonify(result[:30])
 
 @app.route('/api/transfers/stats')
 @login_required

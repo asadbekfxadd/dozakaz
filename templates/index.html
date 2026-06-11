@@ -1786,20 +1786,55 @@ async function loadTransfers(){
 
 function renderSuggestions(suggestions){
   var el = document.getElementById('transfer-suggestions');
-  if(!suggestions.length){el.innerHTML='<div style="color:var(--text3);font-size:12px">Нет рекомендаций</div>';return;}
-  el.innerHTML = suggestions.slice(0,10).map(s=>{
-    var donorHtml = s.donors.slice(0,3).map(d=>
-      '<button onclick="fillTransferForm(\''+s.article+'\',\''+d.size+'\',\''+d.branch+'\')" '+
-      'style="background:var(--bg3);border:1px solid var(--border);color:var(--text);padding:4px 10px;border-radius:4px;cursor:pointer;font-size:11px;margin:2px">'+
-      d.branch+' ('+d.size+': '+d.qty+'шт, продаж: '+d.branch_sold+')</button>'
-    ).join('');
-    return '<div style="background:var(--bg2);border:1px solid var(--accent2);border-radius:8px;padding:12px">'+
-      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
-      '<span style="font-weight:700;text-transform:uppercase">'+s.article+'</span>'+
-      '<span style="font-size:11px;color:var(--amber)">A — '+s.sold+' продаж</span></div>'+
-      '<div style="font-size:11px;color:var(--text2);margin-bottom:6px">'+s.name+'</div>'+
-      '<div style="font-size:11px;color:var(--text3);margin-bottom:6px">Доноры (от меньших продаж):</div>'+
-      '<div style="display:flex;flex-wrap:wrap;gap:4px">'+donorHtml+'</div></div>';
+  if(!suggestions.length){
+    el.innerHTML='<div style="color:var(--text3);font-size:12px;padding:16px">Нет рекомендаций — все A-товары распределены оптимально</div>';
+    return;
+  }
+  el.innerHTML = suggestions.map(s=>{
+    // Group donors by branch
+    var byBranch = {};
+    s.donors.forEach(d=>{
+      if(!byBranch[d.branch]) byBranch[d.branch]={branch:d.branch,sold:d.branch_sold,sizes:[]};
+      byBranch[d.branch].sizes.push({size:d.size,stock:d.stock});
+    });
+    var donorHtml = Object.values(byBranch).slice(0,4).map(d=>{
+      var sizeHtml = d.sizes.slice(0,4).map(sz=>
+        '<button onclick="fillTransferForm(''+s.article+'',''+sz.size+'',''+d.branch+'')" '+
+        'style="background:var(--bg3);border:1px solid var(--border2);color:var(--text);padding:5px 10px;border-radius:4px;cursor:pointer;font-size:11px;font-weight:600;transition:all .15s" '+
+        'onmouseover="this.style.borderColor='var(--accent)';this.style.color='var(--accent)'" '+
+        'onmouseout="this.style.borderColor='var(--border2)';this.style.color='var(--text)'">'+
+        sz.size+' ('+sz.stock+'шт)</button>'
+      ).join('');
+      return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:10px;margin-bottom:6px">'+
+        '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">'+
+        '<span style="font-size:12px;font-weight:700;color:var(--text)">'+d.branch+'</span>'+
+        '<span style="font-size:10px;background:var(--accent2);color:var(--accent);padding:2px 8px;border-radius:10px">'+d.sold+' продаж</span>'+
+        '</div>'+
+        '<div style="display:flex;flex-wrap:wrap;gap:4px">'+sizeHtml+'</div>'+
+        '</div>';
+    }).join('');
+
+    var gap = s.my_sold - Math.min(...s.donors.map(d=>d.branch_sold));
+    return '<div style="background:var(--bg2);border:1px solid rgba(255,23,68,.2);border-radius:10px;padding:16px;margin-bottom:10px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:flex-start;margin-bottom:10px;flex-wrap:wrap;gap:8px">'+
+      '<div>'+
+      '<div style="font-size:14px;font-weight:800;text-transform:uppercase;letter-spacing:.5px">'+s.article+'</div>'+
+      '<div style="font-size:11px;color:var(--text2);margin-top:2px">'+s.name+'</div>'+
+      '</div>'+
+      '<div style="display:flex;gap:8px">'+
+      '<div style="text-align:center;background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:6px;padding:6px 12px">'+
+      '<div style="font-size:16px;font-weight:800;color:var(--green)">'+s.my_sold+'</div>'+
+      '<div style="font-size:9px;color:var(--text3);text-transform:uppercase">Ваши продажи</div>'+
+      '</div>'+
+      '<div style="text-align:center;background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:6px 12px">'+
+      '<div style="font-size:16px;font-weight:800;color:var(--amber)">'+s.my_stock+'</div>'+
+      '<div style="font-size:9px;color:var(--text3);text-transform:uppercase">Ваш остаток</div>'+
+      '</div>'+
+      '</div>'+
+      '</div>'+
+      '<div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:8px;font-weight:700">&#8595; Забрать у слабых филиалов:</div>'+
+      donorHtml+
+      '</div>';
   }).join('');
 }
 
