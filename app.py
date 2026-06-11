@@ -17,21 +17,23 @@ ALLOWED = {'.xlsx', '.xls', '.csv'}
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 USERS = {
-    'admin': {'password': '123456', 'role': 'admin', 'branch': None},
-    'ALAYSKIY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ALAYSKIY'},
-    'ATLAS CHIMGAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ATLAS CHIMGAN'},
-    'ECO PARK': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ECO PARK'},
-    'Family park': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Family park'},
-    'HIGH TOWN PLAZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'HIGH TOWN PLAZA'},
-    'M. BARAKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'M. BARAKA'},
-    'MAGIC CITY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MAGIC CITY'},
-    'MALIKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MALIKA'},
-    'NOVZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'NOVZA'},
-    'Scopus Mall': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Scopus Mall'},
-    'Shota Rustavely': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Shota Rustavely'},
-    'TASHKENT CITY MALL': {'password': 'LI-NING1', 'role': 'user', 'branch': 'TASHKENT CITY MALL'},
-    'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN'},
-    'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery'},
+    'admin': {'password': '123456', 'role': 'admin', 'branch': None, 'branches': None},
+    'ANNA_V': {'password': 'region1', 'role': 'regional', 'branch': None, 'branches': ['HIGH TOWN PLAZA','MAGIC CITY','NOVZA','Scopus Mall']},
+    'ANNA_G': {'password': 'region2', 'role': 'regional', 'branch': None, 'branches': ['ATLAS CHIMGAN','ECO PARK','HIGH TOWN PLAZA','MALIKA','Shota Rustavely','Yunusabad gallery']},
+    'ALAYSKIY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ALAYSKIY', 'branches': None},
+    'ATLAS CHIMGAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ATLAS CHIMGAN', 'branches': None},
+    'ECO PARK': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ECO PARK', 'branches': None},
+    'Family park': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Family park', 'branches': None},
+    'HIGH TOWN PLAZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'HIGH TOWN PLAZA', 'branches': None},
+    'M. BARAKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'M. BARAKA', 'branches': None},
+    'MAGIC CITY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MAGIC CITY', 'branches': None},
+    'MALIKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MALIKA', 'branches': None},
+    'NOVZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'NOVZA', 'branches': None},
+    'Scopus Mall': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Scopus Mall', 'branches': None},
+    'Shota Rustavely': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Shota Rustavely', 'branches': None},
+    'TASHKENT CITY MALL': {'password': 'LI-NING1', 'role': 'user', 'branch': 'TASHKENT CITY MALL', 'branches': None},
+    'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
+    'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
 }
 
 BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
@@ -151,7 +153,8 @@ def login():
     session['username'] = username
     session['role'] = user['role']
     session['branch'] = user['branch']
-    return jsonify({'role': user['role'], 'branch': user['branch'], 'username': username})
+    session['branches'] = user.get('branches')
+    return jsonify({'role': user['role'], 'branch': user['branch'], 'branches': user.get('branches'), 'username': username})
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -162,7 +165,7 @@ def logout():
 def me():
     if 'username' not in session:
         return jsonify({'logged_in': False})
-    return jsonify({'logged_in': True, 'role': session['role'], 'branch': session['branch'], 'username': session['username']})
+    return jsonify({'logged_in': True, 'role': session['role'], 'branch': session['branch'], 'branches': session.get('branches'), 'username': session['username']})
 
 @app.route('/api/orders', methods=['GET'])
 @login_required
@@ -177,6 +180,12 @@ def get_orders():
     params = []
     if session['role'] == 'user':
         q += ' AND branch=%s'; params.append(session['branch'])
+    elif session['role'] == 'regional':
+        bs = session.get('branches', [])
+        if bs:
+            q += ' AND branch = ANY(%s)'; params.append(bs)
+        if branch and branch in bs:
+            q += ' AND branch=%s'; params.append(branch)
     else:
         if branch: q += ' AND branch=%s'; params.append(branch)
     if status: q += ' AND status=%s'; params.append(status)
@@ -286,8 +295,10 @@ def create_order():
     return jsonify(dict(row)), 201
 
 @app.route('/api/orders/<int:oid>/status', methods=['PATCH'])
-@admin_required
+@login_required
 def update_status(oid):
+    if session.get('role') not in ('admin', 'regional'):
+        return jsonify({'error': 'Forbidden'}), 403
     data = request.get_json()
     status = data.get('status')
     if status not in ('Новая', 'В работе', 'Выполнена'):
@@ -339,6 +350,12 @@ def stats():
         cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Новая'"); new = cur.fetchone()['c']
         cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='В работе'"); inprog = cur.fetchone()['c']
         cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Выполнена'"); done = cur.fetchone()['c']
+    elif session['role'] == 'regional':
+        bs = session.get('branches', [])
+        cur.execute('SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s)', (bs,)); total = cur.fetchone()['c']
+        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='Новая'", (bs,)); new = cur.fetchone()['c']
+        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='В работе'", (bs,)); inprog = cur.fetchone()['c']
+        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='Выполнена'", (bs,)); done = cur.fetchone()['c']
     else:
         b = session['branch']
         cur.execute('SELECT COUNT(*) as c FROM orders WHERE branch=%s', (b,)); total = cur.fetchone()['c']
@@ -527,7 +544,6 @@ def abc_sync():
         art = u.get('article', '')
         abc = u.get('abc', 'C')
         sold = u.get('sold', 0)
-        # Update both with and without trailing A
         cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
         count += cur.rowcount
         cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art + 'A'))
@@ -590,17 +606,32 @@ def upload_products():
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/analytics/orders')
-@admin_required
+@login_required
 def analytics_orders():
+    if session.get('role') not in ('admin', 'regional'):
+        return jsonify({'error': 'Forbidden'}), 403
     conn = get_db(); cur = conn.cursor()
-    cur.execute('''SELECT article, SUM(qty) as total_qty, COUNT(DISTINCT order_id) as order_count
-        FROM order_items WHERE article != '' AND article != 'None'
-        GROUP BY article ORDER BY total_qty DESC LIMIT 20''')
-    top_articles = cur.fetchall()
-    cur.execute('''SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
-        FROM orders o JOIN order_items oi ON o.id = oi.order_id
-        GROUP BY o.branch ORDER BY total_qty DESC''')
-    branch_totals = cur.fetchall()
+    if session['role'] == 'regional':
+        bs = session.get('branches', [])
+        cur.execute('''SELECT oi.article, SUM(oi.qty) as total_qty, COUNT(DISTINCT oi.order_id) as order_count
+            FROM order_items oi JOIN orders o ON o.id = oi.order_id
+            WHERE o.branch = ANY(%s) AND oi.article != %s AND oi.article != %s
+            GROUP BY oi.article ORDER BY total_qty DESC LIMIT 20''', (bs, '', 'None'))
+        top_articles = cur.fetchall()
+        cur.execute('''SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
+            FROM orders o JOIN order_items oi ON o.id = oi.order_id
+            WHERE o.branch = ANY(%s)
+            GROUP BY o.branch ORDER BY total_qty DESC''', (bs,))
+        branch_totals = cur.fetchall()
+    else:
+        cur.execute('''SELECT article, SUM(qty) as total_qty, COUNT(DISTINCT order_id) as order_count
+            FROM order_items WHERE article != '' AND article != 'None'
+            GROUP BY article ORDER BY total_qty DESC LIMIT 20''')
+        top_articles = cur.fetchall()
+        cur.execute('''SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
+            FROM orders o JOIN order_items oi ON o.id = oi.order_id
+            GROUP BY o.branch ORDER BY total_qty DESC''')
+        branch_totals = cur.fetchall()
     cur.close(); conn.close()
     return jsonify({'top_articles': [dict(r) for r in top_articles], 'branch_totals': [dict(r) for r in branch_totals]})
 
@@ -687,6 +718,9 @@ def sales_analytics():
         extra += " AND sale_date >= CURRENT_DATE - INTERVAL '30 days'"
     elif period == 'season':
         extra += " AND sale_date >= CURRENT_DATE - INTERVAL '90 days'"
+    if session['role'] == 'regional':
+        bs = session.get('branches', [])
+        extra += ' AND branch = ANY(%s)'; params.append(bs)
     if category:
         extra += ' AND category = %s'; params.append(category)
     if branch:
