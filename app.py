@@ -541,12 +541,12 @@ def abc_sync():
     conn = get_db(); cur = conn.cursor()
     count = 0
     for u in updates:
-        art = u.get('article', '')
+        art = u.get('article', '').strip()
         abc = u.get('abc', 'C')
         sold = u.get('sold', 0)
-        cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
-        count += cur.rowcount
-        cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art + 'A'))
+        # Match: exact, with A suffix, without A suffix
+        cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s OR article=%s OR article=%s',
+                   (abc, sold, art, art+'A', art.rstrip('A')))
         count += cur.rowcount
     conn.commit(); cur.close(); conn.close()
     return jsonify({'ok': True, 'updated': count})
