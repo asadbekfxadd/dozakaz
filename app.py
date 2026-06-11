@@ -540,6 +540,45 @@ def update_abc():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/catalog/abc-upload', methods=['POST'])
+@admin_required
+def upload_abc_file():
+    '''Upload ABC Excel file and sync catalog'''
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Файл не найден'}), 400
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+        # Try Export sheet first, then first sheet
+        ws = wb['Export'] if 'Export' in wb.sheetnames else wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        # Find header row
+        header_idx = None
+        for i, row in enumerate(rows):
+            if row and row[1] == 'Season3' or (row and str(row[0]) == 'DIVISION'):
+                header_idx = i; break
+        if header_idx is None:
+            return jsonify({'error': 'Не найден заголовок'}), 400
+        conn = get_db(); cur = conn.cursor()
+        count = 0
+        abc_map = {'A++': 'A', 'A+': 'A', 'A': 'A', 'A-': 'A', 'B': 'B', 'B+': 'B', 'B-': 'B', 'C': 'C', 'C+': 'C', 'C-': 'C'}
+        for row in rows[header_idx+1:]:
+            if not row or not row[2]: continue
+            art = str(row[2]).strip()
+            if not art or art in ('None', 'nan', ''): continue
+            total_abc_raw = str(row[-1]).strip() if row[-1] else 'C'
+            try: total_sold = int(float(str(row[-5]))) if row[-5] else 0
+            except: total_sold = 0
+            abc = abc_map.get(total_abc_raw, 'C')
+            cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s OR article=%s',
+                       (abc, total_sold, art, art+'A'))
+            count += cur.rowcount
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({'ok': True, 'updated': count})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
 @app.route('/api/catalog/abc-sync', methods=['POST'])
 @admin_required
 def abc_sync():

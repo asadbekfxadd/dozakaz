@@ -953,6 +953,16 @@ async function uploadCatalog(inp){
   toast('Загружено '+d.count+' позиций');loadCatalog();inp.value='';
 }
 
+async function uploadABCFile(inp){
+  var file=inp.files[0];if(!file)return;
+  var fd=new FormData();fd.append('file',file);
+  toast('Загружаю ABC файл...');
+  var r=await fetch('/api/catalog/abc-upload',{method:'POST',body:fd});
+  var d=await r.json();
+  if(!r.ok){toast(d.error||'Ошибка',true);return;}
+  toast('ABC обновлён для '+d.updated+' позиций');loadCatalog();inp.value='';
+}
+
 async function uploadABC(inp){
   var file=inp.files[0];if(!file)return;
   var fd=new FormData();fd.append('file',file);
