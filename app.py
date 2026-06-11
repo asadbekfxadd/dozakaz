@@ -45,7 +45,7 @@ BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA
 FLAGMANS = ['TASHKENT CITY MALL','ATLAS CHIMGAN','ALAYSKIY','Shota Rustavely']
 
 YADISK_TOKEN = os.environ.get('YADISK_TOKEN', '35a4110c9f5a4729ba8a54cf978276f4')
-YADISK_PUBLIC_KEY = 'https://disk.yandex.com/d/-plm2CMx-kHNuA'
+YADISK_PUBLIC_KEY = 'https://disk.yandex.ru/d/uJxKSsp_PRLemQ'
 YADISK_FOLDER = '/06-White Background Pics'
 _photo_cache = {}
 _photo_url_cache = {}
