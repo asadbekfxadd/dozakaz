@@ -770,24 +770,27 @@ async function loadCatalog(){
   var search=document.getElementById('cat-search').value.trim();
   var abc=document.getElementById('cat-abc').value;
   var stock=document.getElementById('cat-stock').value;
+  var season=document.getElementById('cat-season').value;
   var params={page:catalogPage};
   if(search)params.search=search;
   if(currentBranch)params.branch=currentBranch;
+  if(abc)params.abc=abc;
+  if(stock)params.stock=stock;
+  if(season)params.season=season;
   var r=await fetch('/api/catalog?'+new URLSearchParams(params));
   if(!r.ok)return;
   var items=await r.json();
-  var seasons=[...new Set(items.map(i=>i.season).filter(Boolean))].sort();
-  var sel=document.getElementById('cat-season');
-  var cur=sel.value;
-  if(seasons.length!==sel.options.length-1){
-    sel.innerHTML='<option value="">Все сезоны</option>'+seasons.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
-    if(cur)sel.value=cur;
+  // Load seasons for dropdown if not loaded
+  if(document.getElementById('cat-season').options.length<=1 && !season){
+    var r2=await fetch('/api/catalog/seasons');
+    if(r2.ok){
+      var seasons=await r2.json();
+      var sel=document.getElementById('cat-season');
+      var cur=sel.value;
+      sel.innerHTML='<option value="">Все сезоны</option>'+seasons.map(s=>'<option value="'+s+'">'+s+'</option>').join('');
+      if(cur)sel.value=cur;
+    }
   }
-  var season=sel.value;
-  if(abc)items=items.filter(i=>i.abc===abc);
-  if(stock==='yes')items=items.filter(i=>i.total_wms>0);
-  if(stock==='no')items=items.filter(i=>i.total_wms===0);
-  if(season)items=items.filter(i=>i.season===season);
   var grid=document.getElementById('catalog-grid');
   var empty=document.getElementById('catalog-empty');
   document.getElementById('cat-count').textContent=items.length+' позиций';

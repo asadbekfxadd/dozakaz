@@ -122,6 +122,12 @@ def init_db():
         amount NUMERIC DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    # Indexes for performance
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article, branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_article ON sales(article)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch)')
     conn.commit()
     cur.close()
     conn.close()
@@ -472,42 +478,100 @@ def get_catalog():
     page = int(request.args.get('page', 1))
     per_page = 50
     branch = session.get('branch') or request.args.get('branch', '')
+    abc_filter = request.args.get('abc', '')
+    season_filter = request.args.get('season', '')
+    stock_filter = request.args.get('stock', '')
     conn = get_db(); cur = conn.cursor()
-    q = 'SELECT article, MIN(name) as name FROM catalog WHERE 1=1'
+
+    # Step 1: Get paginated unique articles with aggregated data in ONE query
+    where = '1=1'
     params = []
     if search:
-        q += ' AND (article ILIKE %s OR name ILIKE %s)'
+        where += ' AND (article ILIKE %s OR name ILIKE %s)'
         params.extend([f'%{search}%', f'%{search}%'])
-    q += ''' GROUP BY article ORDER BY
-        CASE MIN(abc) WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END,
-        article'''
-    q += f' LIMIT {per_page} OFFSET {(page-1)*per_page}'
-    cur.execute(q, params)
+    if abc_filter:
+        where += ' AND abc = %s'; params.append(abc_filter)
+    if season_filter:
+        where += ' AND season = %s'; params.append(season_filter)
+
+    cur.execute(f'''
+        SELECT
+            article,
+            MIN(name) as name,
+            MIN(abc) as abc,
+            MAX(sold) as sold,
+            MIN(season) as season,
+            MIN(category) as category,
+            SUM(wms_stock) as total_wms
+        FROM catalog
+        WHERE {where}
+        GROUP BY article
+        HAVING 1=1
+        {" AND SUM(wms_stock) > 0" if stock_filter == "yes" else ""}
+        {" AND SUM(wms_stock) = 0" if stock_filter == "no" else ""}
+        ORDER BY
+            CASE MIN(abc) WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END,
+            MAX(sold) DESC,
+            article
+        LIMIT {per_page} OFFSET {(page-1)*per_page}
+    ''', params)
     articles = cur.fetchall()
+
+    if not articles:
+        cur.close(); conn.close()
+        return jsonify([])
+
+    art_list = [r['article'] for r in articles]
+
+    # Step 2: Get all sizes for these articles in ONE query
+    cur.execute('''
+        SELECT article, size, wms_stock
+        FROM catalog
+        WHERE article = ANY(%s)
+        ORDER BY article, size
+    ''', (art_list,))
+    all_sizes = {}
+    for r in cur.fetchall():
+        all_sizes.setdefault(r['article'], []).append({'size': r['size'], 'wms': r['wms_stock']})
+
+    # Step 3: Get branch stock in ONE query if branch provided
+    branch_stock_map = {}
+    if branch:
+        cur.execute('''
+            SELECT article, size, qty
+            FROM branch_stock
+            WHERE article = ANY(%s) AND branch = %s
+        ''', (art_list, branch))
+        for r in cur.fetchall():
+            branch_stock_map[(r['article'], r['size'])] = r['qty']
+
+    cur.close(); conn.close()
+
     result = []
     for art_row in articles:
         art = art_row['article']
-        name = art_row['name']
-        cur.execute('SELECT size, wms_stock FROM catalog WHERE article=%s ORDER BY size', (art,))
-        sizes = cur.fetchall()
-        branch_stock = {}
-        if branch:
-            cur.execute('SELECT size, qty FROM branch_stock WHERE article=%s AND branch=%s', (art, branch))
-            branch_stock = {r['size']: r['qty'] for r in cur.fetchall()}
-        cur.execute('SELECT abc, sold, season, category FROM catalog WHERE article=%s LIMIT 1', (art,))
-        abc_row = cur.fetchone()
-        abc = abc_row['abc'] if abc_row else 'C'
-        sold = abc_row['sold'] if abc_row else 0
-        season = abc_row['season'] if abc_row and abc_row['season'] else ''
-        category = abc_row['category'] if abc_row and abc_row['category'] else ''
-        total_wms = sum(r['wms_stock'] for r in sizes)
+        sizes = all_sizes.get(art, [])
+        sizes_out = [{'size': s['size'], 'wms': s['wms'], 'branch': branch_stock_map.get((art, s['size']), 0)} for s in sizes]
         result.append({
-            'article': art, 'name': name, 'abc': abc, 'sold': sold,
-            'season': season, 'category': category, 'total_wms': total_wms,
-            'sizes': [{'size': r['size'], 'wms': r['wms_stock'], 'branch': branch_stock.get(r['size'], 0)} for r in sizes]
+            'article': art,
+            'name': art_row['name'] or '',
+            'abc': art_row['abc'] or 'C',
+            'sold': art_row['sold'] or 0,
+            'season': art_row['season'] or '',
+            'category': art_row['category'] or '',
+            'total_wms': art_row['total_wms'] or 0,
+            'sizes': sizes_out
         })
-    cur.close(); conn.close()
     return jsonify(result)
+
+@app.route('/api/catalog/seasons')
+@login_required
+def get_seasons():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT DISTINCT season FROM catalog WHERE season != '' AND season IS NOT NULL ORDER BY season DESC")
+    seasons = [r['season'] for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return jsonify(seasons)
 
 @app.route('/api/catalog/abc', methods=['POST'])
 @admin_required
@@ -985,6 +1049,16 @@ def sync_scheduler():
 # Start background sync thread
 sync_thread = Thread(target=sync_scheduler, daemon=True)
 sync_thread.start()
+
+@app.route('/api/debug/counts')
+def debug_counts():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT COUNT(*) as c FROM catalog'); cat = cur.fetchone()['c']
+    cur.execute('SELECT COUNT(DISTINCT article) as c FROM catalog'); arts = cur.fetchone()['c']
+    cur.execute('SELECT COUNT(*) as c FROM sales'); sales = cur.fetchone()['c']
+    cur.execute('SELECT COUNT(*) as c FROM orders'); orders = cur.fetchone()['c']
+    cur.close(); conn.close()
+    return jsonify({'catalog_rows': cat, 'unique_articles': arts, 'sales_rows': sales, 'orders': orders})
 
 @app.route('/api/sync/status')
 @admin_required
