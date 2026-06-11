@@ -953,6 +953,89 @@ def photo_proxy(art_base, filename):
     except:
         return 'Error', 500
 
+# ===== RECOMMENDATIONS =====
+
+@app.route('/api/recommendations')
+@login_required
+def get_recommendations():
+    branch = session.get('branch') or request.args.get('branch', '')
+    if not branch:
+        return jsonify([])
+    conn = get_db(); cur = conn.cursor()
+
+    # Get all A/B articles with their full size grid from WMS
+    cur.execute('''
+        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               MAX(c.sold) as sold, MIN(c.season) as season, MIN(c.category) as category,
+               array_agg(c.size ORDER BY c.size) as all_sizes,
+               array_agg(c.wms_stock ORDER BY c.size) as wms_stocks,
+               SUM(c.wms_stock) as total_wms
+        FROM catalog c
+        WHERE c.abc IN ('A', 'B')
+        GROUP BY c.article
+        HAVING COUNT(c.size) >= 3
+        ORDER BY MIN(c.abc), MAX(c.sold) DESC
+        LIMIT 200
+    ''')
+    articles = cur.fetchall()
+
+    # Get branch stock for all these articles
+    art_list = [r['article'] for r in articles]
+    if not art_list:
+        cur.close(); conn.close()
+        return jsonify([])
+
+    cur.execute('''
+        SELECT article, size, qty
+        FROM branch_stock
+        WHERE article = ANY(%s) AND branch = %s AND qty > 0
+    ''', (art_list, branch))
+    branch_stock = {}
+    for r in cur.fetchall():
+        branch_stock.setdefault(r['article'], {})[r['size']] = r['qty']
+
+    cur.close(); conn.close()
+
+    result = []
+    for art_row in articles:
+        art = art_row['article']
+        all_sizes = art_row['all_sizes'] or []
+        wms_stocks = art_row['wms_stocks'] or []
+        branch_sizes = branch_stock.get(art, {})
+
+        # Full size grid count
+        full_grid = len(all_sizes)
+        branch_has = len(branch_sizes)
+
+        # Missing sizes (in full grid but not at branch)
+        missing = []
+        for i, size in enumerate(all_sizes):
+            if size not in branch_sizes or branch_sizes[size] == 0:
+                wms = wms_stocks[i] if i < len(wms_stocks) else 0
+                missing.append({'size': size, 'wms': wms, 'available': wms > 0})
+
+        # Only recommend if branch has less than 70% of full grid
+        if not missing or branch_has >= full_grid * 0.7:
+            continue
+
+        result.append({
+            'article': art,
+            'name': art_row['name'] or '',
+            'abc': art_row['abc'] or 'C',
+            'sold': art_row['sold'] or 0,
+            'season': art_row['season'] or '',
+            'category': art_row['category'] or '',
+            'total_wms': art_row['total_wms'] or 0,
+            'full_grid': full_grid,
+            'branch_has': branch_has,
+            'missing_sizes': missing,
+            'available_missing': [m for m in missing if m['available']]
+        })
+
+    # Sort: most missing available sizes first
+    result.sort(key=lambda x: (-len(x['available_missing']), x['abc'], -x['sold']))
+    return jsonify(result[:100])
+
 # ===== TRANSFERS =====
 
 @app.route('/api/transfers', methods=['GET'])

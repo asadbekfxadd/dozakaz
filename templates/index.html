@@ -268,6 +268,10 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Конверсия
       </button>
+      <button class="nav-item" onclick="showPage('recommendations',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
+        Рекомендации
+      </button>
       <button class="nav-item" onclick="showPage('form',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
         Новая заявка
@@ -538,6 +542,29 @@ td.muted{color:var(--text2)}
       </div>
     </div>
 
+    <!-- RECOMMENDATIONS -->
+    <div id="page-recommendations" class="page">
+      <div class="topbar">
+        <div><div class="topbar-title">Рекомендации к дозаказу</div><div class="topbar-sub">A/B товары с неполной размерной сеткой</div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <select id="rec-branch" class="admin-only" onchange="loadRecommendations()" style="min-width:180px">
+            <option value="">— выбрать филиал —</option>
+            <option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option>
+            <option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option>
+            <option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option>
+            <option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option>
+            <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option>
+          </select>
+          <button class="btn-secondary" onclick="loadRecommendations()">&#8635; Обновить</button>
+        </div>
+      </div>
+      <div class="content">
+        <div id="rec-empty" style="padding:48px;text-align:center;color:var(--text3)">Выберите филиал или войдите как филиал</div>
+        <div id="rec-stats" style="display:none;margin-bottom:16px"></div>
+        <div id="rec-grid" class="catalog-grid"></div>
+      </div>
+    </div>
+
     <!-- FORM -->
     <div id="page-form" class="page">
       <div class="topbar">
@@ -693,7 +720,7 @@ function showApp(d){
 
 async function doLogout(){await fetch('/api/logout',{method:'POST'});location.reload();}
 
-// showPage defined below
+// showPage defined below - recommendations handled in new showPage
 
 function toast(msg,err){
   var t=document.getElementById('toast');
@@ -1223,6 +1250,7 @@ function showPage(name,btn){
   if(name==='analytics')loadAnalytics();
   if(name==='catalog'){catalogPage=1;loadCatalog();}
   if(name==='topsales')loadTopSales();
+  if(name==='recommendations')loadRecommendations();
   if(name==='transfers')loadTransfers();
 }
 
@@ -1349,6 +1377,83 @@ async function loadTransferBadge(){
     var badge = document.getElementById('transfer-badge');
     if(badge&&d.new>0){badge.style.display='inline';badge.textContent=d.new;badge.className='nav-badge badge-blink';}
   }catch(e){}
+}
+
+async function loadRecommendations(){
+  var branch = currentBranch;
+  if(!branch && currentRole==='admin'){
+    branch = document.getElementById('rec-branch').value;
+  }
+  if(!branch){
+    document.getElementById('rec-empty').style.display='block';
+    document.getElementById('rec-grid').innerHTML='';
+    document.getElementById('rec-stats').style.display='none';
+    return;
+  }
+  document.getElementById('rec-empty').textContent='Загрузка...';
+  document.getElementById('rec-empty').style.display='block';
+  document.getElementById('rec-grid').innerHTML='';
+
+  var params = branch ? '?branch='+encodeURIComponent(branch) : '';
+  var r = await fetch('/api/recommendations'+params);
+  if(!r.ok){document.getElementById('rec-empty').textContent='Ошибка загрузки';return;}
+  var items = await r.json();
+
+  if(!items.length){
+    document.getElementById('rec-empty').textContent='Рекомендаций нет — размерные сетки полные!';
+    document.getElementById('rec-stats').style.display='none';
+    return;
+  }
+
+  document.getElementById('rec-empty').style.display='none';
+
+  // Stats
+  var totalMissing = items.reduce((s,i)=>s+i.missing_sizes.length,0);
+  var availableMissing = items.reduce((s,i)=>s+i.available_missing.length,0);
+  document.getElementById('rec-stats').style.display='block';
+  document.getElementById('rec-stats').innerHTML =
+    '<div style="display:flex;gap:12px;flex-wrap:wrap">' +
+    '<div style="background:var(--accent2);border:1px solid var(--accent);border-radius:8px;padding:12px 20px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--accent)">'+items.length+'</div><div style="font-size:11px;color:var(--text2);text-transform:uppercase">Артикулов</div></div>' +
+    '<div style="background:var(--amber2);border:1px solid var(--amber);border-radius:8px;padding:12px 20px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--amber)">'+totalMissing+'</div><div style="font-size:11px;color:var(--text2);text-transform:uppercase">Пропущено размеров</div></div>' +
+    '<div style="background:var(--green2);border:1px solid var(--green);border-radius:8px;padding:12px 20px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--green)">'+availableMissing+'</div><div style="font-size:11px;color:var(--text2);text-transform:uppercase">Есть на WMS</div></div>' +
+    '</div>';
+
+  document.getElementById('rec-grid').innerHTML = items.map(item=>{
+    var itemJson = JSON.stringify({
+      article:item.article, name:item.name, abc:item.abc, sold:item.sold,
+      season:item.season, category:item.category, total_wms:item.total_wms,
+      sizes: item.missing_sizes.map(m=>({size:m.size, wms:m.wms, branch:0}))
+    }).replace(/"/g,'&quot;');
+
+    var missingHtml = item.missing_sizes.map(m=>
+      '<div class="size-chip '+(m.available?'has-wms':'')+'" style="'+(m.available?'border-color:var(--green)':'')+'">' +
+      '<div class="size-label">'+m.size+'</div>' +
+      '<div class="size-wms" style="color:'+(m.available?'var(--green)':'var(--accent)')+'">WMS: '+m.wms+'</div>' +
+      '</div>'
+    ).join('');
+
+    var progress = Math.round(item.branch_has / item.full_grid * 100);
+    var progressColor = progress >= 70 ? 'var(--green)' : progress >= 40 ? 'var(--amber)' : 'var(--accent)';
+
+    return '<div class="catalog-card" onclick="openModal('+itemJson+')">' +
+      '<div class="catalog-card-header">' +
+      '<div>' +
+      '<div class="catalog-article">'+item.article+' '+abcBadge(item.abc)+(item.season?'<span style="background:var(--bg3);color:var(--text2);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">'+item.season+'</span>':'')+'</div>' +
+      '<div class="catalog-name">'+item.name+(item.category?'<span style="color:var(--text3);font-size:11px;margin-left:6px">'+item.category+'</span>':'')+'</div>' +
+      '</div>' +
+      '<div style="text-align:right">' +
+      '<div style="font-size:11px;color:var(--text3)">'+item.branch_has+'/'+item.full_grid+' размеров</div>' +
+      '<div style="background:var(--bg3);border-radius:4px;height:6px;width:80px;margin-top:4px;overflow:hidden">' +
+      '<div style="height:100%;width:'+progress+'%;background:'+progressColor+';border-radius:4px"></div></div>' +
+      '</div>' +
+      '</div>' +
+      '<div style="font-size:11px;color:var(--text2);margin-bottom:8px">Отсутствующие размеры:</div>' +
+      '<div class="catalog-sizes" style="margin-bottom:12px">'+missingHtml+'</div>' +
+      '<div class="catalog-card-footer">' +
+      '<span style="font-size:11px;color:var(--text3)">Продано: '+item.sold+' шт | WMS: '+item.total_wms+' шт</span>' +
+      '<button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="event.stopPropagation();openModal('+itemJson+')">+ Заказать</button>' +
+      '</div></div>';
+  }).join('');
 }
 
 init();
