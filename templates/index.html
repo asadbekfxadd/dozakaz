@@ -515,6 +515,12 @@ td.muted{color:var(--text2)}
   <div class="cart-items" id="cart-items-list"></div>
   <div class="cart-footer">
     <div class="cart-count" id="cart-summary"></div>
+    <div id="cart-branch-wrap" style="display:none;margin-bottom:10px">
+      <div class="form-group">
+        <label>Филиал</label>
+        <select id="cart-branch-sel"><option value="">— выбрать филиал —</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option></select>
+      </div>
+    </div>
     <div class="form-row" style="margin-bottom:10px">
       <div class="form-group"><label>Ответственный</label><input type="text" id="cart-responsible" placeholder="Ваше имя"></div>
       <div class="form-group"><label>Приоритет</label><select id="cart-priority"><option>Обычный</option><option>Срочно</option></select></div>
@@ -592,6 +598,19 @@ function showApp(d){
     document.getElementById('th-actions').style.display='none';
     document.getElementById('catalog-upload-btns').style.display='none';
     if(d.branch){var sel=document.getElementById('r-branch');sel.value=d.branch;sel.disabled=true;}
+  } else if(d.role==='regional'){
+    document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
+    document.getElementById('th-actions').style.display='none';
+    document.getElementById('catalog-upload-btns').style.display='none';
+    window.currentBranches=d.branches||[];
+    // Фильтруем select филиалов в форме новой заявки
+    if(d.branches&&d.branches.length){
+      var sel=document.getElementById('r-branch');
+      sel.innerHTML='<option value="">— выбрать —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+      // Фильтруем select в корзине каталога
+      var cartBranchSel=document.getElementById('cart-branch-sel');
+      if(cartBranchSel) cartBranchSel.innerHTML='<option value="">— выбрать филиал —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+    }
   }
   loadOrders();loadStats();
 }
@@ -885,16 +904,26 @@ function updateCartUI(){
 function removeFromCart(art){delete cart[art];updateCartUI();loadCatalog();}
 function removeCartSize(art,size){if(cart[art]){delete cart[art].sizes[size];if(Object.keys(cart[art].sizes).length===0)delete cart[art];}updateCartUI();loadCatalog();}
 function updateCartQty(art,size,val){var q=parseInt(val)||1;if(cart[art]&&cart[art].sizes[size])cart[art].sizes[size].qty=q;updateCartUI();}
-function openCart(){document.getElementById('cart-panel').classList.add('open');}
+function openCart(){
+  document.getElementById('cart-panel').classList.add('open');
+  if(currentRole==='regional'){
+    document.getElementById('cart-branch-wrap').style.display='block';
+  }
+}
 function closeCart(){document.getElementById('cart-panel').classList.remove('open');}
 
 async function submitCartOrder(){
   var responsible=document.getElementById('cart-responsible').value.trim();
   var priority=document.getElementById('cart-priority').value;
   var note=document.getElementById('cart-note').value.trim();
-  var branch=currentBranch||document.getElementById('r-branch').value;
+  var branch=currentBranch;
+  if(currentRole==='regional'){
+    branch=document.getElementById('cart-branch-sel').value;
+  } else if(!branch){
+    branch=document.getElementById('r-branch').value;
+  }
   if(!responsible){toast('Укажите ответственного',true);return;}
-  if(!branch){toast('Не определён филиал',true);return;}
+  if(!branch){toast('Выберите филиал',true);return;}
   if(Object.keys(cart).length===0){toast('Корзина пуста',true);return;}
   var items=[];
   Object.entries(cart).forEach(([art,item])=>{Object.entries(item.sizes).forEach(([size,v])=>{items.push({article:art,name:item.name,size,qty:v.qty,wms_stock:v.wms});});});
