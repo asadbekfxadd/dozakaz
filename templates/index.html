@@ -1272,11 +1272,11 @@ async function loadTransfers(){
       '<td class="muted">'+(t.created_at?t.created_at.toString().slice(0,10):'')+'</td>'+
       '<td>'+(currentRole==='admin'&&t.status==='Новая'?
         '<div style="display:flex;gap:5px">'+
-        '<button class="btn-icon success" onclick="updateTransfer('+t.id+','Подтверждена')">&#10003; Подтвердить</button>'+
-        '<button class="btn-icon" onclick="updateTransfer('+t.id+','Отклонена')" style="color:var(--accent)">&#10005; Отклонить</button>'+
+        '<button class="btn-icon success" onclick="updateTransfer('+t.id+',\'Подтверждена\')">&#10003; Подтвердить</button>'+
+        '<button class="btn-icon" onclick="updateTransfer('+t.id+',\'Отклонена\')" style="color:var(--accent)">&#10005; Отклонить</button>'+
         '</div>':
         currentRole==='admin'&&t.status==='Подтверждена'?
-        '<button class="btn-icon success" onclick="updateTransfer('+t.id+','Выполнена')">&#9654; Выполнена</button>':
+        '<button class="btn-icon success" onclick="updateTransfer('+t.id+',\'Выполнена\')">&#9654; Выполнена</button>':
         '—')+'</td>'+
       '</tr>';
   }).join('');
