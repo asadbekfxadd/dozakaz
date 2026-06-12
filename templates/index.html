@@ -1020,8 +1020,8 @@ td.muted{color:var(--text2)}
               <select id="schlopka-filter-status" onchange="filterSchlopka()">
                 <option value="">Все статусы</option>
                 <option value="Не собран">Не собран</option>
+                <option value="В работе">В работе</option>
                 <option value="Собран">Собран</option>
-                <option value="Передан">Передан</option>
               </select>
               <button class="btn-secondary" onclick="closeSchlopkaDetail()">← Назад</button>
             </div>
@@ -2080,15 +2080,15 @@ function renderSchlopkaItems(){
   // Stats
   var total = currentSchlopkaItems.length;
   var notReady = currentSchlopkaItems.filter(i=>i.status==='Не собран').length;
-  var ready = currentSchlopkaItems.filter(i=>i.status==='Собран').length;
-  var sent = currentSchlopkaItems.filter(i=>i.status==='Передан').length;
+  var ready = currentSchlopkaItems.filter(i=>i.status==='В работе').length;
+  var sent = currentSchlopkaItems.filter(i=>i.status==='Собран').length;
   document.getElementById('schlopka-detail-stats').textContent = 'Всего: '+total+' позиций';
   document.getElementById('schlopka-stats-cards').innerHTML =
     '<div style="background:var(--accent2);border:1px solid rgba(255,23,68,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--accent)">'+notReady+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Не собран</div></div>'+
-    '<div style="background:var(--amber2);border:1px solid rgba(255,171,0,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--amber)">'+ready+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Собран</div></div>'+
+    '<div style="background:var(--amber2);border:1px solid rgba(255,171,0,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--amber)">'+ready+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">В работе</div></div>'+
     '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--green)">'+sent+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Передан</div></div>';
 
-  var statusColor = {'Не собран':'var(--accent)','Собран':'var(--amber)','Передан':'var(--green)'};
+  var statusColor = {'Не собран':'var(--accent)','В работе':'var(--amber)','Собран':'var(--green)'};
   document.getElementById('schlopka-items-tbody').innerHTML = items.map(item=>
     '<tr id="sitem-'+item.id+'">'+
     '<td style="font-weight:700;text-transform:uppercase">'+item.article+'</td>'+
@@ -2098,9 +2098,9 @@ function renderSchlopkaItems(){
     '<td style="font-weight:700;color:var(--accent)">'+item.qty+'</td>'+
     '<td><span style="color:'+statusColor[item.status]+';font-weight:700;font-size:11px;text-transform:uppercase">● '+item.status+'</span></td>'+
     '<td><div style="display:flex;gap:4px">'+
-    (item.status!=='Собран'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+',\'Собран\')" style="font-size:11px;padding:4px 10px">&#10003; Собран</button>':'')+
-    (item.status!=='Передан'?'<button class="btn-icon success" onclick="setSchlopkaStatus('+item.id+',\'Передан\')" style="font-size:11px;padding:4px 10px">&#8594; Передан</button>':'')+
-    (item.status!=='\u041d\u0435 \u0441\u043e\u0431\u0440\u0430\u043d'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+',\'\u041d\u0435 \u0441\u043e\u0431\u0440\u0430\u043d\')" style="font-size:11px;padding:4px 10px;color:var(--text3)">&#8635;</button>':'')+
+    (item.status==='Не собран'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+',\'В работе\')" style="font-size:11px;padding:4px 10px">&#9654; В работу</button>':'')+
+    (item.status==='В работе'?'<button class="btn-icon success" onclick="setSchlopkaStatus('+item.id+',\'Собран\')" style="font-size:11px;padding:4px 10px">&#10003; Собран</button>':'')+
+    (item.status!=='Не собран'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+',\'Не собран\')" style="font-size:11px;padding:4px 10px;color:var(--text3)">&#8635;</button>':'')+
     '</div></td>'+
     '</tr>'
   ).join('') || '<tr><td colspan="7"><div class="empty-state">Нет позиций</div></td></tr>';

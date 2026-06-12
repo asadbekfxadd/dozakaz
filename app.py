@@ -1565,7 +1565,7 @@ def get_schlopka_detail(sid):
 def update_schlopka_status(item_id):
     data = request.get_json()
     status = data.get('status')
-    if status not in ('Не собран', 'Собран', 'Передан'):
+    if status not in ('Не собран', 'В работе', 'Собран'):
         return jsonify({'error': 'Invalid status'}), 400
     conn = get_db(); cur = conn.cursor()
     cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE id=%s', (status, item_id))
