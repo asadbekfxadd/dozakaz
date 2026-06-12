@@ -1555,6 +1555,22 @@ def get_schlopka_detail(sid):
     cur.close(); conn.close()
     return jsonify({'session': dict(sess), 'items': [dict(i) for i in items]})
 
+@app.route('/api/schlopka/<int:sid>/bulk-status', methods=['PATCH'])
+@login_required
+def bulk_schlopka_status(sid):
+    data = request.get_json()
+    status = data.get('status')
+    branch = data.get('branch', '')
+    if status not in ('Не собран', 'В работе', 'Собран', 'Забрал'):
+        return jsonify({'error': 'Invalid status'}), 400
+    conn = get_db(); cur = conn.cursor()
+    if branch:
+        cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE session_id=%s AND branch=%s', (status, sid, branch))
+    else:
+        cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE session_id=%s', (status, sid))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
+
 @app.route('/api/schlopka/items/<int:item_id>/status', methods=['PATCH'])
 @login_required
 def update_schlopka_status(item_id):

@@ -2082,6 +2082,7 @@ async function openSchlopka(sid){
   if(!r.ok) return;
   var d = await r.json();
   currentSchlopkaItems = d.items;
+  currentSchlopkaSid = sid;
   document.getElementById('schlopka-detail-title').textContent = d.session.name;
   document.getElementById('schlopka-sessions').style.display='none';
   document.getElementById('schlopka-detail').style.display='block';
@@ -2151,6 +2152,25 @@ async function setSchlopkaStatus(itemId, status){
   if(idx>=0) currentSchlopkaItems[idx].status = d.status;
   renderSchlopkaItems();
   toast('Статус обновлён');
+}
+
+var currentSchlopkaSid = null;
+
+async function bulkStatus(status){
+  var branch = document.getElementById('schlopka-filter-branch').value;
+  var msg = branch ? 'Изменить статус всех позиций филиала "'+branch+'" на "'+status+'"?' : 'Изменить статус ВСЕХ позиций на "'+status+'"?';
+  if(!confirm(msg)) return;
+  var r = await fetch('/api/schlopka/'+currentSchlopkaSid+'/bulk-status', {
+    method:'PATCH', headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({status, branch})
+  });
+  if(r.ok){
+    currentSchlopkaItems.forEach(i=>{
+      if(!branch || i.branch===branch) i.status = status;
+    });
+    renderSchlopkaItems();
+    toast('Статус обновлён для всех позиций');
+  } else toast('Ошибка', true);
 }
 
 async function notifyWarehouse(sid){
