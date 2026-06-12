@@ -2034,7 +2034,7 @@ async function loadSchlopkaSessions(){
     return;
   }
   el.innerHTML = sessions.map(s=>
-    '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:border-color .15s" onclick="openSchlopka('+s.id+')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">'+
+    '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer" onclick="openSchlopka('+s.id+')">'+
     '<div>'+
     '<div style="font-weight:700;font-size:14px">'+s.name+'</div>'+
     '<div style="font-size:11px;color:var(--text3);margin-top:3px">'+new Date(s.created_at).toLocaleString('ru-RU')+(s.created_by?' · '+s.created_by:'')+'</div>'+
