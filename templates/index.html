@@ -2154,7 +2154,7 @@ function renderWarehouseView(){
         '</div>'+
         '<div style="display:flex;gap:10px;align-items:center">'+
         (allTaken?'<span style="color:var(--green);font-weight:700;font-size:13px">&#10003; Всё забрано</span>':
-        '<button class="btn-primary" style="padding:10px 20px;font-size:13px" onclick="bulkBranchTaken(''+b.branch+'')">&#9993; Забрал всё</button>')+
+        '<button class="btn-primary" style="padding:10px 20px;font-size:13px" onclick="bulkBranchTaken(\''+b.branch+'\')">&#9993; Забрал всё</button>')+
         '</div>'+
         '</div>';
     }).join('');
