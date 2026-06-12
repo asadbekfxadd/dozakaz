@@ -673,6 +673,10 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Конверсия
       </button>
+      <button class="nav-item admin-only" onclick="showPage('schlopka',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
+        Схлопка
+      </button>
       <button class="nav-item" onclick="showPage('recommendations',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         Рекомендации
@@ -982,6 +986,56 @@ td.muted{color:var(--text2)}
         </div>
         <div id="rec-grid" class="catalog-grid"></div>
         <div id="rec-cross-grid" class="catalog-grid" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- SCHLOPKA -->
+    <div id="page-schlopka" class="page">
+      <div class="topbar">
+        <div><div class="topbar-title">Схлопка</div><div class="topbar-sub">Сборка и отгрузка товаров по филиалам</div></div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <label style="cursor:pointer">
+            <input type="file" id="schlopka-file" accept=".xlsx" style="display:none" onchange="uploadSchlopka(this)">
+            <span class="btn-primary" onclick="document.getElementById('schlopka-file').click()">&#8593; Загрузить схлопку</span>
+          </label>
+        </div>
+      </div>
+      <div class="content">
+        <!-- Sessions list -->
+        <div id="schlopka-sessions" style="margin-bottom:24px">
+          <div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;margin-bottom:12px;font-weight:700">Загруженные схлопки</div>
+          <div id="schlopka-sessions-list"></div>
+        </div>
+        <!-- Detail view -->
+        <div id="schlopka-detail" style="display:none">
+          <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px;flex-wrap:wrap;gap:10px">
+            <div>
+              <div style="font-size:16px;font-weight:700" id="schlopka-detail-title"></div>
+              <div style="font-size:11px;color:var(--text3);margin-top:2px" id="schlopka-detail-stats"></div>
+            </div>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <select id="schlopka-filter-branch" onchange="filterSchlopka()">
+                <option value="">Все филиалы</option>
+              </select>
+              <select id="schlopka-filter-status" onchange="filterSchlopka()">
+                <option value="">Все статусы</option>
+                <option value="Не собран">Не собран</option>
+                <option value="Собран">Собран</option>
+                <option value="Передан">Передан</option>
+              </select>
+              <button class="btn-secondary" onclick="closeSchlopkaDetail()">← Назад</button>
+            </div>
+          </div>
+          <!-- Stats cards -->
+          <div id="schlopka-stats-cards" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+          <!-- Items table -->
+          <div class="orders-wrap">
+            <table>
+              <thead><tr><th>Артикул</th><th>Название</th><th>Размер</th><th>Филиал</th><th>Кол-во</th><th>Статус</th><th>Действия</th></tr></thead>
+              <tbody id="schlopka-items-tbody"></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1718,6 +1772,7 @@ function showPage(name,btn){
   if(name==='topsales')loadTopSales();
   if(name==='recommendations')loadRecommendations();
   if(name==='transfers')loadTransfers();
+  if(name==='schlopka')loadSchlopkaSessions();
 }
 
 async function loadTransfers(){
@@ -1951,6 +2006,127 @@ async function loadCrossRecs(){
       '<button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="event.stopPropagation();openModal('+itemJson+')">+ Заказать</button>'+
       '</div></div>';
   }).join('');
+}
+
+// ===== SCHLOPKA =====
+var currentSchlopkaItems = [];
+
+async function uploadSchlopka(inp){
+  var file = inp.files[0]; if(!file) return;
+  var fd = new FormData(); fd.append('file', file);
+  toast('Загружаю схлопку...');
+  var r = await fetch('/api/schlopka/upload', {method:'POST', body:fd});
+  var d = await r.json();
+  if(!r.ok){toast(d.error||'Ошибка', true); return;}
+  toast('Загружено '+d.count+' позиций');
+  inp.value='';
+  loadSchlopkaSessions();
+  openSchlopka(d.session_id);
+}
+
+async function loadSchlopkaSessions(){
+  var r = await fetch('/api/schlopka');
+  if(!r.ok) return;
+  var sessions = await r.json();
+  var el = document.getElementById('schlopka-sessions-list');
+  if(!sessions.length){
+    el.innerHTML='<div style="color:var(--text3);padding:20px">Нет загруженных схлопок</div>';
+    return;
+  }
+  el.innerHTML = sessions.map(s=>
+    '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius);padding:14px 18px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;cursor:pointer;transition:border-color .15s" onclick="openSchlopka('+s.id+')" onmouseover="this.style.borderColor='var(--accent)'" onmouseout="this.style.borderColor='var(--border)'">'+
+    '<div>'+
+    '<div style="font-weight:700;font-size:14px">'+s.name+'</div>'+
+    '<div style="font-size:11px;color:var(--text3);margin-top:3px">'+new Date(s.created_at).toLocaleString('ru-RU')+(s.created_by?' · '+s.created_by:'')+'</div>'+
+    '</div>'+
+    '<div style="display:flex;gap:8px;align-items:center">'+
+    '<button class="btn-primary" style="padding:7px 16px" onclick="event.stopPropagation();openSchlopka('+s.id+')">&#128269; Открыть</button>'+
+    '<button class="btn-secondary" style="padding:7px 12px" onclick="event.stopPropagation();deleteSchlopka('+s.id+')">&#128465;</button>'+
+    '</div>'+
+    '</div>'
+  ).join('');
+}
+
+async function openSchlopka(sid){
+  var r = await fetch('/api/schlopka/'+sid);
+  if(!r.ok) return;
+  var d = await r.json();
+  currentSchlopkaItems = d.items;
+  document.getElementById('schlopka-detail-title').textContent = d.session.name;
+  document.getElementById('schlopka-sessions').style.display='none';
+  document.getElementById('schlopka-detail').style.display='block';
+
+  // Fill branch filter
+  var branches = [...new Set(d.items.map(i=>i.branch))].sort();
+  var branchSel = document.getElementById('schlopka-filter-branch');
+  branchSel.innerHTML = '<option value="">Все филиалы</option>'+branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+  if(currentBranch && branches.includes(currentBranch)) branchSel.value = currentBranch;
+
+  renderSchlopkaItems();
+}
+
+function filterSchlopka(){ renderSchlopkaItems(); }
+
+function renderSchlopkaItems(){
+  var branchFilter = document.getElementById('schlopka-filter-branch').value;
+  var statusFilter = document.getElementById('schlopka-filter-status').value;
+
+  var items = currentSchlopkaItems.filter(i=>{
+    if(branchFilter && i.branch !== branchFilter) return false;
+    if(statusFilter && i.status !== statusFilter) return false;
+    return true;
+  });
+
+  // Stats
+  var total = currentSchlopkaItems.length;
+  var notReady = currentSchlopkaItems.filter(i=>i.status==='Не собран').length;
+  var ready = currentSchlopkaItems.filter(i=>i.status==='Собран').length;
+  var sent = currentSchlopkaItems.filter(i=>i.status==='Передан').length;
+  document.getElementById('schlopka-detail-stats').textContent = 'Всего: '+total+' позиций';
+  document.getElementById('schlopka-stats-cards').innerHTML =
+    '<div style="background:var(--accent2);border:1px solid rgba(255,23,68,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--accent)">'+notReady+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Не собран</div></div>'+
+    '<div style="background:var(--amber2);border:1px solid rgba(255,171,0,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--amber)">'+ready+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Собран</div></div>'+
+    '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--green)">'+sent+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Передан</div></div>';
+
+  var statusColor = {'Не собран':'var(--accent)','Собран':'var(--amber)','Передан':'var(--green)'};
+  document.getElementById('schlopka-items-tbody').innerHTML = items.map(item=>
+    '<tr id="sitem-'+item.id+'">'+
+    '<td style="font-weight:700;text-transform:uppercase">'+item.article+'</td>'+
+    '<td style="color:var(--text2);font-size:12px">'+item.name+'</td>'+
+    '<td><span style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700">'+item.size+'</span></td>'+
+    '<td style="color:var(--text2)">'+item.branch+'</td>'+
+    '<td style="font-weight:700;color:var(--accent)">'+item.qty+'</td>'+
+    '<td><span style="color:'+statusColor[item.status]+';font-weight:700;font-size:11px;text-transform:uppercase">● '+item.status+'</span></td>'+
+    '<td><div style="display:flex;gap:4px">'+
+    (item.status!=='Собран'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+','Собран')" style="font-size:11px;padding:4px 10px">&#10003; Собран</button>':'')+
+    (item.status!=='Передан'?'<button class="btn-icon success" onclick="setSchlopkaStatus('+item.id+','Передан')" style="font-size:11px;padding:4px 10px">&#8594; Передан</button>':'')+
+    (item.status!=='Не собран'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+','Не собран')" style="font-size:11px;padding:4px 10px;color:var(--text3)">&#8635;</button>':'')+
+    '</div></td>'+
+    '</tr>'
+  ).join('') || '<tr><td colspan="7"><div class="empty-state">Нет позиций</div></td></tr>';
+}
+
+async function setSchlopkaStatus(itemId, status){
+  var r = await fetch('/api/schlopka/items/'+itemId+'/status', {method:'PATCH', headers:{'Content-Type':'application/json'}, body:JSON.stringify({status})});
+  if(!r.ok) return;
+  var d = await r.json();
+  // Update in local array
+  var idx = currentSchlopkaItems.findIndex(i=>i.id===itemId);
+  if(idx>=0) currentSchlopkaItems[idx].status = d.status;
+  renderSchlopkaItems();
+  toast('Статус обновлён');
+}
+
+async function deleteSchlopka(sid){
+  if(!confirm('Удалить эту схлопку?')) return;
+  var r = await fetch('/api/schlopka/'+sid, {method:'DELETE'});
+  if(r.ok){toast('Удалено');loadSchlopkaSessions();}
+}
+
+function closeSchlopkaDetail(){
+  document.getElementById('schlopka-detail').style.display='none';
+  document.getElementById('schlopka-sessions').style.display='block';
+  currentSchlopkaItems=[];
 }
 
 function downloadRecExcel(){

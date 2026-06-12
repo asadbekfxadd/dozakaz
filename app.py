@@ -124,6 +124,26 @@ def init_db():
         amount NUMERIC DEFAULT 0,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_sessions (
+        id SERIAL PRIMARY KEY,
+        name TEXT NOT NULL,
+        filename TEXT,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        created_by TEXT
+    )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_items (
+        id SERIAL PRIMARY KEY,
+        session_id INTEGER REFERENCES schlopka_sessions(id) ON DELETE CASCADE,
+        article TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT NOT NULL,
+        branch TEXT NOT NULL,
+        qty INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'Не собран',
+        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+    )''')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_session ON schlopka_items(session_id)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_branch ON schlopka_items(session_id, branch)')
     cur.execute('''CREATE TABLE IF NOT EXISTS transfers (
         id SERIAL PRIMARY KEY,
         from_branch TEXT NOT NULL,
@@ -1419,6 +1439,149 @@ def transfer_stats():
     new = cur.fetchone()['c']
     cur.close(); conn.close()
     return jsonify({'new': new})
+
+# ===== SCHLOPKA =====
+
+BRANCH_SHEET_MAP = {
+    'алай': 'ALAYSKIY', 'атлас': 'ATLAS CHIMGAN', 'еко ': 'ECO PARK',
+    'хай': 'HIGH TOWN PLAZA', 'медж': 'MAGIC CITY', 'малика': 'MALIKA',
+    'новза': 'NOVZA', 'сккопус': 'Scopus Mall', 'шота': 'Shota Rustavely',
+    'сити': 'TASHKENT CITY MALL', 'галерея': 'Yunusabad gallery'
+}
+
+@app.route('/api/schlopka', methods=['GET'])
+@login_required
+def get_schlopka_sessions():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT * FROM schlopka_sessions ORDER BY created_at DESC LIMIT 20')
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/schlopka/upload', methods=['POST'])
+@admin_required
+def upload_schlopka():
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Файл не найден'}), 400
+    try:
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+        items = []
+        # Parse each branch sheet
+        for sheet_name in wb.sheetnames:
+            if sheet_name == 'TDSheet':
+                continue
+            branch = BRANCH_SHEET_MAP.get(sheet_name.strip())
+            if not branch:
+                # Try to find branch name from header row
+                ws = wb[sheet_name]
+                rows = list(ws.iter_rows(values_only=True))
+                for row in rows[:6]:
+                    for cell in row:
+                        if cell and str(cell).strip() in BRANCHES:
+                            branch = str(cell).strip()
+                            break
+                    if branch: break
+            if not branch:
+                continue
+            ws = wb[sheet_name]
+            rows = list(ws.iter_rows(values_only=True))
+            # Find header row
+            header_idx = None
+            art_col = qty_col = name_col = None
+            for i, row in enumerate(rows):
+                rv = [str(c).strip() if c else '' for c in row]
+                if 'Артикул' in rv:
+                    header_idx = i
+                    for j, v in enumerate(rv):
+                        if v == 'Артикул': art_col = j
+                        if v == branch or (v and branch in v): qty_col = j
+                        if 'Характеристика' in v or 'Номенклатура' in v: name_col = j
+                    break
+            if header_idx is None or art_col is None:
+                continue
+            for row in rows[header_idx+1:]:
+                if not row or not row[art_col]: continue
+                art = str(row[art_col]).strip()
+                if not art or art in ('None','nan',''): continue
+                qty = 0
+                if qty_col is not None and row[qty_col]:
+                    try: qty = int(float(str(row[qty_col])))
+                    except: pass
+                if qty <= 0: continue
+                name_full = str(row[name_col]).strip() if name_col is not None and row[name_col] else ''
+                # Extract size from name
+                size = ''
+                if ', ' in name_full:
+                    parts = name_full.rsplit(', ', 1)
+                    name_full = parts[0].strip()
+                    size = parts[1].strip()
+                # Clean article from name
+                art_base = art.rstrip('A')
+                if name_full.startswith(art_base):
+                    name_full = name_full[len(art_base):].strip()
+                items.append((art, name_full, size, branch, qty))
+
+        if not items:
+            return jsonify({'error': 'Нет данных в файле'}), 400
+
+        conn = get_db(); cur = conn.cursor()
+        fname = secure_filename(f.filename) if f.filename else 'schlopka.xlsx'
+        cur.execute('INSERT INTO schlopka_sessions (name,filename,created_by) VALUES (%s,%s,%s) RETURNING id',
+                   (f.filename or 'Схлопка', fname, session.get('username')))
+        sid = cur.fetchone()['id']
+        cur.executemany(
+            'INSERT INTO schlopka_items (session_id,article,name,size,branch,qty) VALUES (%s,%s,%s,%s,%s,%s)',
+            [(sid, art, name, size, branch, qty) for art, name, size, branch, qty in items]
+        )
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({'ok': True, 'session_id': sid, 'count': len(items)})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+@app.route('/api/schlopka/<int:sid>', methods=['GET'])
+@login_required
+def get_schlopka_detail(sid):
+    branch = session.get('branch')
+    role = session.get('role')
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT * FROM schlopka_sessions WHERE id=%s', (sid,))
+    sess = cur.fetchone()
+    if not sess:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Не найдено'}), 404
+    q = 'SELECT * FROM schlopka_items WHERE session_id=%s'
+    params = [sid]
+    if role == 'user' and branch:
+        q += ' AND branch=%s'; params.append(branch)
+    q += ' ORDER BY branch, article, size'
+    cur.execute(q, params)
+    items = cur.fetchall()
+    cur.close(); conn.close()
+    return jsonify({'session': dict(sess), 'items': [dict(i) for i in items]})
+
+@app.route('/api/schlopka/items/<int:item_id>/status', methods=['PATCH'])
+@login_required
+def update_schlopka_status(item_id):
+    data = request.get_json()
+    status = data.get('status')
+    if status not in ('Не собран', 'Собран', 'Передан'):
+        return jsonify({'error': 'Invalid status'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE id=%s', (status, item_id))
+    conn.commit()
+    cur.execute('SELECT * FROM schlopka_items WHERE id=%s', (item_id,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return jsonify(dict(row))
+
+@app.route('/api/schlopka/<int:sid>', methods=['DELETE'])
+@admin_required
+def delete_schlopka(sid):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('DELETE FROM schlopka_sessions WHERE id=%s', (sid,))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
 
 def sync_catalog_from_yadisk():
     import urllib.request, urllib.parse, json as _json
