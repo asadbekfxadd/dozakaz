@@ -673,7 +673,7 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Конверсия
       </button>
-      <button class="nav-item admin-only" onclick="showPage('schlopka',this)">
+      <button class="nav-item" onclick="showPage('schlopka',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
         Схлопка
       </button>
@@ -1104,7 +1104,8 @@ td.muted{color:var(--text2)}
 
 <!-- MOBILE MORE MENU -->
 <div id="mobile-more-menu" style="display:none;position:fixed;bottom:56px;left:0;right:0;background:var(--bg2);border-top:1px solid var(--border);z-index:39;padding:8px">
-  <button class="nav-item" onclick="showPage('transfers',null);closeMobileMenu()" style="width:100%">&#8594; Перемещение</button>
+  <button class="nav-item" onclick="showPage('schlopka',null);closeMobileMenu()" style="width:100%">&#9989; Схлопка</button>
+  <button class="nav-item flagman-only" onclick="showPage('transfers',null);closeMobileMenu()" style="width:100%">&#8594; Перемещение</button>
   <button class="nav-item admin-only" onclick="showPage('topsales',null);closeMobileMenu()" style="width:100%">&#8599; Топ продаж</button>
   <button class="nav-item admin-only" onclick="showPage('kanban',null);closeMobileMenu()" style="width:100%">&#9634; Канбан</button>
   <button class="nav-item admin-only" onclick="showPage('analytics',null);closeMobileMenu()" style="width:100%">&#126; Аналитика</button>
