@@ -1495,17 +1495,29 @@ def upload_schlopka():
                     header_idx = i
                     for j, v in enumerate(rv):
                         if v == 'Артикул': art_col = j
-                        if v == branch or (v and branch in v): qty_col = j
-                        if 'Характеристика' in v or 'Номенклатура' in v: name_col = j
+                        if v == branch: qty_col = j  # exact match only
+                        if ('Характеристика' in v or ('Номенклатура' in v and 'Характеристика' in v)) and name_col is None: name_col = j
                     break
             if header_idx is None or art_col is None:
+                continue
+            # qty_col must be the exact branch column - verify it's numeric
+            # by checking first data row
+            if qty_col is not None:
+                for test_row in rows[header_idx+1:header_idx+20]:
+                    if test_row and test_row[art_col]:
+                        val = test_row[qty_col]
+                        if val is not None:
+                            try: float(str(val)); break
+                            except: qty_col = None; break
+                        break
+            if qty_col is None:
                 continue
             for row in rows[header_idx+1:]:
                 if not row or not row[art_col]: continue
                 art = str(row[art_col]).strip()
                 if not art or art in ('None','nan',''): continue
                 qty = 0
-                if qty_col is not None and row[qty_col]:
+                if row[qty_col] is not None and str(row[qty_col]) not in ('None','nan',''):
                     try: qty = int(float(str(row[qty_col])))
                     except: pass
                 if qty <= 0: continue
