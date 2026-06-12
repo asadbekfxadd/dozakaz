@@ -1028,7 +1028,7 @@ td.muted{color:var(--text2)}
             </div>
           </div>
           <!-- Bulk actions -->
-          <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <div class="bulk-actions-wrap" style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
             <button class="btn-secondary" style="padding:9px 16px;font-size:12px" onclick="bulkStatus('В работе')">&#9654; Все в работу</button>
             <button class="btn-primary" style="padding:9px 16px;font-size:12px" onclick="bulkStatus('Собран')">&#10003; Все собраны</button>
             <button class="btn-primary" style="padding:9px 16px;font-size:12px;background:var(--green)" onclick="bulkStatus('Забрал')">&#9993; Все забрал</button>
@@ -1037,9 +1037,7 @@ td.muted{color:var(--text2)}
           <!-- Stats cards -->
           <div id="schlopka-stats-cards" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
           <!-- Items table -->
-          <div class="orders-wrap">
-            <table>
-              <thead><tr><th>Артикул</th><th>Название</th><th>Размер</th><th>Откуда</th><th>Куда</th><th>Статус</th><th>Действия</th></tr></thead>
+          <div class="orders-wrap" id="schlopka-table-wrap">
               <tbody id="schlopka-items-tbody"></tbody>
             </table>
           </div>
@@ -2122,7 +2120,8 @@ function renderWarehouseView(){
   var notReadyBranches = branches.filter(b=>b.collected===0&&b.taken===0);
 
   // Hide table, show warehouse view
-  document.querySelector('.orders-wrap').style.display='none';
+  var schlopkaTable=document.getElementById('schlopka-table-wrap');if(schlopkaTable)schlopkaTable.style.display='none';
+  document.querySelector('.bulk-actions-wrap').style.display='none';
   document.getElementById('schlopka-stats-cards').innerHTML =
     '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 18px;text-align:center">'+
     '<div style="font-size:22px;font-weight:800;color:var(--green)">'+readyBranches.length+'</div>'+
@@ -2136,7 +2135,7 @@ function renderWarehouseView(){
   if(!warehouseEl){
     var div = document.createElement('div');
     div.id = 'schlopka-warehouse-view';
-    document.querySelector('.orders-wrap').parentNode.appendChild(div);
+    document.getElementById('schlopka-table-wrap').parentNode.appendChild(div);
     warehouseEl = div;
   }
   warehouseEl.style.display='block';
@@ -2282,8 +2281,9 @@ function closeSchlopkaDetail(){
   document.getElementById('schlopka-sessions').style.display='block';
   currentSchlopkaItems=[];
   // Restore table visibility
-  var wrap = document.querySelector('.orders-wrap');
+  var wrap = document.getElementById('schlopka-table-wrap');
   if(wrap) wrap.style.display='block';
+  var ba=document.querySelector('.bulk-actions-wrap');if(ba)ba.style.display='flex';
   var wv = document.getElementById('schlopka-warehouse-view');
   if(wv) wv.style.display='none';
 }
