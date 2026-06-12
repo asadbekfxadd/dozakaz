@@ -377,6 +377,7 @@ td.muted{color:var(--text2)}
 .conv-pct.good{color:var(--green)}.conv-pct.mid{color:var(--amber)}.conv-pct.bad{color:var(--accent)}
 
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0.4}}
+@keyframes spin{from{transform:rotate(0deg)}to{transform:rotate(360deg)}}
 .badge-blink{animation:blink 1s infinite}
 .transfer-new{border-left:3px solid var(--accent)}
 .login-wrap{display:flex;align-items:center;justify-content:center;min-height:100vh;background:#0a0a0a;position:relative;overflow:hidden}
@@ -683,6 +684,10 @@ td.muted{color:var(--text2)}
       <button class="nav-item" onclick="showPage('recommendations',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         Рекомендации
+      </button>
+      <button class="nav-item admin-only" onclick="showPage('ai',this)" style="position:relative">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/><circle cx="18" cy="6" r="3" fill="var(--accent)"/></svg>
+        AI Анализ<span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:var(--accent);color:#fff;font-size:8px;padding:1px 5px;border-radius:10px;font-weight:700">NEW</span>
       </button>
       <button class="nav-item" onclick="showPage('form',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
@@ -1063,6 +1068,42 @@ td.muted{color:var(--text2)}
               <tbody id="schlopka-items-tbody"></tbody>
             </table>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- AI ANALYSIS -->
+    <div id="page-ai" class="page">
+      <div class="topbar">
+        <div><div class="topbar-title">AI Бизнес-аналитик</div><div class="topbar-sub">Анализ остатков, продаж и рекомендации по перемещению товаров</div></div>
+      </div>
+      <div class="content">
+        <!-- Analysis buttons -->
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px">
+          <button class="btn-primary" onclick="runAI('full')" style="padding:12px 20px">🤖 Полный анализ бизнеса</button>
+          <button class="btn-secondary" onclick="runAI('movement')" style="padding:12px 20px">🔄 Оптимизация перемещений</button>
+          <button class="btn-secondary" onclick="runAI('reorder')" style="padding:12px 20px">📦 Что дозаказать</button>
+          <button class="btn-secondary" onclick="runAI('abc')" style="padding:12px 20px">📊 ABC анализ рекомендации</button>
+        </div>
+        <!-- Result -->
+        <div id="ai-loading" style="display:none;padding:40px;text-align:center">
+          <div style="font-size:24px;margin-bottom:12px;animation:spin 2s linear infinite;display:inline-block">⚙️</div>
+          <div style="color:var(--text2);font-size:14px">AI анализирует данные...</div>
+          <div style="color:var(--text3);font-size:12px;margin-top:6px" id="ai-status">Загружаю данные продаж...</div>
+        </div>
+        <div id="ai-result" style="display:none">
+          <div style="background:var(--bg2);border:1px solid rgba(255,23,68,.2);border-radius:var(--radius-lg);padding:24px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:16px">
+              <div style="font-size:11px;color:var(--accent);text-transform:uppercase;letter-spacing:1px;font-weight:700">🤖 AI Рекомендации</div>
+              <button class="btn-secondary" style="padding:6px 12px;font-size:11px" onclick="document.getElementById('ai-result').style.display='none'">✕</button>
+            </div>
+            <div id="ai-text" style="font-size:14px;line-height:1.8;color:var(--text);white-space:pre-wrap"></div>
+          </div>
+        </div>
+        <div id="ai-empty" style="padding:48px;text-align:center;color:var(--text3)">
+          <div style="font-size:48px;margin-bottom:16px">🤖</div>
+          <div style="font-size:16px;font-weight:700;margin-bottom:8px">AI Бизнес-аналитик</div>
+          <div style="font-size:13px">Нажмите кнопку выше для получения рекомендаций</div>
         </div>
       </div>
     </div>
@@ -1894,6 +1935,11 @@ function showPage(name,btn){
   if(name==='topsales')loadTopSales();
   if(name==='recommendations')loadRecommendations();
   if(name==='transfers')loadTransfers();
+  if(name==='ai'){
+    document.getElementById('ai-empty').style.display='block';
+    document.getElementById('ai-result').style.display='none';
+    document.getElementById('ai-loading').style.display='none';
+  }
   if(name==='schlopka'){
     loadSchlopkaSessions();
     if(currentRole==='warehouse'){
@@ -2566,6 +2612,117 @@ if('serviceWorker' in navigator){
   window.addEventListener('load', ()=>{
     navigator.serviceWorker.register('/sw.js').catch(()=>{});
   });
+}
+
+
+async function runAI(type){
+  document.getElementById('ai-empty').style.display='none';
+  document.getElementById('ai-result').style.display='none';
+  document.getElementById('ai-loading').style.display='block';
+
+  try {
+    // Gather data
+    document.getElementById('ai-status').textContent='Загружаю данные продаж...';
+    var salesR = await fetch('/api/sales/analytics?period=all&limit=50');
+    var salesD = salesR.ok ? await salesR.json() : {top_articles:[], by_branch:[], totals:{}};
+
+    document.getElementById('ai-status').textContent='Загружаю каталог...';
+    var catR = await fetch('/api/catalog?page=1&per_page=100');
+    var catD = catR.ok ? await catR.json() : [];
+
+    document.getElementById('ai-status').textContent='Загружаю рекомендации...';
+    var recR = await fetch('/api/recommendations?branch=TASHKENT CITY MALL');
+    var recD = recR.ok ? await recR.json() : [];
+
+    document.getElementById('ai-status').textContent='AI анализирует...';
+
+    var prompts = {
+      full: `Ты бизнес-аналитик сети спортивных магазинов LI-NING в Узбекистане (14 филиалов).
+
+Данные продаж (топ артикулы):
+${JSON.stringify(salesD.top_articles?.slice(0,20), null, 1)}
+
+Продажи по филиалам:
+${JSON.stringify(salesD.by_branch, null, 1)}
+
+Итого: продано ${salesD.totals?.total_qty||0} единиц, выручка ${salesD.totals?.total_amount||0} сум
+
+Товары с неполной размерной сеткой (первые 10):
+${JSON.stringify(recD.slice(0,10).map(r=>({article:r.article, missing:r.missing_sizes?.length, wms:r.total_wms})), null, 1)}
+
+Дай конкретные бизнес-рекомендации:
+1. Какие товары нужно срочно дозаказать (по данным продаж и остаткам)
+2. Как оптимально перераспределить товары между филиалами
+3. Какие филиалы недополучают товар который хорошо продаётся у других
+4. Топ-5 конкретных действий которые улучшат продажи в ближайший месяц
+Будь конкретным, используй цифры из данных.`,
+
+      movement: `Ты аналитик склада LI-NING Узбекистан.
+
+Продажи по филиалам:
+${JSON.stringify(salesD.by_branch, null, 1)}
+
+Топ продаваемые артикулы:
+${JSON.stringify(salesD.top_articles?.slice(0,15).map(a=>({article:a.article, qty:a.total_qty, category:a.category})), null, 1)}
+
+Проанализируй данные и дай конкретные рекомендации:
+1. Из каких филиалов нужно забрать товар (плохие продажи, большой остаток)
+2. В какие филиалы отправить (хорошие продажи, маленький остаток)
+3. Конкретные пары перемещений (откуда → куда, какой товар)
+Будь максимально конкретным.`,
+
+      reorder: `Аналитик закупок LI-NING Узбекистан.
+
+Топ продажи за всё время:
+${JSON.stringify(salesD.top_articles?.slice(0,25).map(a=>({article:a.article, sold:a.total_qty, category:a.category})), null, 1)}
+
+Товары с дефицитом размеров:
+${JSON.stringify(recD.slice(0,15).map(r=>({article:r.article, missing_sizes:r.missing_sizes?.length, on_wms:r.total_wms})), null, 1)}
+
+Дай список приоритетов дозаказа:
+1. ТОП-10 артикулов для срочного дозаказа (с обоснованием)
+2. Какие размеры чаще всего в дефиците
+3. По каким категориям (обувь/одежда/аксессуары) больше всего дефицита`,
+
+      abc: `ABC аналитик LI-NING Узбекистан.
+
+Топ артикулы по продажам:
+${JSON.stringify(salesD.top_articles?.slice(0,30).map((a,i)=>({rank:i+1, article:a.article, sold:a.total_qty, revenue:a.total_amount, category:a.category})), null, 1)}
+
+По категориям:
+${JSON.stringify(salesD.by_category, null, 1)}
+
+Проанализируй ABC распределение:
+1. Какие артикулы относятся к категории A (топ 20% по выручке)
+2. Какие категории товаров самые прибыльные
+3. На чём фокусироваться при закупках
+4. Какие товары можно сократить (категория C)`
+    };
+
+    var prompt = prompts[type] || prompts.full;
+
+    var response = await fetch('https://api.anthropic.com/v1/messages', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({
+        model: 'claude-sonnet-4-6',
+        max_tokens: 1000,
+        messages: [{role: 'user', content: prompt}]
+      })
+    });
+
+    var data = await response.json();
+    var text = data.content?.[0]?.text || 'Ошибка получения ответа';
+
+    document.getElementById('ai-loading').style.display='none';
+    document.getElementById('ai-result').style.display='block';
+    document.getElementById('ai-text').textContent = text;
+
+  } catch(e) {
+    document.getElementById('ai-loading').style.display='none';
+    document.getElementById('ai-empty').style.display='block';
+    toast('Ошибка AI анализа: ' + e.message, true);
+  }
 }
 
 init();
