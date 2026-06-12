@@ -136,6 +136,8 @@ def init_db():
     )''')
     cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_for_pickup BOOLEAN DEFAULT FALSE')
     cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_at TIMESTAMP')
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_items (
         id SERIAL PRIMARY KEY,
         session_id INTEGER REFERENCES schlopka_sessions(id) ON DELETE CASCADE,
@@ -1552,8 +1554,20 @@ def get_schlopka_detail(sid):
     q += ' ORDER BY branch, article, size'
     cur.execute(q, params)
     items = cur.fetchall()
+    # Branch summary for warehouse
+    cur.execute('''
+        SELECT branch,
+            COUNT(*) as total,
+            SUM(CASE WHEN branch_ready THEN 1 ELSE 0 END) as ready_count,
+            SUM(CASE WHEN branch_taken THEN 1 ELSE 0 END) as taken_count,
+            BOOL_AND(branch_ready) as all_ready,
+            BOOL_AND(branch_taken) as all_taken
+        FROM schlopka_items WHERE session_id=%s
+        GROUP BY branch ORDER BY branch
+    ''', (sid,))
+    branches = cur.fetchall()
     cur.close(); conn.close()
-    return jsonify({'session': dict(sess), 'items': [dict(i) for i in items]})
+    return jsonify({'session': dict(sess), 'items': [dict(i) for i in items], 'branches': [dict(b) for b in branches]})
 
 @app.route('/api/schlopka/<int:sid>/bulk-status', methods=['PATCH'])
 @login_required
@@ -1585,6 +1599,32 @@ def update_schlopka_status(item_id):
     row = cur.fetchone()
     cur.close(); conn.close()
     return jsonify(dict(row))
+
+@app.route('/api/schlopka/<int:sid>/branch-ready', methods=['POST'])
+@login_required
+def branch_ready(sid):
+    '''Branch marks their items as ready for pickup'''
+    data = request.get_json() or {}
+    branch = data.get('branch') or session.get('branch')
+    if not branch:
+        return jsonify({'error': 'Branch required'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE schlopka_items SET branch_ready=TRUE WHERE session_id=%s AND branch=%s', (sid, branch))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
+
+@app.route('/api/schlopka/<int:sid>/branch-taken', methods=['POST'])
+@login_required
+def branch_taken(sid):
+    '''Warehouse marks branch items as taken'''
+    data = request.get_json() or {}
+    branch = data.get('branch')
+    if not branch:
+        return jsonify({'error': 'Branch required'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE schlopka_items SET branch_taken=TRUE, status='Забрал' WHERE session_id=%s AND branch=%s', (sid, branch))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
 
 @app.route('/api/schlopka/<int:sid>/notify', methods=['POST'])
 @login_required

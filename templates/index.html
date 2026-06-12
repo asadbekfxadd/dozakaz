@@ -1024,7 +1024,8 @@ td.muted{color:var(--text2)}
                 <option value="Собран">Собран</option>
                 <option value="Забрал">Забрал</option>
               </select>
-              <button class="btn-secondary" onclick="closeSchlopkaDetail()">← Назад</button>
+              <button id="branch-ready-btn" class="btn-primary" style="padding:9px 16px;font-size:12px;background:var(--green);display:none" onclick="markBranchReady()">&#9989; Готово к отгрузке</button>
+            <button class="btn-secondary" onclick="closeSchlopkaDetail()">← Назад</button>
             </div>
           </div>
           <!-- Bulk actions -->
@@ -2082,11 +2083,14 @@ async function loadSchlopkaSessions(){
   }).join('');
 }
 
+var currentSchlopkaBranches = [];
+
 async function openSchlopka(sid){
   var r = await fetch('/api/schlopka/'+sid);
   if(!r.ok) return;
   var d = await r.json();
   currentSchlopkaItems = d.items;
+  currentSchlopkaBranches = d.branches || [];
   currentSchlopkaSid = sid;
   document.getElementById('schlopka-detail-title').textContent = d.session.name;
   document.getElementById('schlopka-sessions').style.display='none';
@@ -2101,6 +2105,9 @@ async function openSchlopka(sid){
   if(currentRole==='warehouse'){
     renderWarehouseView();
   } else {
+    // Show ready button for branch users
+    var readyBtn=document.getElementById('branch-ready-btn');
+    if(readyBtn) readyBtn.style.display=(currentRole==='user'||currentRole==='regional')?'block':'none';
     renderSchlopkaItems();
   }
 }
