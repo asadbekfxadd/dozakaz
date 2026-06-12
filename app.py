@@ -1788,6 +1788,66 @@ def sync_now():
     ok = sync_catalog_from_yadisk()
     return jsonify({'ok': ok, 'last_sync': _last_sync})
 
+@app.route('/api/catalog/dead-stock')
+@login_required
+def dead_stock():
+    '''Items on WMS with no sales in last 90 days'''
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('''
+        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               MIN(c.season) as season, MIN(c.category) as category,
+               SUM(c.wms_stock) as total_wms,
+               MAX(c.sold) as total_sold,
+               COALESCE(MAX(s.last_sale), NULL) as last_sale,
+               COALESCE(SUM(s.qty_90), 0) as qty_90days
+        FROM catalog c
+        LEFT JOIN (
+            SELECT article,
+                   MAX(sale_date) as last_sale,
+                   SUM(CASE WHEN sale_date >= CURRENT_DATE - INTERVAL '90 days' THEN qty ELSE 0 END) as qty_90
+            FROM sales GROUP BY article
+        ) s ON s.article = c.article OR s.article = c.article || 'A' OR s.article || 'A' = c.article
+        WHERE c.wms_stock > 0
+        GROUP BY c.article
+        HAVING SUM(c.wms_stock) > 0
+        AND COALESCE(SUM(s.qty_90), 0) = 0
+        ORDER BY SUM(c.wms_stock) DESC
+        LIMIT 100
+    ''')
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return jsonify([dict(r) for r in rows])
+
+@app.route('/api/ai/analyze', methods=['POST'])
+@login_required
+def ai_analyze():
+    import urllib.request, json as _json
+    data = request.get_json()
+    prompt = data.get('prompt', '')
+    if not prompt:
+        return jsonify({'error': 'No prompt'}), 400
+    try:
+        payload = _json.dumps({
+            'model': 'claude-sonnet-4-6',
+            'max_tokens': 1500,
+            'messages': [{'role': 'user', 'content': prompt}]
+        }).encode()
+        req = urllib.request.Request(
+            'https://api.anthropic.com/v1/messages',
+            data=payload,
+            headers={
+                'Content-Type': 'application/json',
+                'anthropic-version': '2023-06-01'
+            },
+            method='POST'
+        )
+        with urllib.request.urlopen(req, timeout=30) as r:
+            result = _json.loads(r.read())
+        text = result.get('content', [{}])[0].get('text', 'Нет ответа')
+        return jsonify({'text': text})
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

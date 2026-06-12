@@ -685,7 +685,7 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         Рекомендации
       </button>
-      <button class="nav-item admin-only" onclick="showPage('ai',this)" style="position:relative">
+      <button class="nav-item" onclick="showPage('ai',this)" style="position:relative">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2a10 10 0 1 0 10 10"/><path d="M12 6v6l4 2"/><circle cx="18" cy="6" r="3" fill="var(--accent)"/></svg>
         AI Анализ<span style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:var(--accent);color:#fff;font-size:8px;padding:1px 5px;border-radius:10px;font-weight:700">NEW</span>
       </button>
@@ -1079,11 +1079,26 @@ td.muted{color:var(--text2)}
       </div>
       <div class="content">
         <!-- Analysis buttons -->
-        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:24px">
-          <button class="btn-primary" onclick="runAI('full')" style="padding:12px 20px">🤖 Полный анализ бизнеса</button>
-          <button class="btn-secondary" onclick="runAI('movement')" style="padding:12px 20px">🔄 Оптимизация перемещений</button>
+        <div style="display:flex;gap:10px;flex-wrap:wrap;margin-bottom:20px">
+          <button class="btn-primary" onclick="runAI('full')" style="padding:12px 20px">🤖 Полный анализ</button>
           <button class="btn-secondary" onclick="runAI('reorder')" style="padding:12px 20px">📦 Что дозаказать</button>
-          <button class="btn-secondary" onclick="runAI('abc')" style="padding:12px 20px">📊 ABC анализ рекомендации</button>
+          <button class="btn-secondary admin-only" onclick="runAI('movement')" style="padding:12px 20px">🔄 Перемещения</button>
+          <button class="btn-secondary admin-only" onclick="runAI('abc')" style="padding:12px 20px">📊 ABC анализ</button>
+          <button class="btn-secondary" onclick="loadDeadStock()" style="padding:12px 20px">💤 Без движения</button>
+        </div>
+        <!-- Dead stock section -->
+        <div id="dead-stock-wrap" style="display:none;margin-bottom:20px">
+          <div style="background:var(--bg2);border:1px solid var(--amber2);border-radius:var(--radius-lg);padding:20px">
+            <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:14px">
+              <div style="font-size:11px;color:var(--amber);text-transform:uppercase;letter-spacing:1px;font-weight:700">💤 Товары без движения (90+ дней)</div>
+              <button class="btn-secondary" style="padding:5px 10px;font-size:11px" onclick="document.getElementById('dead-stock-wrap').style.display='none'">✕</button>
+            </div>
+            <div id="dead-stock-stats" style="display:flex;gap:10px;margin-bottom:14px;flex-wrap:wrap"></div>
+            <div class="orders-wrap"><table>
+              <thead><tr><th>Артикул</th><th>Название</th><th>Категория</th><th>Сезон</th><th>На WMS</th><th>Последняя продажа</th><th>ABC</th></tr></thead>
+              <tbody id="dead-stock-tbody"></tbody>
+            </table></div>
+          </div>
         </div>
         <!-- Result -->
         <div id="ai-loading" style="display:none;padding:40px;text-align:center">
@@ -2615,29 +2630,53 @@ if('serviceWorker' in navigator){
 }
 
 
+async function loadDeadStock(){
+  document.getElementById('dead-stock-wrap').style.display='block';
+  document.getElementById('dead-stock-tbody').innerHTML='<tr><td colspan="7" style="text-align:center;color:var(--text3);padding:20px">Загрузка...</td></tr>';
+  var r = await fetch('/api/catalog/dead-stock');
+  if(!r.ok){toast('Ошибка загрузки',true);return;}
+  var items = await r.json();
+  if(!items.length){
+    document.getElementById('dead-stock-tbody').innerHTML='<tr><td colspan="7"><div class="empty-state">Нет товаров без движения</div></td></tr>';
+    return;
+  }
+  var totalWms = items.reduce((s,i)=>s+parseInt(i.total_wms||0),0);
+  document.getElementById('dead-stock-stats').innerHTML =
+    '<div style="background:var(--amber2);border:1px solid rgba(255,171,0,.2);border-radius:8px;padding:10px 16px;text-align:center"><div style="font-size:20px;font-weight:800;color:var(--amber)">'+items.length+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Артикулов</div></div>'+
+    '<div style="background:var(--amber2);border:1px solid rgba(255,171,0,.2);border-radius:8px;padding:10px 16px;text-align:center"><div style="font-size:20px;font-weight:800;color:var(--amber)">'+totalWms+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Единиц на WMS</div></div>';
+  document.getElementById('dead-stock-tbody').innerHTML = items.map(i=>
+    '<tr>'+
+    '<td style="font-weight:700;text-transform:uppercase">'+i.article+'</td>'+
+    '<td style="font-size:12px;color:var(--text2)">'+i.name+'</td>'+
+    '<td style="font-size:12px;color:var(--text3)">'+i.category+'</td>'+
+    '<td style="font-size:12px;color:var(--text3)">'+i.season+'</td>'+
+    '<td style="font-weight:700;color:var(--amber)">'+i.total_wms+'</td>'+
+    '<td style="font-size:12px;color:var(--text3)">'+(i.last_sale?i.last_sale.toString().slice(0,10):'Никогда')+'</td>'+
+    '<td>'+abcBadge(i.abc)+'</td>'+
+    '</tr>'
+  ).join('');
+}
+
 async function runAI(type){
   document.getElementById('ai-empty').style.display='none';
   document.getElementById('ai-result').style.display='none';
   document.getElementById('ai-loading').style.display='block';
 
   try {
-    // Gather data
+    var myBranch = currentBranch || 'TASHKENT CITY MALL';
     document.getElementById('ai-status').textContent='Загружаю данные продаж...';
-    var salesR = await fetch('/api/sales/analytics?period=all&limit=50');
+    var salesParams = currentRole==='user'?'?branch='+encodeURIComponent(myBranch):'';
+    var salesR = await fetch('/api/sales/analytics?period=all&limit=50'+salesParams.replace('?','&'));
     var salesD = salesR.ok ? await salesR.json() : {top_articles:[], by_branch:[], totals:{}};
 
-    document.getElementById('ai-status').textContent='Загружаю каталог...';
-    var catR = await fetch('/api/catalog?page=1&per_page=100');
-    var catD = catR.ok ? await catR.json() : [];
-
     document.getElementById('ai-status').textContent='Загружаю рекомендации...';
-    var recR = await fetch('/api/recommendations?branch=TASHKENT CITY MALL');
+    var recR = await fetch('/api/recommendations?branch='+encodeURIComponent(myBranch));
     var recD = recR.ok ? await recR.json() : [];
 
     document.getElementById('ai-status').textContent='AI анализирует...';
 
     var prompts = {
-      full: `Ты бизнес-аналитик сети спортивных магазинов LI-NING в Узбекистане (14 филиалов).
+      full: `Ты бизнес-аналитик ${currentRole==='user'?'магазина '+myBranch:' сети'} LI-NING Узбекистан.
 
 Данные продаж (топ артикулы):
 ${JSON.stringify(salesD.top_articles?.slice(0,20), null, 1)}
@@ -2701,18 +2740,15 @@ ${JSON.stringify(salesD.by_category, null, 1)}
 
     var prompt = prompts[type] || prompts.full;
 
-    var response = await fetch('https://api.anthropic.com/v1/messages', {
+    document.getElementById('ai-status').textContent='Отправляю запрос AI...';
+    var response = await fetch('/api/ai/analyze', {
       method: 'POST',
       headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({
-        model: 'claude-sonnet-4-6',
-        max_tokens: 1000,
-        messages: [{role: 'user', content: prompt}]
-      })
+      body: JSON.stringify({prompt})
     });
 
     var data = await response.json();
-    var text = data.content?.[0]?.text || 'Ошибка получения ответа';
+    var text = data.text || data.error || 'Ошибка получения ответа';
 
     document.getElementById('ai-loading').style.display='none';
     document.getElementById('ai-result').style.display='block';
