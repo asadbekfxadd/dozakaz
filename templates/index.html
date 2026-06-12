@@ -157,9 +157,12 @@ thead th{
   letter-spacing:1px;color:var(--text3);background:var(--bg3);
   border-bottom:1px solid var(--border);text-align:left;font-weight:700;
 }
-tbody tr{border-bottom:1px solid var(--border);transition:background .1s}
+tbody tr{border-bottom:1px solid var(--border);transition:background .1s;border-left:3px solid transparent}
 tbody tr:last-child{border-bottom:none}
 tbody tr:hover{background:rgba(255,255,255,.02)}
+tbody tr.row-new{border-left-color:var(--accent)}
+tbody tr.row-work{border-left-color:var(--amber)}
+tbody tr.row-done{border-left-color:var(--green)}
 td{padding:13px 16px;font-size:13px;color:var(--text)}
 td.muted{color:var(--text2)}
 
@@ -725,6 +728,24 @@ td.muted{color:var(--text2)}
           <button class="btn-secondary" onclick="clearFilters()" style="padding:8px 14px">✕ Сброс</button>
           <button class="btn-secondary" onclick="loadOrders()" style="padding:8px 14px">↻</button>
         </div>
+        <!-- Charts row -->
+        <div id="dash-charts" class="admin-only" style="display:grid;grid-template-columns:1fr 280px;gap:14px;margin-bottom:20px">
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px;position:relative;overflow:hidden">
+            <div style="position:absolute;top:0;right:0;bottom:0;width:100px;background:repeating-linear-gradient(-45deg,transparent,transparent 8px,rgba(255,23,68,.02) 8px,rgba(255,23,68,.02) 10px);pointer-events:none"></div>
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px"><span style="width:3px;height:14px;background:linear-gradient(180deg,var(--accent),#ff4569);border-radius:2px;display:inline-block"></span>Заявки по филиалам</div>
+            <div style="position:relative;height:180px"><canvas id="dashBranchChart" role="img" aria-label="Заявки по филиалам">Статистика заявок по филиалам</canvas></div>
+            <div style="display:flex;gap:12px;margin-top:10px;font-size:10px;color:var(--text3)">
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:var(--accent);display:inline-block;border-radius:2px"></span>Новые</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:var(--amber);display:inline-block;border-radius:2px"></span>В работе</span>
+              <span style="display:flex;align-items:center;gap:4px"><span style="width:10px;height:3px;background:var(--green);display:inline-block;border-radius:2px"></span>Выполнены</span>
+            </div>
+          </div>
+          <div style="background:var(--bg2);border:1px solid var(--border);border-radius:var(--radius-lg);padding:18px">
+            <div style="font-size:10px;color:var(--text3);text-transform:uppercase;letter-spacing:1.5px;font-weight:700;margin-bottom:14px;display:flex;align-items:center;gap:8px"><span style="width:3px;height:14px;background:linear-gradient(180deg,var(--accent),#ff4569);border-radius:2px;display:inline-block"></span>По статусам</div>
+            <div style="position:relative;height:180px"><canvas id="dashStatusChart" role="img" aria-label="Заявки по статусам">Статистика по статусам</canvas></div>
+          </div>
+        </div>
+
         <!-- Desktop table -->
         <div class="orders-wrap desktop-orders">
           <table>
@@ -1170,6 +1191,7 @@ td.muted{color:var(--text2)}
 <div class="toast" id="toast"><span id="toast-msg"></span></div>
 
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.js"></script>
 <script>
 var selectedFile=null,dragId=null,currentRole=null,currentBranch=null;
 var macData=null,onecData=null;
@@ -1265,14 +1287,98 @@ function clearFilters(){
   loadOrders();
 }
 
+function animateNum(el, target){
+  var start = parseInt(el.textContent)||0;
+  var steps = 20; var step = 0;
+  var timer = setInterval(()=>{
+    step++;
+    el.textContent = Math.round(start + (target-start)*step/steps);
+    if(step>=steps){clearInterval(timer);el.textContent=target;}
+  }, 20);
+}
+
+var _dashBranchChart = null;
+var _dashStatusChart = null;
+
 async function loadStats(){
   var r=await fetch('/api/stats');if(!r.ok)return;
   var d=await r.json();
-  document.getElementById('s-total').textContent=d.total;
-  document.getElementById('s-new').textContent=d.new;
-  document.getElementById('s-work').textContent=d.in_progress;
-  document.getElementById('s-done').textContent=d.done;
+  animateNum(document.getElementById('s-total'), d.total);
+  animateNum(document.getElementById('s-new'), d.new);
+  animateNum(document.getElementById('s-work'), d.in_progress);
+  animateNum(document.getElementById('s-done'), d.done);
   document.getElementById('nav-badge').textContent=d.total;
+  if(currentRole==='admin') updateDashCharts(d);
+}
+
+function updateDashCharts(stats){
+  var gridColor = 'rgba(255,255,255,0.04)';
+  var tickColor = '#555';
+
+  // Branch chart - needs orders data
+  fetch('/api/orders').then(r=>r.json()).then(orders=>{
+    var branches = {};
+    orders.forEach(o=>{
+      if(!branches[o.branch]) branches[o.branch]={new:0,work:0,done:0};
+      if(o.status==='Новая') branches[o.branch].new++;
+      else if(o.status==='В работе') branches[o.branch].work++;
+      else branches[o.branch].done++;
+    });
+    var labels = Object.keys(branches).slice(0,7);
+    var newData = labels.map(b=>branches[b].new);
+    var workData = labels.map(b=>branches[b].work);
+    var doneData = labels.map(b=>branches[b].done);
+    var shortLabels = labels.map(b=>b.length>8?b.slice(0,8)+'…':b);
+
+    var ctx = document.getElementById('dashBranchChart');
+    if(!ctx) return;
+    if(_dashBranchChart) _dashBranchChart.destroy();
+    _dashBranchChart = new Chart(ctx, {
+      type:'bar',
+      data:{
+        labels:shortLabels,
+        datasets:[
+          {label:'Новые', data:newData, backgroundColor:'rgba(255,23,68,0.8)', borderRadius:4, borderSkipped:false},
+          {label:'В работе', data:workData, backgroundColor:'rgba(255,171,0,0.7)', borderRadius:4, borderSkipped:false},
+          {label:'Выполнены', data:doneData, backgroundColor:'rgba(0,230,118,0.6)', borderRadius:4, borderSkipped:false}
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{
+          x:{ticks:{color:tickColor,font:{size:9},autoSkip:false,maxRotation:30}, grid:{color:gridColor}, border:{display:false}},
+          y:{ticks:{color:tickColor,font:{size:9},stepSize:1}, grid:{color:gridColor}, border:{display:false}}
+        }
+      }
+    });
+
+    // Status donut chart
+    var ctx2 = document.getElementById('dashStatusChart');
+    if(!ctx2) return;
+    if(_dashStatusChart) _dashStatusChart.destroy();
+    _dashStatusChart = new Chart(ctx2, {
+      type:'doughnut',
+      data:{
+        labels:['Новые','В работе','Выполнены'],
+        datasets:[{
+          data:[stats.new, stats.in_progress, stats.done],
+          backgroundColor:['rgba(255,23,68,0.85)','rgba(255,171,0,0.8)','rgba(0,230,118,0.75)'],
+          borderColor:'#111', borderWidth:2, hoverOffset:6
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        cutout:'65%',
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            callbacks:{label:ctx=>' '+ctx.label+': '+ctx.parsed}
+          }
+        }
+      }
+    });
+  });
 }
 
 function statusBadge(s){
@@ -1299,7 +1405,7 @@ async function loadOrders(){
   var orders=await r.json();
   var tbody=document.getElementById('orders-tbody');
   if(!orders.length){tbody.innerHTML='<tr><td colspan="8"><div class="empty-state">Заявок не найдено</div></td></tr>';return;}
-  tbody.innerHTML=orders.map(o=>'<tr><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">&#128206; '+(o.original_name.length>20?o.original_name.slice(0,18)+'...':o.original_name)+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">&#128229; Excel</a></td><td style="font-size:12px;color:var(--text2);max-width:160px"><span title="'+(o.note||'')+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.note&&o.note.trim()?o.note:'—')+'</span></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">&#9654; В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">&#10003; Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
+  tbody.innerHTML=orders.map(o=>'<tr class="'+(o.status==='Новая'?'row-new':o.status==='В работе'?'row-work':'row-done')+'"><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">&#128206; '+(o.original_name.length>20?o.original_name.slice(0,18)+'...':o.original_name)+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">&#128229; Excel</a></td><td style="font-size:12px;color:var(--text2);max-width:160px"><span title="'+(o.note||'')+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.note&&o.note.trim()?o.note:'—')+'</span></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">&#9654; В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">&#10003; Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
   loadStats();
 }
 
@@ -2444,7 +2550,7 @@ async function loadOrders(){
   if(!orders.length){
     tbody.innerHTML='<tr><td colspan="7"><div class="empty-state">Заявок не найдено</div></td></tr>';
   } else {
-    tbody.innerHTML=orders.map(o=>'<tr><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">📎 '+(o.original_name?.length>20?o.original_name.slice(0,18)+'…':o.original_name||'файл')+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">📥 Excel</a></td><td style="font-size:12px;color:var(--text2);max-width:160px"><span title="'+(o.note||'')+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.note&&o.note.trim()?o.note:'—')+'</span></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">▶ В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">✓ Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
+    tbody.innerHTML=orders.map(o=>'<tr class="'+(o.status==='Новая'?'row-new':o.status==='В работе'?'row-work':'row-done')+'"><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">📎 '+(o.original_name?.length>20?o.original_name.slice(0,18)+'…':o.original_name||'файл')+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">📥 Excel</a></td><td style="font-size:12px;color:var(--text2);max-width:160px"><span title="'+(o.note||'')+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.note&&o.note.trim()?o.note:'—')+'</span></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">▶ В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">✓ Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
   }
   // Mobile cards
   renderMobileOrders(orders);
