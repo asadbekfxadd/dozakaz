@@ -1833,11 +1833,15 @@ def ai_analyze():
             'max_tokens': 1500,
             'messages': [{'role': 'user', 'content': prompt}]
         }).encode()
+        api_key = os.environ.get('ANTHROPIC_API_KEY', '')
+        if not api_key:
+            return jsonify({'error': 'ANTHROPIC_API_KEY не настроен в Railway Variables'}), 500
         req = urllib.request.Request(
             'https://api.anthropic.com/v1/messages',
             data=payload,
             headers={
                 'Content-Type': 'application/json',
+                'x-api-key': api_key,
                 'anthropic-version': '2023-06-01'
             },
             method='POST'
