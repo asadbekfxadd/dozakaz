@@ -138,10 +138,12 @@ def init_db():
         name TEXT NOT NULL,
         size TEXT NOT NULL,
         branch TEXT NOT NULL,
-        qty INTEGER DEFAULT 0,
+        qty INTEGER DEFAULT 1,
+        note TEXT DEFAULT '',
         status TEXT DEFAULT 'Не собран',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    cur.execute('ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_session ON schlopka_items(session_id)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_branch ON schlopka_items(session_id, branch)')
     cur.execute('''CREATE TABLE IF NOT EXISTS transfers (
@@ -1459,7 +1461,7 @@ def get_schlopka_sessions():
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/schlopka/upload', methods=['POST'])
-@admin_required
+@login_required
 def upload_schlopka():
     f = request.files.get('file')
     if not f:
@@ -1467,72 +1469,39 @@ def upload_schlopka():
     try:
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         items = []
-        # Parse each branch sheet
         for sheet_name in wb.sheetnames:
-            if sheet_name == 'TDSheet':
-                continue
-            branch = BRANCH_SHEET_MAP.get(sheet_name.strip())
-            if not branch:
-                # Try to find branch name from header row
-                ws = wb[sheet_name]
-                rows = list(ws.iter_rows(values_only=True))
-                for row in rows[:6]:
-                    for cell in row:
-                        if cell and str(cell).strip() in BRANCHES:
-                            branch = str(cell).strip()
-                            break
-                    if branch: break
-            if not branch:
-                continue
+            # Sheet name = from_branch
+            from_branch = sheet_name.strip()
             ws = wb[sheet_name]
             rows = list(ws.iter_rows(values_only=True))
-            # Find header row
+            # Find header row with 'Артикул'
             header_idx = None
-            art_col = qty_col = name_col = None
-            for i, row in enumerate(rows):
+            for i, row in enumerate(rows[:5]):
                 rv = [str(c).strip() if c else '' for c in row]
                 if 'Артикул' in rv:
                     header_idx = i
-                    for j, v in enumerate(rv):
-                        if v == 'Артикул': art_col = j
-                        if v == branch: qty_col = j  # exact match only
-                        if ('Характеристика' in v or ('Номенклатура' in v and 'Характеристика' in v)) and name_col is None: name_col = j
                     break
-            if header_idx is None or art_col is None:
+            if header_idx is None:
                 continue
-            # qty_col must be the exact branch column - verify it's numeric
-            # by checking first data row
-            if qty_col is not None:
-                for test_row in rows[header_idx+1:header_idx+20]:
-                    if test_row and test_row[art_col]:
-                        val = test_row[qty_col]
-                        if val is not None:
-                            try: float(str(val)); break
-                            except: qty_col = None; break
-                        break
-            if qty_col is None:
-                continue
+            # Parse data rows
             for row in rows[header_idx+1:]:
-                if not row or not row[art_col]: continue
-                art = str(row[art_col]).strip()
+                if not row or not row[0]: continue
+                art = str(row[0]).strip()
                 if not art or art in ('None','nan',''): continue
-                qty = 0
-                if row[qty_col] is not None and str(row[qty_col]) not in ('None','nan',''):
-                    try: qty = int(float(str(row[qty_col])))
-                    except: pass
-                if qty <= 0: continue
-                name_full = str(row[name_col]).strip() if name_col is not None and row[name_col] else ''
+                name_full = str(row[1]).strip() if row[1] else ''
+                to_branch = str(row[2]).strip() if len(row) > 2 and row[2] else ''
+                if not to_branch or to_branch in ('None','nan',''): continue
                 # Extract size from name
                 size = ''
                 if ', ' in name_full:
                     parts = name_full.rsplit(', ', 1)
                     name_full = parts[0].strip()
                     size = parts[1].strip()
-                # Clean article from name
+                # Clean article prefix from name
                 art_base = art.rstrip('A')
                 if name_full.startswith(art_base):
                     name_full = name_full[len(art_base):].strip()
-                items.append((art, name_full, size, branch, qty))
+                items.append((art, name_full, size, from_branch, to_branch))
 
         if not items:
             return jsonify({'error': 'Нет данных в файле'}), 400
@@ -1542,9 +1511,10 @@ def upload_schlopka():
         cur.execute('INSERT INTO schlopka_sessions (name,filename,created_by) VALUES (%s,%s,%s) RETURNING id',
                    (f.filename or 'Схлопка', fname, session.get('username')))
         sid = cur.fetchone()['id']
+        # Store from_branch in branch col, to_branch in note col
         cur.executemany(
-            'INSERT INTO schlopka_items (session_id,article,name,size,branch,qty) VALUES (%s,%s,%s,%s,%s,%s)',
-            [(sid, art, name, size, branch, qty) for art, name, size, branch, qty in items]
+            'INSERT INTO schlopka_items (session_id,article,name,size,branch,qty,note) VALUES (%s,%s,%s,%s,%s,%s,%s)',
+            [(sid, art, name, size, from_branch, 1, to_branch) for art, name, size, from_branch, to_branch in items]
         )
         conn.commit(); cur.close(); conn.close()
         return jsonify({'ok': True, 'session_id': sid, 'count': len(items)})

@@ -1031,7 +1031,7 @@ td.muted{color:var(--text2)}
           <!-- Items table -->
           <div class="orders-wrap">
             <table>
-              <thead><tr><th>Артикул</th><th>Название</th><th>Размер</th><th>Филиал</th><th>Кол-во</th><th>Статус</th><th>Действия</th></tr></thead>
+              <thead><tr><th>Артикул</th><th>Название</th><th>Размер</th><th>Откуда</th><th>Куда</th><th>Статус</th><th>Действия</th></tr></thead>
               <tbody id="schlopka-items-tbody"></tbody>
             </table>
           </div>
@@ -2095,8 +2095,8 @@ function renderSchlopkaItems(){
     '<td style="font-weight:700;text-transform:uppercase">'+item.article+'</td>'+
     '<td style="color:var(--text2);font-size:12px">'+item.name+'</td>'+
     '<td><span style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700">'+item.size+'</span></td>'+
-    '<td style="color:var(--text2)">'+item.branch+'</td>'+
-    '<td style="font-weight:700;color:var(--accent)">'+item.qty+'</td>'+
+    '<td style="color:var(--text2);font-size:12px">'+item.branch+'</td>'+
+    '<td style="color:var(--green);font-size:12px;font-weight:600">'+(item.note||'—')+'</td>'+
     '<td><span style="color:'+statusColor[item.status]+';font-weight:700;font-size:11px;text-transform:uppercase">● '+item.status+'</span></td>'+
     '<td><div style="display:flex;gap:4px">'+
     (item.status==='Не собран'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+',\'В работе\')" style="font-size:11px;padding:4px 10px">&#9654; В работу</button>':'')+
