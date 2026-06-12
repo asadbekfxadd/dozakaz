@@ -1578,6 +1578,20 @@ async function loadCatalog(){
   document.getElementById('cat-count').textContent=items.length+' позиций';
   if(!items.length){grid.innerHTML='';empty.style.display='block';return;}
   empty.style.display='none';
+  // For branch users: sort by urgency (A/B with low branch stock first)
+  if(currentRole==='user' && currentBranch){
+    items.sort((a,b)=>{
+      var aAbc = a.abc==='A'?0:a.abc==='B'?1:2;
+      var bAbc = b.abc==='A'?0:b.abc==='B'?1:2;
+      var aBranchTotal = a.sizes.reduce((s,sz)=>s+(sz.branch||0),0);
+      var bBranchTotal = b.sizes.reduce((s,sz)=>s+(sz.branch||0),0);
+      // A/B with 0 branch stock = most urgent
+      var aUrgent = aAbc<=1 && aBranchTotal===0 ? 0 : aAbc<=1 ? 1 : 2;
+      var bUrgent = bAbc<=1 && bBranchTotal===0 ? 0 : bAbc<=1 ? 1 : 2;
+      if(aUrgent!==bUrgent) return aUrgent-bUrgent;
+      return (bBranchTotal===0?1:0)-(aBranchTotal===0?1:0)||(b.sold-a.sold);
+    });
+  }
   grid.innerHTML=items.map(function(item){
     var inCart=cart[item.article];
     var cartQty=inCart?Object.values(inCart.sizes).reduce((s,v)=>s+v.qty,0):0;
@@ -1587,6 +1601,11 @@ async function loadCatalog(){
       +'<img src="" alt="" style="max-width:100%;max-height:140px;object-fit:contain;display:none" onerror="this.parentElement.style.display=\'none\'" onload="this.style.display=\'block\'" data-article="'+item.article+'">'
       +'<span style="color:var(--text3);font-size:11px">&#128247;</span></div>'
       +'<div class="catalog-card-header"><div>'
+      +(function(){
+        var branchTotal=item.sizes.reduce((s,sz)=>s+(sz.branch||0),0);
+        var urgent=currentRole==='user'&&(item.abc==='A'||item.abc==='B')&&branchTotal===0;
+        return urgent?'<div style="background:rgba(255,23,68,.1);border:1px solid rgba(255,23,68,.3);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--accent);font-weight:700;margin-bottom:6px;display:inline-block">⚡ НУЖНО ЗАКАЗАТЬ</div><br>':'';
+      })()
       +'<div class="catalog-article">'+item.article+' '+abcBadge(item.abc)+(item.season?'<span style="background:var(--bg3);color:var(--text2);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">'+item.season+'</span>':'')+'</div>'
       +'<div class="catalog-name">'+item.name+(item.category?'<span style="color:var(--text3);font-size:11px;margin-left:6px">'+item.category+'</span>':'')+'</div>'
       +'</div>'+(cartQty>0?'<span style="background:var(--accent);color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">'+cartQty+' в корзине</span>':'')+'</div>'

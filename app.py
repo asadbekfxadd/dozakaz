@@ -575,6 +575,7 @@ def get_catalog():
             CASE MIN(abc) WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END,
             MAX(sold) DESC,
             article
+        -- Branch users see low-stock items first (handled in post-processing)
         LIMIT {per_page} OFFSET {(page-1)*per_page}
     ''', params)
     articles = cur.fetchall()
