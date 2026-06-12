@@ -729,7 +729,7 @@ td.muted{color:var(--text2)}
         <div class="orders-wrap desktop-orders">
           <table>
             <thead><tr><th>Филиал</th><th>Ответственный</th><th>Дата</th><th>Файл</th><th>Комментарий</th><th>Статус</th><th>Приоритет</th><th id="th-actions">Действия</th></tr></thead>
-            <tbody id="orders-tbody"><tr><td colspan="7"><div class="empty-state">Загрузка...</div></td></tr></tbody>
+            <tbody id="orders-tbody"><tr><td colspan="8"><div class="empty-state">Загрузка...</div></td></tr></tbody>
           </table>
         </div>
         <!-- Mobile cards -->
@@ -1298,8 +1298,8 @@ async function loadOrders(){
   var r=await fetch('/api/orders?'+new URLSearchParams(params));if(!r.ok)return;
   var orders=await r.json();
   var tbody=document.getElementById('orders-tbody');
-  if(!orders.length){tbody.innerHTML='<tr><td colspan="7"><div class="empty-state">Заявок не найдено</div></td></tr>';return;}
-  tbody.innerHTML=orders.map(o=>'<tr><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">&#128206; '+(o.original_name.length>20?o.original_name.slice(0,18)+'...':o.original_name)+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">&#128229; Excel</a></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">&#9654; В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">&#10003; Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
+  if(!orders.length){tbody.innerHTML='<tr><td colspan="8"><div class="empty-state">Заявок не найдено</div></td></tr>';return;}
+  tbody.innerHTML=orders.map(o=>'<tr><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">&#128206; '+(o.original_name.length>20?o.original_name.slice(0,18)+'...':o.original_name)+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">&#128229; Excel</a></td><td style="font-size:12px;color:var(--text2);max-width:160px"><span title="'+(o.note||'')+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.note&&o.note!=='Заявка из каталога'?o.note:'—')+'</span></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">&#9654; В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">&#10003; Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
   loadStats();
 }
 
