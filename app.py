@@ -143,7 +143,7 @@ def init_db():
         status TEXT DEFAULT 'Не собран',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
-    cur.execute('ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''')
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''")
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_session ON schlopka_items(session_id)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_branch ON schlopka_items(session_id, branch)')
     cur.execute('''CREATE TABLE IF NOT EXISTS transfers (
