@@ -2664,14 +2664,23 @@ async function runAI(type){
 
   try {
     var myBranch = currentBranch || 'TASHKENT CITY MALL';
+    var now = new Date(); var month = now.getMonth()+1; var year = now.getFullYear();
+    var seasonCode,seasonName,relSeasons;
+    if(month>=3&&month<=5){seasonCode='Q1';seasonName='Весна';relSeasons=['Q1 '+year,'SMU'];}
+    else if(month>=6&&month<=8){seasonCode='Q2';seasonName='Лето';relSeasons=['Q2 '+year,'SMU'];}
+    else if(month>=9&&month<=11){seasonCode='Q3';seasonName='Осень';relSeasons=['Q3 '+year,'SMU'];}
+    else{seasonCode='Q4';seasonName='Зима';relSeasons=['Q4 '+year,'SMU'];}
+    var seasonCtx='Сейчас '+seasonName+' '+year+' ('+seasonCode+'). Актуальные сезоны: '+relSeasons.join(', ')+'. Фокусируйся только на этих сезонах.';
+
     document.getElementById('ai-status').textContent='Загружаю данные продаж...';
-    var salesParams = currentRole==='user'?'?branch='+encodeURIComponent(myBranch):'';
-    var salesR = await fetch('/api/sales/analytics?period=all&limit=50'+salesParams.replace('?','&'));
+    var salesParams = currentRole==='user'?'&branch='+encodeURIComponent(myBranch):'';
+    var salesR = await fetch('/api/sales/analytics?period=season&limit=50'+salesParams);
     var salesD = salesR.ok ? await salesR.json() : {top_articles:[], by_branch:[], totals:{}};
 
     document.getElementById('ai-status').textContent='Загружаю рекомендации...';
     var recR = await fetch('/api/recommendations?branch='+encodeURIComponent(myBranch));
     var recD = recR.ok ? await recR.json() : [];
+    var recFiltered = recD.filter(r=>!r.season||r.season.includes(seasonCode)||r.season==='SMU');
 
     document.getElementById('ai-status').textContent='AI анализирует...';
 
@@ -2686,8 +2695,10 @@ ${JSON.stringify(salesD.by_branch, null, 1)}
 
 Итого: продано ${salesD.totals?.total_qty||0} единиц, выручка ${salesD.totals?.total_amount||0} сум
 
-Товары с неполной размерной сеткой (первые 10):
-${JSON.stringify(recD.slice(0,10).map(r=>({article:r.article, missing:r.missing_sizes?.length, wms:r.total_wms})), null, 1)}
+${seasonCtx}
+
+Товары с дефицитом (актуальный сезон, первые 10):
+${JSON.stringify(recFiltered.slice(0,10).map(r=>({article:r.article, season:r.season, missing:r.missing_sizes?.length, wms:r.total_wms})), null, 1)}
 
 Дай конкретные бизнес-рекомендации:
 1. Какие товары нужно срочно дозаказать (по данным продаж и остаткам)
@@ -2715,8 +2726,10 @@ ${JSON.stringify(salesD.top_articles?.slice(0,15).map(a=>({article:a.article, qt
 Топ продажи за всё время:
 ${JSON.stringify(salesD.top_articles?.slice(0,25).map(a=>({article:a.article, sold:a.total_qty, category:a.category})), null, 1)}
 
-Товары с дефицитом размеров:
-${JSON.stringify(recD.slice(0,15).map(r=>({article:r.article, missing_sizes:r.missing_sizes?.length, on_wms:r.total_wms})), null, 1)}
+${seasonCtx}
+
+Товары с дефицитом (актуальный сезон):
+${JSON.stringify(recFiltered.slice(0,15).map(r=>({article:r.article, season:r.season, missing_sizes:r.missing_sizes?.length, on_wms:r.total_wms})), null, 1)}
 
 Дай список приоритетов дозаказа:
 1. ТОП-10 артикулов для срочного дозаказа (с обоснованием)

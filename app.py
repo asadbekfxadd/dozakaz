@@ -1808,12 +1808,13 @@ def dead_stock():
             FROM sales GROUP BY article
         ) s ON s.article = c.article OR s.article = c.article || 'A' OR s.article || 'A' = c.article
         WHERE c.wms_stock > 0
+        AND (c.season ILIKE %s OR c.season ILIKE %s OR c.season = '' OR c.season IS NULL)
         GROUP BY c.article
         HAVING SUM(c.wms_stock) > 0
         AND COALESCE(SUM(s.qty_90), 0) = 0
         ORDER BY SUM(c.wms_stock) DESC
         LIMIT 100
-    ''')
+    ''', (f'%{season_code}%', '%SMU%'))
     rows = cur.fetchall()
     cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
