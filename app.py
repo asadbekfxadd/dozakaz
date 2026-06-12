@@ -1819,6 +1819,117 @@ def dead_stock():
     cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/ai/movement-plan', methods=['POST'])
+@admin_required
+def ai_movement_plan():
+    '''Generate Excel movement plan based on sales vs stock analysis'''
+    conn = get_db(); cur = conn.cursor()
+    
+    # Get sales by article+branch
+    cur.execute('''
+        SELECT s.article, s.branch, SUM(s.qty) as sold,
+               COALESCE(bs.total_stock, 0) as stock
+        FROM sales s
+        LEFT JOIN (
+            SELECT article, branch, SUM(qty) as total_stock
+            FROM branch_stock GROUP BY article, branch
+        ) bs ON bs.article=s.article AND bs.branch=s.branch
+        WHERE s.sale_date >= CURRENT_DATE - INTERVAL '90 days'
+        GROUP BY s.article, s.branch, bs.total_stock
+        ORDER BY s.article, SUM(s.qty) DESC
+    ''')
+    sales_rows = cur.fetchall()
+    
+    # Get ABC A articles
+    cur.execute("SELECT DISTINCT article FROM catalog WHERE abc='A'")
+    a_articles = {r['article'] for r in cur.fetchall()}
+    cur.close(); conn.close()
+
+    # Build movement plan
+    by_article = {}
+    for r in sales_rows:
+        art = r['article']
+        if art not in by_article:
+            by_article[art] = []
+        by_article[art].append({'branch': r['branch'], 'sold': int(r['sold'] or 0), 'stock': int(r['stock'] or 0)})
+
+    movements = []
+    for art, branches in by_article.items():
+        if len(branches) < 2: continue
+        branches.sort(key=lambda x: x['sold'], reverse=True)
+        top = branches[0]  # best seller
+        for donor in branches[1:]:
+            gap = top['sold'] - donor['sold']
+            if gap >= 3 and donor['stock'] >= 1:
+                qty = min(donor['stock'], max(1, gap // 3))
+                movements.append({
+                    'article': art,
+                    'from_branch': donor['branch'],
+                    'to_branch': top['branch'],
+                    'donor_sold': donor['sold'],
+                    'receiver_sold': top['sold'],
+                    'donor_stock': donor['stock'],
+                    'qty': qty,
+                    'priority': 'A' if art in a_articles else 'B'
+                })
+
+    movements.sort(key=lambda x: (x['priority'], -(x['receiver_sold'] - x['donor_sold'])))
+
+    # Generate Excel
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'План перемещений'
+    thin = Side(style='thin')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    
+    # Title
+    ws.merge_cells('A1:H1')
+    t = ws['A1']
+    t.value = f'План перемещений товаров — {datetime.now().strftime("%d.%m.%Y")}'
+    t.font = Font(name='Arial', bold=True, size=12, color='FFFFFF')
+    t.fill = PatternFill('solid', fgColor='E31837')
+    t.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[1].height = 24
+
+    headers = ['№', 'Артикул', 'ABC', 'Откуда', 'Продаж (донор)', 'Куда', 'Продаж (получатель)', 'Остаток у донора', 'Кол-во для передачи']
+    widths = [4, 16, 5, 20, 14, 20, 18, 16, 16]
+    fills = {'A': 'FFF3CD', 'B': 'D4EDDA'}
+    
+    for j, (h, w) in enumerate(zip(headers, widths), 1):
+        c = ws.cell(row=2, column=j, value=h)
+        c.font = Font(name='Arial', bold=True, size=10, color='FFFFFF')
+        c.fill = PatternFill('solid', fgColor='E31837')
+        c.alignment = Alignment(horizontal='center', vertical='center')
+        c.border = border
+        ws.column_dimensions[c.column_letter].width = w
+    ws.row_dimensions[2].height = 18
+
+    for i, m in enumerate(movements[:200], 1):
+        row = i + 2
+        fill_color = fills.get(m['priority'], 'FFFFFF')
+        vals = [i, m['article'], m['priority'], m['from_branch'], m['donor_sold'],
+                m['to_branch'], m['receiver_sold'], m['donor_stock'], m['qty']]
+        for j, val in enumerate(vals, 1):
+            c = ws.cell(row=row, column=j, value=val)
+            c.font = Font(name='Arial', size=10)
+            c.border = border
+            c.fill = PatternFill('solid', fgColor=fill_color)
+            if j in (1,3,5,7,8,9):
+                c.alignment = Alignment(horizontal='center')
+        ws.row_dimensions[row].height = 15
+
+    # Summary sheet
+    ws2 = wb.create_sheet('Сводка')
+    ws2['A1'] = 'Итого перемещений:'; ws2['B1'] = len(movements)
+    ws2['A2'] = 'Категория A:'; ws2['B2'] = sum(1 for m in movements if m['priority']=='A')
+    ws2['A3'] = 'Уникальных артикулов:'; ws2['B3'] = len(set(m['article'] for m in movements))
+    
+    buf = io.BytesIO()
+    wb.save(buf); buf.seek(0)
+    fname = f'план_перемещений_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
 @app.route('/api/ai/analyze', methods=['POST'])
 @login_required
 def ai_analyze():
