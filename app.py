@@ -1819,12 +1819,15 @@ def dead_stock():
     cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
-@app.route('/api/ai/movement-plan', methods=['POST'])
-@admin_required
+@app.route('/api/ai/movement-plan', methods=['GET'])
+@login_required
 def ai_movement_plan():
     '''Generate Excel movement plan based on sales vs stock analysis'''
     conn = get_db(); cur = conn.cursor()
     
+    my_branch = session.get('branch')
+    role = session.get('role')
+
     # Get sales by article+branch
     cur.execute('''
         SELECT s.article, s.branch, SUM(s.qty) as sold,
@@ -1872,6 +1875,10 @@ def ai_movement_plan():
                     'qty': qty,
                     'priority': 'A' if art in a_articles else 'B'
                 })
+
+    # Filter by branch if not admin
+    if my_branch and role != 'admin':
+        movements = [m for m in movements if m['from_branch'] == my_branch or m['to_branch'] == my_branch]
 
     movements.sort(key=lambda x: (x['priority'], -(x['receiver_sold'] - x['donor_sold'])))
 
@@ -1926,7 +1933,8 @@ def ai_movement_plan():
     
     buf = io.BytesIO()
     wb.save(buf); buf.seek(0)
-    fname = f'план_перемещений_{datetime.now().strftime("%Y%m%d")}.xlsx'
+    branch_slug = (my_branch or 'все').replace(' ','_') if my_branch and role!='admin' else 'все_филиалы'
+    fname = f'план_перемещений_{branch_slug}_{datetime.now().strftime("%Y%m%d")}.xlsx'
     return send_file(buf, as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
 
