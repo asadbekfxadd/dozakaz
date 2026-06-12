@@ -1622,7 +1622,7 @@ def branch_taken(sid):
     if not branch:
         return jsonify({'error': 'Branch required'}), 400
     conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE schlopka_items SET branch_taken=TRUE, status='Забрал' WHERE session_id=%s AND branch=%s', (sid, branch))
+    cur.execute("UPDATE schlopka_items SET branch_taken=TRUE, status='Забрал' WHERE session_id=%s AND branch=%s", (sid, branch))
     conn.commit(); cur.close(); conn.close()
     return jsonify({'ok': True})
 
