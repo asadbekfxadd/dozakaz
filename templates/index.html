@@ -2100,7 +2100,87 @@ async function openSchlopka(sid){
   branchSel.innerHTML = '<option value="">Все филиалы</option>'+branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
   if(currentBranch && branches.includes(currentBranch)) branchSel.value = currentBranch;
 
-  renderSchlopkaItems();
+  if(currentRole==='warehouse'){
+    renderWarehouseView();
+  } else {
+    renderSchlopkaItems();
+  }
+}
+
+function renderWarehouseView(){
+  // Group items by branch
+  var byBranch = {};
+  currentSchlopkaItems.forEach(i=>{
+    if(!byBranch[i.branch]) byBranch[i.branch]={branch:i.branch,total:0,collected:0,taken:0};
+    byBranch[i.branch].total++;
+    if(i.status==='Собран') byBranch[i.branch].collected++;
+    if(i.status==='Забрал') byBranch[i.branch].taken++;
+  });
+
+  var branches = Object.values(byBranch).sort((a,b)=>b.collected-a.collected);
+  var readyBranches = branches.filter(b=>b.collected>0||b.taken>0);
+  var notReadyBranches = branches.filter(b=>b.collected===0&&b.taken===0);
+
+  // Hide table, show warehouse view
+  document.querySelector('.orders-wrap').style.display='none';
+  document.getElementById('schlopka-stats-cards').innerHTML =
+    '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 18px;text-align:center">'+
+    '<div style="font-size:22px;font-weight:800;color:var(--green)">'+readyBranches.length+'</div>'+
+    '<div style="font-size:10px;color:var(--text3);text-transform:uppercase">Готовы к забору</div></div>'+
+    '<div style="background:var(--accent2);border:1px solid rgba(255,23,68,.2);border-radius:8px;padding:12px 18px;text-align:center">'+
+    '<div style="font-size:22px;font-weight:800;color:var(--accent)">'+notReadyBranches.length+'</div>'+
+    '<div style="font-size:10px;color:var(--text3);text-transform:uppercase">Ещё собирают</div></div>';
+
+  // Render branch cards
+  var warehouseEl = document.getElementById('schlopka-warehouse-view');
+  if(!warehouseEl){
+    var div = document.createElement('div');
+    div.id = 'schlopka-warehouse-view';
+    document.querySelector('.orders-wrap').parentNode.appendChild(div);
+    warehouseEl = div;
+  }
+  warehouseEl.style.display='block';
+
+  var html = '';
+  if(readyBranches.length){
+    html += '<div style="font-size:11px;color:var(--green);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin-bottom:10px">&#9989; Готовы к забору</div>';
+    html += readyBranches.map(b=>{
+      var allTaken = b.taken === b.total;
+      var pct = Math.round((b.taken)/b.total*100);
+      return '<div style="background:var(--bg2);border:1px solid '+(allTaken?'rgba(0,230,118,.3)':'rgba(0,230,118,.15)')+';border-radius:10px;padding:18px 22px;margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:10px">'+
+        '<div>'+
+        '<div style="font-size:18px;font-weight:800;text-transform:uppercase;letter-spacing:.5px">'+b.branch+'</div>'+
+        '<div style="font-size:12px;color:var(--text2);margin-top:4px">'+b.collected+' шт собрано · '+b.taken+' шт забрано</div>'+
+        '</div>'+
+        '<div style="display:flex;gap:10px;align-items:center">'+
+        (allTaken?'<span style="color:var(--green);font-weight:700;font-size:13px">&#10003; Всё забрано</span>':
+        '<button class="btn-primary" style="padding:10px 20px;font-size:13px" onclick="bulkBranchTaken(''+b.branch+'')">&#9993; Забрал всё</button>')+
+        '</div>'+
+        '</div>';
+    }).join('');
+  }
+  if(notReadyBranches.length){
+    html += '<div style="font-size:11px;color:var(--text3);text-transform:uppercase;letter-spacing:1px;font-weight:700;margin:16px 0 10px">&#8987; Ещё собирают</div>';
+    html += notReadyBranches.map(b=>
+      '<div style="background:var(--bg2);border:1px solid var(--border);border-radius:10px;padding:16px 22px;margin-bottom:8px;display:flex;justify-content:space-between;align-items:center;opacity:.6">'+
+      '<div style="font-size:16px;font-weight:700;text-transform:uppercase">'+b.branch+'</div>'+
+      '<div style="font-size:12px;color:var(--text3)">'+b.total+' шт · собирается...</div>'+
+      '</div>'
+    ).join('');
+  }
+  warehouseEl.innerHTML = html;
+}
+
+async function bulkBranchTaken(branch){
+  var r = await fetch('/api/schlopka/'+currentSchlopkaSid+'/bulk-status',{
+    method:'PATCH',headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({status:'Забрал',branch})
+  });
+  if(r.ok){
+    currentSchlopkaItems.forEach(i=>{if(i.branch===branch)i.status='Забрал';});
+    renderWarehouseView();
+    toast('Отмечено: забрал из '+branch);
+  }
 }
 
 function filterSchlopka(){ renderSchlopkaItems(); }
@@ -2201,6 +2281,11 @@ function closeSchlopkaDetail(){
   document.getElementById('schlopka-detail').style.display='none';
   document.getElementById('schlopka-sessions').style.display='block';
   currentSchlopkaItems=[];
+  // Restore table visibility
+  var wrap = document.querySelector('.orders-wrap');
+  if(wrap) wrap.style.display='block';
+  var wv = document.getElementById('schlopka-warehouse-view');
+  if(wv) wv.style.display='none';
 }
 
 function downloadRecExcel(){
