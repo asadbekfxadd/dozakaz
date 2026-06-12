@@ -36,6 +36,7 @@ USERS = {
     'TASHKENT CITY MALL': {'password': 'LI-NING1', 'role': 'user', 'branch': 'TASHKENT CITY MALL', 'branches': None},
     'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
     'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
+    'SKLAD': {'password': 'sklad2026', 'role': 'warehouse', 'branch': 'WMS', 'branches': None},
 }
 
 BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
@@ -215,9 +216,9 @@ def login():
         return jsonify({'error': 'Неверный логин или пароль'}), 401
     session['username'] = username
     session['role'] = user['role']
-    session['branch'] = user['branch']
+    session['branch'] = user.get('branch')
     session['branches'] = user.get('branches')
-    return jsonify({'role': user['role'], 'branch': user['branch'], 'branches': user.get('branches'), 'username': username})
+    return jsonify({'role': user['role'], 'branch': user.get('branch'), 'branches': user.get('branches'), 'username': username})
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -1547,7 +1548,7 @@ def get_schlopka_detail(sid):
 def update_schlopka_status(item_id):
     data = request.get_json()
     status = data.get('status')
-    if status not in ('Не собран', 'В работе', 'Собран'):
+    if status not in ('Не собран', 'В работе', 'Собран', 'Забрал'):
         return jsonify({'error': 'Invalid status'}), 400
     conn = get_db(); cur = conn.cursor()
     cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE id=%s', (status, item_id))
