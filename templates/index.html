@@ -1596,7 +1596,9 @@ async function loadCatalog(){
     var inCart=cart[item.article];
     var cartQty=inCart?Object.values(inCart.sizes).reduce((s,v)=>s+v.qty,0):0;
     var itemJson=JSON.stringify(item).replace(/"/g,'&quot;');
-    return '<div class="catalog-card" onclick="openModal('+itemJson+')">'
+    var branchTotal=item.sizes.reduce((s,sz)=>s+(sz.branch||0),0);
+    var urgentCard=currentRole==='user'&&(item.abc==='A'||item.abc==='B')&&branchTotal===0&&item.total_wms>0;
+    return '<div class="catalog-card" onclick="openModal('+itemJson+')" style="'+(urgentCard?'border-color:rgba(255,23,68,.5);background:rgba(255,23,68,.03)':'')+'">'
       +'<div id="card-img-'+item.article+'" style="width:100%;height:140px;background:var(--bg3);border-radius:6px;margin-bottom:8px;overflow:hidden;display:flex;align-items:center;justify-content:center">'
       +'<img src="" alt="" style="max-width:100%;max-height:140px;object-fit:contain;display:none" onerror="this.parentElement.style.display=\'none\'" onload="this.style.display=\'block\'" data-article="'+item.article+'">'
       +'<span style="color:var(--text3);font-size:11px">&#128247;</span></div>'
@@ -1610,8 +1612,22 @@ async function loadCatalog(){
       +'<div class="catalog-name">'+item.name+(item.category?'<span style="color:var(--text3);font-size:11px;margin-left:6px">'+item.category+'</span>':'')+'</div>'
       +'</div>'+(cartQty>0?'<span style="background:var(--accent);color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">'+cartQty+' в корзине</span>':'')+'</div>'
       +'<div class="catalog-sizes">'+item.sizes.map(s=>'<div class="size-chip '+(s.wms>0?'has-wms':'')+' '+(inCart&&inCart.sizes[s.size]?'in-cart':'')+'"><div class="size-label">'+s.size+'</div><div class="size-wms">WMS: '+s.wms+'</div>'+(s.branch>0?'<div class="size-branch">У вас: '+s.branch+'</div>':'')+'</div>').join('')+'</div>'
-      +'<div class="catalog-card-footer"><span style="font-size:11px;color:var(--text3)">На складе: '+item.total_wms+' шт</span>'
-      +'<button class="btn-primary" style="padding:6px 14px;font-size:12px" onclick="event.stopPropagation();openModal('+itemJson+')">+ Заказать</button></div></div>';
+      +(function(){
+        var branchTotal=item.sizes.reduce((s,sz)=>s+(sz.branch||0),0);
+        var hasWms=item.total_wms>0;
+        var urgent=currentRole==='user'&&(item.abc==='A'||item.abc==='B')&&branchTotal===0&&hasWms;
+        var btnStyle=urgent
+          ?'padding:8px 18px;font-size:13px;font-weight:800;animation:blink 1.5s infinite;box-shadow:0 4px 16px rgba(255,23,68,.5);letter-spacing:1px'
+          :'padding:6px 14px;font-size:12px';
+        var btnText=urgent?'⚡ ЗАКАЗАТЬ СЕЙЧАС':'+ Заказать';
+        return '<div class="catalog-card-footer">'
+          +'<div><span style="font-size:11px;color:var(--text3)">WMS: '+item.total_wms+' шт</span>'
+          +(branchTotal>0?'<span style="font-size:11px;color:var(--amber);margin-left:8px">У вас: '+branchTotal+' шт</span>':'')
+          +(branchTotal===0&&hasWms?'<span style="font-size:11px;color:var(--accent);margin-left:8px;font-weight:700">У вас: 0</span>':'')
+          +'</div>'
+          +'<button class="btn-primary" style="'+btnStyle+'" onclick="event.stopPropagation();openModal('+itemJson+')">'+btnText+'</button>'
+          +'</div></div>';
+      })();
   }).join('');
   var pag=document.getElementById('catalog-pagination');
   pag.innerHTML=(catalogPage>1?'<button class="btn-secondary" onclick="catalogPage--;loadCatalog()" style="padding:8px 16px">← Назад</button>':'')
