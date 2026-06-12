@@ -130,8 +130,12 @@ def init_db():
         name TEXT NOT NULL,
         filename TEXT,
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        created_by TEXT
+        created_by TEXT,
+        ready_for_pickup BOOLEAN DEFAULT FALSE,
+        ready_at TIMESTAMP
     )''')
+    cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_for_pickup BOOLEAN DEFAULT FALSE')
+    cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_at TIMESTAMP')
     cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_items (
         id SERIAL PRIMARY KEY,
         session_id INTEGER REFERENCES schlopka_sessions(id) ON DELETE CASCADE,
@@ -1456,7 +1460,15 @@ BRANCH_SHEET_MAP = {
 @login_required
 def get_schlopka_sessions():
     conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT * FROM schlopka_sessions ORDER BY created_at DESC LIMIT 20')
+    cur.execute('''
+        SELECT s.*,
+            COUNT(CASE WHEN i.status='Собран' OR i.status='Забрал' THEN 1 END) as collected,
+            COUNT(i.id) as total_items
+        FROM schlopka_sessions s
+        LEFT JOIN schlopka_items i ON i.session_id = s.id
+        GROUP BY s.id
+        ORDER BY s.created_at DESC LIMIT 20
+    ''')
     rows = cur.fetchall()
     cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
@@ -1557,6 +1569,22 @@ def update_schlopka_status(item_id):
     row = cur.fetchone()
     cur.close(); conn.close()
     return jsonify(dict(row))
+
+@app.route('/api/schlopka/<int:sid>/notify', methods=['POST'])
+@login_required
+def notify_schlopka(sid):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE schlopka_sessions SET ready_for_pickup=TRUE, ready_at=NOW() WHERE id=%s', (sid,))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
+
+@app.route('/api/schlopka/<int:sid>/notify', methods=['DELETE'])
+@login_required
+def cancel_notify_schlopka(sid):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('UPDATE schlopka_sessions SET ready_for_pickup=FALSE, ready_at=NULL WHERE id=%s', (sid,))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
 
 @app.route('/api/schlopka/<int:sid>', methods=['DELETE'])
 @admin_required
