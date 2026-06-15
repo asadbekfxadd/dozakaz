@@ -1239,6 +1239,13 @@ td.muted{color:var(--text2)}
   <div class="modal">
     <div class="modal-title" id="modal-article"></div>
     <div class="modal-sub" id="modal-name"></div>
+    <!-- Modal tabs -->
+    <div style="display:flex;gap:6px;margin-bottom:16px;border-bottom:1px solid var(--border);padding-bottom:12px">
+      <button class="period-tab active" id="modal-tab-order" onclick="switchModalTab('order')" style="padding:6px 14px;font-size:11px">📦 Заказать</button>
+      <button class="period-tab" id="modal-tab-branches" onclick="switchModalTab('branches')" style="padding:6px 14px;font-size:11px">🏪 По филиалам</button>
+    </div>
+    <!-- Order tab -->
+    <div id="modal-content-order">
     <div id="modal-photos" style="display:none;margin-bottom:14px">
       <div id="modal-slider" style="position:relative;width:100%;height:240px;background:var(--bg3);border-radius:8px;overflow:hidden;display:flex;align-items:center;justify-content:center">
         <img id="modal-main-img" src="" style="max-width:100%;max-height:240px;object-fit:contain;display:none">
@@ -1252,6 +1259,11 @@ td.muted{color:var(--text2)}
     <div class="modal-actions">
       <button class="btn-secondary" onclick="closeModal()">Закрыть</button>
       <button class="btn-primary" onclick="addModalToCart()">Добавить в корзину</button>
+    </div>
+    </div><!-- end modal-content-order -->
+    <!-- Branches tab -->
+    <div id="modal-content-branches" style="display:none">
+      <div id="modal-branches-list" style="display:flex;flex-direction:column;gap:8px"></div>
     </div>
   </div>
 </div>
@@ -1710,7 +1722,59 @@ function showSlide(idx){
 function sliderPrev(){if(sliderPhotos.length)showSlide((sliderIdx-1+sliderPhotos.length)%sliderPhotos.length);}
 function sliderNext(){if(sliderPhotos.length)showSlide((sliderIdx+1)%sliderPhotos.length);}
 function abcLabel(a){if(a==='A')return 'A-товар';if(a==='B')return 'B-товар';return 'C-товар';}
-function closeModal(){document.getElementById('modal-overlay').classList.remove('open');currentModalItem=null;}
+function closeModal(){
+  document.getElementById('modal-overlay').classList.remove('open');
+  currentModalItem=null;
+  switchModalTab('order');
+}
+
+function switchModalTab(tab){
+  document.getElementById('modal-content-order').style.display = tab==='order'?'block':'none';
+  document.getElementById('modal-content-branches').style.display = tab==='branches'?'block':'none';
+  document.getElementById('modal-tab-order').classList.toggle('active', tab==='order');
+  document.getElementById('modal-tab-branches').classList.toggle('active', tab==='branches');
+  if(tab==='branches' && currentModalItem) loadModalBranches(currentModalItem.article);
+}
+
+async function loadModalBranches(article){
+  var el = document.getElementById('modal-branches-list');
+  el.innerHTML = '<div style="color:var(--text3);padding:16px;text-align:center">Загрузка...</div>';
+  var r = await fetch('/api/catalog/distribution/'+encodeURIComponent(article));
+  if(!r.ok){el.innerHTML='<div style="color:var(--text3)">Нет данных</div>';return;}
+  var branches = await r.json();
+  if(!branches.length){el.innerHTML='<div style="color:var(--text3);padding:16px;text-align:center">Нет остатков ни в одном филиале</div>';return;}
+  var maxStock = Math.max(...branches.map(b=>b.stock), 1);
+  var maxSold = Math.max(...branches.map(b=>b.sold_90), 1);
+  el.innerHTML = branches.map(b=>{
+    var canTransfer = (currentRole==='admin'||currentRole==='regional') && b.stock>0;
+    return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px">'+
+      '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
+      '<div style="font-size:13px;font-weight:700;text-transform:uppercase">'+b.branch+'</div>'+
+      (canTransfer?'<button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="quickTransfer(''+article+'',''+b.branch+'')">➡ Забрать</button>':'')+ 
+      '</div>'+
+      '<div style="display:flex;gap:16px;margin-bottom:8px">'+
+      '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--amber)">'+b.stock+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Остаток</div></div>'+
+      '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--green)">'+b.sold_90+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Продано (90 дн)</div></div>'+
+      '</div>'+
+      '<div style="display:flex;gap:4px;flex-direction:column">'+
+      '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--text3);width:50px">Остаток</span><div style="flex:1;background:var(--bg2);border-radius:2px;height:6px"><div style="height:100%;width:'+Math.round(b.stock/maxStock*100)+'%;background:var(--amber);border-radius:2px"></div></div></div>'+
+      '<div style="display:flex;align-items:center;gap:6px"><span style="font-size:10px;color:var(--text3);width:50px">Продажи</span><div style="flex:1;background:var(--bg2);border-radius:2px;height:6px"><div style="height:100%;width:'+Math.round(b.sold_90/maxSold*100)+'%;background:var(--green);border-radius:2px"></div></div></div>'+
+      '</div>'+
+      '</div>';
+  }).join('');
+}
+
+function quickTransfer(article, fromBranch){
+  closeModal();
+  showPage('transfers', null);
+  setTimeout(()=>{
+    document.getElementById('tf-article').value = article;
+    document.getElementById('tf-from').value = fromBranch;
+    document.getElementById('transfer-form-wrap').style.display='block';
+    document.getElementById('tf-article').focus();
+    toast('Заполните размер и количество');
+  }, 300);
+}
 
 function addModalToCart(){
   if(!currentModalItem)return;

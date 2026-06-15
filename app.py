@@ -627,6 +627,38 @@ def get_catalog():
         })
     return jsonify(result)
 
+@app.route('/api/catalog/distribution/<article>')
+@login_required
+def catalog_distribution(article):
+    '''Get stock and sales by branch for an article'''
+    conn = get_db(); cur = conn.cursor()
+    # Branch stock
+    cur.execute('''
+        SELECT branch, SUM(qty) as stock
+        FROM branch_stock WHERE article=%s OR article=%s
+        GROUP BY branch ORDER BY stock DESC
+    ''', (article, article.rstrip('A')))
+    stocks = {r['branch']: int(r['stock'] or 0) for r in cur.fetchall()}
+    # Sales by branch (90 days)
+    cur.execute('''
+        SELECT branch, SUM(qty) as sold
+        FROM sales WHERE (article=%s OR article=%s)
+        AND sale_date >= CURRENT_DATE - INTERVAL '90 days'
+        GROUP BY branch ORDER BY sold DESC
+    ''', (article, article.rstrip('A')))
+    sales = {r['branch']: int(r['sold'] or 0) for r in cur.fetchall()}
+    cur.close(); conn.close()
+    # Combine
+    all_branches = set(list(stocks.keys()) + list(sales.keys()))
+    result = []
+    for b in BRANCHES:
+        s = stocks.get(b, 0)
+        sold = sales.get(b, 0)
+        if s > 0 or sold > 0:
+            result.append({'branch': b, 'stock': s, 'sold_90': sold})
+    result.sort(key=lambda x: -x['stock'])
+    return jsonify(result)
+
 @app.route('/api/catalog/seasons')
 @login_required
 def get_seasons():
