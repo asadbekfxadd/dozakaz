@@ -778,6 +778,9 @@ td.muted{color:var(--text2)}
       </div>
       <div class="content">
         <div class="catalog-toolbar">
+          <select id="cat-branch-sel" style="display:none;min-width:180px" onchange="loadCatalog()">
+            <option value="">— все мои филиалы —</option>
+          </select>
           <input type="text" id="cat-search" placeholder="🔍 Артикул или название..." oninput="loadCatalog()" style="min-width:220px">
           <select id="cat-abc" onchange="loadCatalog()"><option value="">Все категории</option><option value="A">A — Топ товары</option><option value="B">B — Средние</option><option value="C">C — Остальные</option></select>
           <select id="cat-stock" onchange="loadCatalog()"><option value="">Любой остаток WMS</option><option value="yes">Есть на складе</option><option value="no">Нет на складе</option></select>
@@ -1350,6 +1353,12 @@ function showApp(d){
       sel.innerHTML='<option value="">— выбрать —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
       var cartBranchSel=document.getElementById('cart-branch-sel');
       if(cartBranchSel) cartBranchSel.innerHTML='<option value="">— выбрать филиал —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+      // Show branch selector in catalog
+      var catBranchSel=document.getElementById('cat-branch-sel');
+      if(catBranchSel){
+        catBranchSel.style.display='block';
+        catBranchSel.innerHTML='<option value="">— все мои филиалы —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+      }
     }
   }
   loadOrders();loadStats();
@@ -1582,7 +1591,13 @@ async function loadCatalog(){
   var season=document.getElementById('cat-season').value;
   var params={page:catalogPage};
   if(search)params.search=search;
-  if(currentBranch)params.branch=currentBranch;
+  // For regional: use selected branch from dropdown, or no branch (show all)
+  var catBranch = currentBranch;
+  if(currentRole==='regional'){
+    var catSel=document.getElementById('cat-branch-sel');
+    catBranch = catSel ? catSel.value : '';
+  }
+  if(catBranch)params.branch=catBranch;
   if(abc)params.abc=abc;
   if(stock)params.stock=stock;
   if(season)params.season=season;
