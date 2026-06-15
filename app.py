@@ -1,14 +1,10 @@
-from flask import Flask, request, jsonify, render_template, send_from_directory, send_file, session, Response
-import os, io, re
+from flask import Flask, request, jsonify, render_template, send_from_directory, send_file, session
+import sqlite3, os, io
 from datetime import datetime
 from werkzeug.utils import secure_filename
 from functools import wraps
 import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
-import psycopg2
-from psycopg2.extras import RealDictCursor
-from threading import Thread
-import time
 
 app = Flask(__name__)
 app.secret_key = 'dozakaz-secret-key-2026'
@@ -16,57 +12,38 @@ app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
 ALLOWED = {'.xlsx', '.xls', '.csv'}
-DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 USERS = {
-    'admin': {'password': '123456', 'role': 'admin', 'branch': None, 'branches': None},
-    'ANNA_V': {'password': 'region1', 'role': 'regional', 'branch': None, 'branches': ['HIGH TOWN PLAZA','MAGIC CITY','NOVZA','Scopus Mall']},
-    'ANNA_G': {'password': 'region2', 'role': 'regional', 'branch': None, 'branches': ['ATLAS CHIMGAN','ECO PARK','HIGH TOWN PLAZA','MALIKA','Shota Rustavely','Yunusabad gallery']},
-    'ALAYSKIY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ALAYSKIY', 'branches': None},
-    'ATLAS CHIMGAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ATLAS CHIMGAN', 'branches': None},
-    'ECO PARK': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ECO PARK', 'branches': None},
-    'Family park': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Family park', 'branches': None},
-    'HIGH TOWN PLAZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'HIGH TOWN PLAZA', 'branches': None},
-    'M. BARAKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'M. BARAKA', 'branches': None},
-    'MAGIC CITY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MAGIC CITY', 'branches': None},
-    'MALIKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MALIKA', 'branches': None},
-    'NOVZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'NOVZA', 'branches': None},
-    'Scopus Mall': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Scopus Mall', 'branches': None},
-    'Shota Rustavely': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Shota Rustavely', 'branches': None},
-    'TASHKENT CITY MALL': {'password': 'LI-NING1', 'role': 'user', 'branch': 'TASHKENT CITY MALL', 'branches': None},
-    'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
-    'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
-    'SKLAD': {'password': 'sklad2026', 'role': 'warehouse', 'branch': 'WMS', 'branches': None},
+    'admin': {'password': '123456', 'role': 'admin', 'branch': None},
+    'ALAYSKIY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ALAYSKIY'},
+    'ATLAS CHIMGAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ATLAS CHIMGAN'},
+    'ECO PARK': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ECO PARK'},
+    'Family park': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Family park'},
+    'HIGH TOWN PLAZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'HIGH TOWN PLAZA'},
+    'M. BARAKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'M. BARAKA'},
+    'MAGIC CITY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MAGIC CITY'},
+    'MALIKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MALIKA'},
+    'NOVZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'NOVZA'},
+    'Scopus Mall': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Scopus Mall'},
+    'Shota Rustavely': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Shota Rustavely'},
+    'TASHKENT CITY MALL': {'password': 'LI-NING1', 'role': 'user', 'branch': 'TASHKENT CITY MALL'},
+    'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN'},
+    'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery'},
 }
 
 BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
             'M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall',
             'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery']
 
-FLAGMANS = ['TASHKENT CITY MALL','ATLAS CHIMGAN','ALAYSKIY','Shota Rustavely']
-
-YADISK_TOKEN = os.environ.get('YADISK_TOKEN', '35a4110c9f5a4729ba8a54cf978276f4')
-YADISK_PUBLIC_KEY = 'https://disk.yandex.ru/d/uJxKSsp_PRLemQ'
-YADISK_FOLDER = '/06-White Background Pics'
-_photo_cache = {}
-_photo_url_cache = {}
-
-# Auto-sync config
-SYNC_TOKEN = os.environ.get('SYNC_YADISK_TOKEN', 'y0__wgBEMqV35IIGNuWAyCth5vyF4mF73xoNyGCf7QJ3fjdgKw2YKVk')
-SYNC_FOLDER = '/li-ning-sync/остатки'
-SYNC_FILENAME = 'остатки для сайта.xlsx'
-SYNC_INTERVAL_HOURS = 2
-_last_sync = None
-
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    return conn
+    db = sqlite3.connect('dozakaz.db')
+    db.row_factory = sqlite3.Row
+    return db
 
 def init_db():
-    conn = get_db()
-    cur = conn.cursor()
-    cur.execute('''CREATE TABLE IF NOT EXISTS orders (
-        id SERIAL PRIMARY KEY,
+    db = get_db()
+    db.execute('''CREATE TABLE IF NOT EXISTS orders (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         branch TEXT NOT NULL,
         responsible TEXT NOT NULL,
         date TEXT NOT NULL,
@@ -75,19 +52,20 @@ def init_db():
         filename TEXT,
         original_name TEXT,
         status TEXT DEFAULT 'Новая',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS order_items (
-        id SERIAL PRIMARY KEY,
-        order_id INTEGER REFERENCES orders(id),
+    db.execute('''CREATE TABLE IF NOT EXISTS order_items (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        order_id INTEGER,
         article TEXT,
         name TEXT,
         size TEXT,
         qty INTEGER,
-        wms_stock INTEGER DEFAULT 0
+        wms_stock INTEGER DEFAULT 0,
+        FOREIGN KEY(order_id) REFERENCES orders(id)
     )''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS catalog (
-        id SERIAL PRIMARY KEY,
+    db.execute('''CREATE TABLE IF NOT EXISTS catalog (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         article TEXT,
         name TEXT,
         size TEXT,
@@ -96,86 +74,34 @@ def init_db():
         sold INTEGER DEFAULT 0,
         season TEXT DEFAULT '',
         category TEXT DEFAULT '',
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS branch_stock (
-        id SERIAL PRIMARY KEY,
+    # Add columns if missing (migration)
+    try:
+        db.execute('ALTER TABLE catalog ADD COLUMN season TEXT DEFAULT ""')
+    except: pass
+    try:
+        db.execute('ALTER TABLE catalog ADD COLUMN category TEXT DEFAULT ""')
+    except: pass
+    db.execute('''CREATE TABLE IF NOT EXISTS branch_stock (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         article TEXT,
         size TEXT,
         branch TEXT,
         qty INTEGER DEFAULT 0
     )''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS top_products (
-        id SERIAL PRIMARY KEY,
+    db.execute('''CREATE TABLE IF NOT EXISTS top_products (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
         article TEXT,
         category TEXT,
         sold INTEGER,
         stock INTEGER,
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
     )''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS sales (
-        id SERIAL PRIMARY KEY,
-        season TEXT,
-        article TEXT,
-        category TEXT,
-        branch TEXT,
-        sale_date DATE,
-        qty INTEGER DEFAULT 1,
-        price NUMERIC DEFAULT 0,
-        amount NUMERIC DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_sessions (
-        id SERIAL PRIMARY KEY,
-        name TEXT NOT NULL,
-        filename TEXT,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        created_by TEXT,
-        ready_for_pickup BOOLEAN DEFAULT FALSE,
-        ready_at TIMESTAMP
-    )''')
-    cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_for_pickup BOOLEAN DEFAULT FALSE')
-    cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_at TIMESTAMP')
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
-    cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_items (
-        id SERIAL PRIMARY KEY,
-        session_id INTEGER REFERENCES schlopka_sessions(id) ON DELETE CASCADE,
-        article TEXT NOT NULL,
-        name TEXT NOT NULL,
-        size TEXT NOT NULL,
-        branch TEXT NOT NULL,
-        qty INTEGER DEFAULT 1,
-        note TEXT DEFAULT '',
-        status TEXT DEFAULT 'Не собран',
-        updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''")
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_session ON schlopka_items(session_id)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_branch ON schlopka_items(session_id, branch)')
-    cur.execute('''CREATE TABLE IF NOT EXISTS transfers (
-        id SERIAL PRIMARY KEY,
-        from_branch TEXT NOT NULL,
-        to_branch TEXT NOT NULL,
-        article TEXT NOT NULL,
-        size TEXT NOT NULL,
-        qty INTEGER NOT NULL,
-        status TEXT DEFAULT 'Новая',
-        note TEXT DEFAULT '',
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
-    )''')
-    # Indexes for performance
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article, branch)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_article ON sales(article)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch)')
-    conn.commit()
-    cur.close()
-    conn.close()
+    db.commit()
+    db.close()
 
 os.makedirs('uploads', exist_ok=True)
-os.makedirs('static', exist_ok=True)
 init_db()
 
 def login_required(f):
@@ -200,18 +126,6 @@ def admin_required(f):
 def index():
     return render_template('index.html')
 
-@app.route('/manifest.json')
-def manifest():
-    return send_from_directory('.', 'manifest.json', mimetype='application/manifest+json')
-
-@app.route('/sw.js')
-def service_worker():
-    return send_from_directory('.', 'sw.js', mimetype='application/javascript')
-
-@app.route('/static/<path:filename>')
-def static_files(filename):
-    return send_from_directory('static', filename)
-
 @app.route('/api/login', methods=['POST'])
 def login():
     data = request.get_json()
@@ -222,9 +136,8 @@ def login():
         return jsonify({'error': 'Неверный логин или пароль'}), 401
     session['username'] = username
     session['role'] = user['role']
-    session['branch'] = user.get('branch')
-    session['branches'] = user.get('branches')
-    return jsonify({'role': user['role'], 'branch': user.get('branch'), 'branches': user.get('branches'), 'username': username})
+    session['branch'] = user['branch']
+    return jsonify({'role': user['role'], 'branch': user['branch'], 'username': username})
 
 @app.route('/api/logout', methods=['POST'])
 def logout():
@@ -235,7 +148,7 @@ def logout():
 def me():
     if 'username' not in session:
         return jsonify({'logged_in': False})
-    return jsonify({'logged_in': True, 'role': session['role'], 'branch': session['branch'], 'branches': session.get('branches'), 'username': session['username']})
+    return jsonify({'logged_in': True, 'role': session['role'], 'branch': session['branch'], 'username': session['username']})
 
 @app.route('/api/orders', methods=['GET'])
 @login_required
@@ -245,47 +158,51 @@ def get_orders():
     responsible = request.args.get('responsible', '')
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
-    conn = get_db(); cur = conn.cursor()
+    db = get_db()
     q = 'SELECT * FROM orders WHERE 1=1'
     params = []
     if session['role'] == 'user':
-        q += ' AND branch=%s'; params.append(session['branch'])
-    elif session['role'] == 'regional':
-        bs = session.get('branches', [])
-        if branch and branch in bs:
-            q += ' AND branch=%s'; params.append(branch)
-        elif bs:
-            q += ' AND branch = ANY(%s)'; params.append(bs)
+        q += ' AND branch=?'; params.append(session['branch'])
     else:
-        if branch: q += ' AND branch=%s'; params.append(branch)
-    if status: q += ' AND status=%s'; params.append(status)
-    if responsible: q += ' AND responsible ILIKE %s'; params.append(f'%{responsible}%')
-    if date_from: q += ' AND date >= %s'; params.append(date_from)
-    if date_to: q += ' AND date <= %s'; params.append(date_to)
+        if branch:
+            q += ' AND branch=?'; params.append(branch)
+    if status:
+        q += ' AND status=?'; params.append(status)
+    if responsible:
+        q += ' AND responsible LIKE ?'; params.append(f'%{responsible}%')
+    if date_from:
+        q += ' AND date >= ?'; params.append(date_from)
+    if date_to:
+        q += ' AND date <= ?'; params.append(date_to)
     q += ' ORDER BY created_at DESC'
-    cur.execute(q, params)
-    rows = cur.fetchall()
-    cur.close(); conn.close()
+    rows = db.execute(q, params).fetchall()
+    db.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/orders/<int:oid>/items', methods=['GET'])
 @login_required
 def get_order_items(oid):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT * FROM order_items WHERE order_id=%s', (oid,))
-    rows = cur.fetchall()
-    cur.close(); conn.close()
+    db = get_db()
+    rows = db.execute('SELECT * FROM order_items WHERE order_id=?', (oid,)).fetchall()
+    db.close()
     return jsonify([dict(r) for r in rows])
 
 def generate_order_excel(branch, items):
+    """Generate Excel file in LI-NING order format and return as BytesIO"""
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Заказ'
+
+    # Column widths
     ws.column_dimensions['A'].width = 6
     ws.column_dimensions['B'].width = 18
     ws.column_dimensions['C'].width = 18
     ws.column_dimensions['D'].width = 10
+
+    # Row 1 empty
     ws.row_dimensions[1].height = 6
+
+    # Row 2: Branch header (merged B2:D2, yellow background)
     ws.merge_cells('B2:D2')
     cell = ws['B2']
     cell.value = f'Филиал {branch}'
@@ -293,9 +210,11 @@ def generate_order_excel(branch, items):
     cell.fill = PatternFill('solid', fgColor='FFFF00')
     cell.alignment = Alignment(horizontal='center', vertical='center')
     ws.row_dimensions[2].height = 20
+
+    # Row 3: Headers
     thin = Side(style='thin')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    headers = [('A3','№'),('B3','Артикул'),('C3','Характеристика'),('D3','Кол-во')]
+    headers = [('A3', '№'), ('B3', 'Артикул'), ('C3', 'Характеристика'), ('D3', 'Кол-во')]
     for coord, val in headers:
         c = ws[coord]
         c.value = val
@@ -303,6 +222,8 @@ def generate_order_excel(branch, items):
         c.alignment = Alignment(horizontal='center', vertical='center')
         c.border = border
     ws.row_dimensions[3].height = 16
+
+    # Data rows starting at row 4
     for i, item in enumerate(items, 1):
         row = i + 3
         ws.cell(row=row, column=1, value=i).alignment = Alignment(horizontal='center')
@@ -313,24 +234,29 @@ def generate_order_excel(branch, items):
             ws.cell(row=row, column=col).border = border
             ws.cell(row=row, column=col).font = Font(name='Arial', size=10)
         ws.row_dimensions[row].height = 15
+
     buf = io.BytesIO()
     wb.save(buf)
     buf.seek(0)
     return buf
 
+
 @app.route('/api/orders', methods=['POST'])
 @login_required
 def create_order():
-    import json
     branch = session['branch'] if session['role'] == 'user' else request.form.get('branch', '').strip()
     responsible = request.form.get('responsible', '').strip()
     date = request.form.get('date', datetime.now().strftime('%Y-%m-%d'))
     priority = request.form.get('priority', 'Обычный')
     note = request.form.get('note', '').strip()
     items_json = request.form.get('items', '[]')
+
     if not branch or not responsible:
         return jsonify({'error': 'Заполните обязательные поля'}), 400
+
+    import json
     items = json.loads(items_json)
+
     filename = None
     original_name = None
     f = request.files.get('file')
@@ -341,71 +267,70 @@ def create_order():
         original_name = f.filename
         filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{secure_filename(f.filename)}'
         f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+
+    # Auto-generate Excel from catalog items if no file uploaded
     if not filename and items:
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
-        branch_slug = branch.replace(' ','_').replace('.','')
+        branch_slug = branch.replace(' ', '_').replace('.', '')
         original_name = f'ДОЗАКАЗ_{branch_slug}_{ts}.xlsx'
         filename = f'{ts}_{secure_filename(original_name)}'
         excel_buf = generate_order_excel(branch, items)
         with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), 'wb') as out:
             out.write(excel_buf.read())
-    conn = get_db(); cur = conn.cursor()
-    cur.execute(
-        'INSERT INTO orders (branch,responsible,date,priority,note,filename,original_name) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id',
+
+    db = get_db()
+    cur = db.execute(
+        'INSERT INTO orders (branch,responsible,date,priority,note,filename,original_name) VALUES (?,?,?,?,?,?,?)',
         (branch, responsible, date, priority, note, filename, original_name)
     )
-    order_id = cur.fetchone()['id']
+    order_id = cur.lastrowid
     for item in items:
-        cur.execute('INSERT INTO order_items (order_id,article,name,size,qty,wms_stock) VALUES (%s,%s,%s,%s,%s,%s)',
+        db.execute('INSERT INTO order_items (order_id,article,name,size,qty,wms_stock) VALUES (?,?,?,?,?,?)',
                    (order_id, item.get('article',''), item.get('name',''), item.get('size',''), item.get('qty',1), item.get('wms_stock',0)))
-    conn.commit()
-    cur.execute('SELECT * FROM orders WHERE id=%s', (order_id,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
+    db.commit()
+    row = db.execute('SELECT * FROM orders WHERE id=?', (order_id,)).fetchone()
+    db.close()
     return jsonify(dict(row)), 201
 
 @app.route('/api/orders/<int:oid>/status', methods=['PATCH'])
-@login_required
+@admin_required
 def update_status(oid):
-    if session.get('role') not in ('admin', 'regional'):
-        return jsonify({'error': 'Forbidden'}), 403
     data = request.get_json()
     status = data.get('status')
     if status not in ('Новая', 'В работе', 'Выполнена'):
         return jsonify({'error': 'Invalid status'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE orders SET status=%s WHERE id=%s', (status, oid))
-    conn.commit()
-    cur.execute('SELECT * FROM orders WHERE id=%s', (oid,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
+    db = get_db()
+    db.execute('UPDATE orders SET status=? WHERE id=?', (status, oid))
+    db.commit()
+    row = db.execute('SELECT * FROM orders WHERE id=?', (oid,)).fetchone()
+    db.close()
     return jsonify(dict(row))
 
 @app.route('/api/orders/<int:oid>/excel')
 @login_required
 def download_order_excel(oid):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT * FROM orders WHERE id=%s', (oid,))
-    row = cur.fetchone()
+    db = get_db()
+    row = db.execute('SELECT * FROM orders WHERE id=?', (oid,)).fetchone()
     if not row:
-        cur.close(); conn.close()
+        db.close()
         return 'Not found', 404
-    cur.execute('SELECT * FROM order_items WHERE order_id=%s', (oid,))
-    items = cur.fetchall()
-    cur.close(); conn.close()
-    buf = generate_order_excel(row['branch'], [dict(i) for i in items])
-    ts = row['date'].replace('-','') if row['date'] else datetime.now().strftime('%Y%m%d')
-    fname = f"ДОЗАКАЗ_{row['branch'].replace(' ','_')}_{ts}.xlsx"
+    items = db.execute('SELECT * FROM order_items WHERE order_id=?', (oid,)).fetchall()
+    db.close()
+    items_list = [dict(i) for i in items]
+    branch = row['branch']
+    buf = generate_order_excel(branch, items_list)
+    ts = row['date'].replace('-', '') if row['date'] else datetime.now().strftime('%Y%m%d')
+    fname = f"ДОЗАКАЗ_{branch.replace(' ', '_')}_{ts}.xlsx"
     return send_file(buf, as_attachment=True, download_name=fname,
                      mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
 
 @app.route('/api/download/<int:oid>')
 @login_required
 def download(oid):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT * FROM orders WHERE id=%s', (oid,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
+    db = get_db()
+    row = db.execute('SELECT * FROM orders WHERE id=?', (oid,)).fetchone()
+    db.close()
     if not row or not row['filename']:
         return 'Not found', 404
     return send_from_directory(app.config['UPLOAD_FOLDER'], row['filename'],
@@ -414,25 +339,19 @@ def download(oid):
 @app.route('/api/stats')
 @login_required
 def stats():
-    conn = get_db(); cur = conn.cursor()
+    db = get_db()
     if session['role'] == 'admin':
-        cur.execute('SELECT COUNT(*) as c FROM orders'); total = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Новая'"); new = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='В работе'"); inprog = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Выполнена'"); done = cur.fetchone()['c']
-    elif session['role'] == 'regional':
-        bs = session.get('branches', [])
-        cur.execute('SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s)', (bs,)); total = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='Новая'", (bs,)); new = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='В работе'", (bs,)); inprog = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='Выполнена'", (bs,)); done = cur.fetchone()['c']
+        total = db.execute('SELECT COUNT(*) FROM orders').fetchone()[0]
+        new = db.execute("SELECT COUNT(*) FROM orders WHERE status='Новая'").fetchone()[0]
+        inprog = db.execute("SELECT COUNT(*) FROM orders WHERE status='В работе'").fetchone()[0]
+        done = db.execute("SELECT COUNT(*) FROM orders WHERE status='Выполнена'").fetchone()[0]
     else:
         b = session['branch']
-        cur.execute('SELECT COUNT(*) as c FROM orders WHERE branch=%s', (b,)); total = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch=%s AND status='Новая'", (b,)); new = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch=%s AND status='В работе'", (b,)); inprog = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch=%s AND status='Выполнена'", (b,)); done = cur.fetchone()['c']
-    cur.close(); conn.close()
+        total = db.execute('SELECT COUNT(*) FROM orders WHERE branch=?', (b,)).fetchone()[0]
+        new = db.execute("SELECT COUNT(*) FROM orders WHERE branch=? AND status='Новая'", (b,)).fetchone()[0]
+        inprog = db.execute("SELECT COUNT(*) FROM orders WHERE branch=? AND status='В работе'", (b,)).fetchone()[0]
+        done = db.execute("SELECT COUNT(*) FROM orders WHERE branch=? AND status='Выполнена'", (b,)).fetchone()[0]
+    db.close()
     return jsonify({'total': total, 'new': new, 'in_progress': inprog, 'done': done})
 
 @app.route('/api/catalog/upload', methods=['POST'])
@@ -442,59 +361,84 @@ def upload_catalog():
     if not f:
         return jsonify({'error': 'Файл не найден'}), 400
     try:
+        import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         ws = wb.active
+
         rows = list(ws.iter_rows(values_only=True))
+
+        # Find header row (row with 'Артикул')
         header_idx = None
         branch_cols = {}
         wms_col = None
+
         for i, row in enumerate(rows):
             row_vals = [str(c).strip() if c else '' for c in row]
             if 'Артикул' in row_vals:
                 header_idx = i
+                # Next row has 'Доступно' markers
+                avail_row = [str(c).strip() if c else '' for c in rows[i+1]]
                 for j, val in enumerate(row_vals):
-                    val_norm = val.replace('\u0421','C').replace('\u0441','c').replace('\u0415','E').replace('\u0435','e')
+                    val_norm = val.replace('\u0421', 'C').replace('\u0441', 'c').replace('\u0415', 'E').replace('\u0435', 'e')
                     matched = None
                     for branch in BRANCHES:
-                        branch_norm = branch.replace('\u0421','C').replace('\u0441','c').replace('\u0415','E').replace('\u0435','e')
+                        branch_norm = branch.replace('\u0421', 'C').replace('\u0441', 'c').replace('\u0415', 'E').replace('\u0435', 'e')
                         if val_norm == branch_norm or val == branch:
-                            matched = branch; break
-                    if matched: branch_cols[matched] = j
-                    if val == 'Склад WMS': wms_col = j
+                            matched = branch
+                            break
+                    if matched:
+                        branch_cols[matched] = j
+                    if val == 'Склад WMS':
+                        wms_col = j
                 break
+
         if header_idx is None:
             return jsonify({'error': 'Не найден заголовок таблицы'}), 400
+
+        # Detect columns
         header_row = [str(c).strip() if c else '' for c in rows[header_idx]]
-        name_col = size_col = season_col = category_col = None
+        name_col = None
+        size_col = None
+        season_col = None
+        category_col = None
         art_col = 0
         for j, val in enumerate(header_row):
             if val == 'Характеристика' and size_col is None: size_col = j
-            if 'Номенклатура' in val and (',' in val or '.' in val) and 'Сезон' not in val and 'Вид' not in val and name_col is None: name_col = j
+            if 'Номенклатура' in val and ',' in val and name_col is None: name_col = j
             if 'Сезон' in val: season_col = j
             if 'Вид' in val and category_col is None: category_col = j
+        # fallback: name_col = first col with 'Номенклатура'
         if name_col is None:
             for j, val in enumerate(header_row):
-                if 'Номенклатура' in val and 'Сезон' not in val and 'Вид' not in val: name_col = j; break
+                if 'Номенклатура' in val: name_col = j; break
+
+        # Skip subheader rows (Доступно)
         data_start = header_idx + 1
         for i in range(header_idx+1, min(header_idx+3, len(rows))):
             rv = [str(c).strip() if c else '' for c in rows[i]]
             if any('Доступно' in v for v in rv):
                 data_start = i + 1; break
-        conn = get_db(); cur = conn.cursor()
-        # Save existing ABC/sold data
-        cur.execute('SELECT article, MIN(abc) as abc, MAX(sold) as sold FROM catalog GROUP BY article')
-        abc_data = {r['article']: (r['abc'], r['sold']) for r in cur.fetchall()}
-        cur.execute('DELETE FROM catalog')
-        cur.execute('DELETE FROM branch_stock')
+
+        db = get_db()
+        db.execute('DELETE FROM catalog')
+        db.execute('DELETE FROM branch_stock')
+
         catalog_items = []
         branch_items = []
+
         for row in rows[data_start:]:
-            if not row or not row[art_col]: continue
+            if not row or not row[art_col]:
+                continue
             art = str(row[art_col]).strip()
-            if not art or art in ('None','nan'): continue
+            if not art or art in ('None','nan'):
+                continue
+
+            # Size from dedicated col or parse from name
             size = ''
             if size_col is not None and row[size_col]:
                 size = str(row[size_col]).strip()
+
+            # Name
             name = ''
             if name_col is not None and row[name_col]:
                 name_full = str(row[name_col]).strip()
@@ -505,30 +449,34 @@ def upload_catalog():
                 art_base = art.rstrip('A')
                 if name_full.startswith(art_base):
                     name_full = name_full[len(art_base):].strip()
-                if size and name_full.endswith(f', {size}'):
-                    name_full = name_full[:-len(f', {size}')].strip()
                 name = name_full
+
+            # Season & category
             season = str(row[season_col]).strip() if season_col is not None and row[season_col] and str(row[season_col]) not in ('None','nan') else ''
             category = str(row[category_col]).strip() if category_col is not None and row[category_col] and str(row[category_col]) not in ('None','nan') else ''
+
+            # WMS
             wms = 0
             if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
                 try: wms = int(float(str(row[wms_col])))
                 except: pass
+
             catalog_items.append((art, name, size, wms, season, category))
+
             for branch, col in branch_cols.items():
                 qty = row[col]
-                if qty and str(qty) not in ('None','nan'):
+                if qty and str(qty) not in ('None', 'nan'):
                     try:
                         q = int(float(str(qty)))
-                        if q > 0: branch_items.append((art, size, branch, q))
-                    except: pass
-        cur.executemany('INSERT INTO catalog (article,name,size,wms_stock,season,category) VALUES (%s,%s,%s,%s,%s,%s)', catalog_items)
-        cur.executemany('INSERT INTO branch_stock (article,size,branch,qty) VALUES (%s,%s,%s,%s)', branch_items)
-        # Restore ABC/sold data
-        for art, (abc, sold) in abc_data.items():
-            if abc and abc != 'C':
-                cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
-        conn.commit(); cur.close(); conn.close()
+                        if q > 0:
+                            branch_items.append((art, size, branch, q))
+                    except:
+                        pass
+
+        db.executemany('INSERT INTO catalog (article, name, size, wms_stock, season, category) VALUES (?,?,?,?,?,?)', catalog_items)
+        db.executemany('INSERT INTO branch_stock (article, size, branch, qty) VALUES (?,?,?,?)', branch_items)
+        db.commit()
+        db.close()
         return jsonify({'ok': True, 'count': len(catalog_items)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -540,120 +488,77 @@ def get_catalog():
     page = int(request.args.get('page', 1))
     per_page = 50
     branch = session.get('branch') or request.args.get('branch', '')
-    abc_filter = request.args.get('abc', '')
-    season_filter = request.args.get('season', '')
-    stock_filter = request.args.get('stock', '')
-    conn = get_db(); cur = conn.cursor()
 
-    # Step 1: Get paginated unique articles with aggregated data in ONE query
-    where = '1=1'
+    db = get_db()
+
+    # Get unique articles with their sizes
+    q = '''SELECT DISTINCT article, name FROM catalog WHERE 1=1'''
     params = []
     if search:
-        where += ' AND (article ILIKE %s OR name ILIKE %s)'
+        q += ' AND (article LIKE ? OR name LIKE ?)'
         params.extend([f'%{search}%', f'%{search}%'])
-    if abc_filter:
-        where += ' AND abc = %s'; params.append(abc_filter)
-    if season_filter:
-        where += ' AND season = %s'; params.append(season_filter)
+    q += ' ORDER BY article'
+    q += f' LIMIT {per_page} OFFSET {(page-1)*per_page}'
 
-    cur.execute(f'''
-        SELECT
-            article,
-            MIN(name) as name,
-            MIN(abc) as abc,
-            MAX(sold) as sold,
-            MIN(season) as season,
-            MIN(category) as category,
-            SUM(wms_stock) as total_wms
-        FROM catalog
-        WHERE {where}
-        GROUP BY article
-        HAVING 1=1
-        {" AND SUM(wms_stock) > 0" if stock_filter == "yes" else ""}
-        {" AND SUM(wms_stock) = 0" if stock_filter == "no" else ""}
-        ORDER BY
-            CASE MIN(abc) WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END,
-            MAX(sold) DESC,
-            article
-        -- Branch users see low-stock items first (handled in post-processing)
-        LIMIT {per_page} OFFSET {(page-1)*per_page}
-    ''', params)
-    articles = cur.fetchall()
-
-    if not articles:
-        cur.close(); conn.close()
-        return jsonify([])
-
-    art_list = [r['article'] for r in articles]
-
-    # Step 2: Get all sizes for these articles in ONE query
-    cur.execute('''
-        SELECT article, size, wms_stock
-        FROM catalog
-        WHERE article = ANY(%s)
-        ORDER BY article, size
-    ''', (art_list,))
-    all_sizes = {}
-    for r in cur.fetchall():
-        all_sizes.setdefault(r['article'], []).append({'size': r['size'], 'wms': r['wms_stock']})
-
-    # Step 3: Get branch stock in ONE query if branch provided
-    branch_stock_map = {}
-    if branch:
-        cur.execute('''
-            SELECT article, size, qty
-            FROM branch_stock
-            WHERE article = ANY(%s) AND branch = %s
-        ''', (art_list, branch))
-        for r in cur.fetchall():
-            branch_stock_map[(r['article'], r['size'])] = r['qty']
-
-    cur.close(); conn.close()
+    articles = db.execute(q, params).fetchall()
 
     result = []
     for art_row in articles:
         art = art_row['article']
-        sizes = all_sizes.get(art, [])
-        sizes_out = [{'size': s['size'], 'wms': s['wms'], 'branch': branch_stock_map.get((art, s['size']), 0)} for s in sizes]
+        name = art_row['name']
+
+        # Get all sizes with WMS stock
+        sizes = db.execute('SELECT size, wms_stock FROM catalog WHERE article=? ORDER BY size', (art,)).fetchall()
+
+        # Get branch stock if branch provided
+        branch_stock = {}
+        if branch:
+            bs = db.execute('SELECT size, qty FROM branch_stock WHERE article=? AND branch=?', (art, branch)).fetchall()
+            branch_stock = {r['size']: r['qty'] for r in bs}
+
+        # Get ABC, season, category
+        abc_row = db.execute('SELECT abc, sold, season, category FROM catalog WHERE article=? LIMIT 1', (art,)).fetchone()
+        abc = abc_row['abc'] if abc_row else 'C'
+        sold = abc_row['sold'] if abc_row else 0
+        season = abc_row['season'] if abc_row and abc_row['season'] else ''
+        category = abc_row['category'] if abc_row and abc_row['category'] else ''
+
+        total_wms = sum(r['wms_stock'] for r in sizes)
+
         result.append({
             'article': art,
-            'name': art_row['name'] or '',
-            'abc': art_row['abc'] or 'C',
-            'sold': art_row['sold'] or 0,
-            'season': art_row['season'] or '',
-            'category': art_row['category'] or '',
-            'total_wms': art_row['total_wms'] or 0,
-            'sizes': sizes_out
+            'name': name,
+            'abc': abc,
+            'sold': sold,
+            'season': season,
+            'category': category,
+            'total_wms': total_wms,
+            'sizes': [{'size': r['size'], 'wms': r['wms_stock'], 'branch': branch_stock.get(r['size'], 0)} for r in sizes]
         })
-    return jsonify(result)
 
-@app.route('/api/catalog/seasons')
-@login_required
-def get_seasons():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT DISTINCT season FROM catalog WHERE season != '' AND season IS NOT NULL ORDER BY season DESC")
-    seasons = [r['season'] for r in cur.fetchall()]
-    cur.close(); conn.close()
-    return jsonify(seasons)
+    db.close()
+    return jsonify(result)
 
 @app.route('/api/catalog/abc', methods=['POST'])
 @admin_required
 def update_abc():
+    '''Update ABC from top products file'''
     f = request.files.get('file')
     if not f:
         return jsonify({'error': 'Файл не найден'}), 400
     try:
+        import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
-        conn = get_db(); cur = conn.cursor()
+        db = get_db()
         count = 0
         for ws in wb.worksheets:
             rows = list(ws.iter_rows(values_only=True))
             art_col = sold_col = None
             for i, row in enumerate(rows):
                 row_s = [str(c).strip() if c else '' for c in row]
-                if any(x in row_s for x in ['ITEM NO.','Одежда','Обувь']):
+                if any(x in row_s for x in ['ITEM NO.', 'Одежда', 'Обувь']):
                     for j, v in enumerate(row_s):
-                        if v in ('ITEM NO.','Одежда','Обувь'): art_col = j
+                        if v in ('ITEM NO.', 'Одежда', 'Обувь'): art_col = j
                         if v == 'Продано': sold_col = j
                     for row2 in rows[i+1:]:
                         if not row2 or not row2[art_col]: continue
@@ -661,80 +566,21 @@ def update_abc():
                         if art in ('Одежда','Обувь','Аксессуары','nan',''): continue
                         sold = int(float(str(row2[sold_col]))) if sold_col and row2[sold_col] else 0
                         abc = 'A' if sold >= 25 else 'B' if sold >= 15 else 'C'
-                        cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article LIKE %s', (abc, sold, art+'%'))
+                        db.execute('UPDATE catalog SET abc=?, sold=? WHERE article LIKE ?', (abc, sold, art+'%'))
                         count += 1
                     break
-        conn.commit(); cur.close(); conn.close()
+        db.commit()
+        db.close()
         return jsonify({'ok': True, 'updated': count})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
-
-@app.route('/api/catalog/abc-upload', methods=['POST'])
-@admin_required
-def upload_abc_file():
-    '''Upload ABC Excel file and sync catalog'''
-    f = request.files.get('file')
-    if not f:
-        return jsonify({'error': 'Файл не найден'}), 400
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
-        # Try Export sheet first, then first sheet
-        ws = wb['Export'] if 'Export' in wb.sheetnames else wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        # Find header row
-        header_idx = None
-        for i, row in enumerate(rows):
-            if row and row[1] == 'Season3' or (row and str(row[0]) == 'DIVISION'):
-                header_idx = i; break
-        if header_idx is None:
-            return jsonify({'error': 'Не найден заголовок'}), 400
-        conn = get_db(); cur = conn.cursor()
-        count = 0
-        abc_map = {'A++': 'A', 'A+': 'A', 'A': 'A', 'A-': 'A', 'B': 'B', 'B+': 'B', 'B-': 'B', 'C': 'C', 'C+': 'C', 'C-': 'C'}
-        for row in rows[header_idx+1:]:
-            if not row or not row[2]: continue
-            art = str(row[2]).strip()
-            if not art or art in ('None', 'nan', ''): continue
-            total_abc_raw = str(row[-1]).strip() if row[-1] else 'C'
-            try: total_sold = int(float(str(row[-5]))) if row[-5] else 0
-            except: total_sold = 0
-            abc = abc_map.get(total_abc_raw, 'C')
-            cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s OR article=%s',
-                       (abc, total_sold, art, art+'A'))
-            count += cur.rowcount
-        conn.commit(); cur.close(); conn.close()
-        return jsonify({'ok': True, 'updated': count})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-
-@app.route('/api/catalog/abc-sync', methods=['POST'])
-@admin_required
-def abc_sync():
-    data = request.get_json()
-    updates = data.get('updates', [])
-    if not updates:
-        return jsonify({'error': 'Нет данных'}), 400
-    conn = get_db(); cur = conn.cursor()
-    count = 0
-    for u in updates:
-        art = u.get('article', '').strip()
-        abc = u.get('abc', 'C')
-        sold = u.get('sold', 0)
-        # Match: exact, with A suffix, without A suffix
-        cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s OR article=%s OR article=%s',
-                   (abc, sold, art, art+'A', art.rstrip('A')))
-        count += cur.rowcount
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True, 'updated': count})
 
 @app.route('/api/products', methods=['GET'])
 @login_required
 def get_products():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT * FROM top_products ORDER BY sold DESC')
-    rows = cur.fetchall()
-    cur.close(); conn.close()
+    db = get_db()
+    rows = db.execute('SELECT * FROM top_products ORDER BY sold DESC').fetchall()
+    db.close()
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/products/upload', methods=['POST'])
@@ -744,6 +590,7 @@ def upload_products():
     if not f:
         return jsonify({'error': 'Файл не найден'}), 400
     try:
+        import openpyxl
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         products = []
         for ws in wb.worksheets:
@@ -752,10 +599,10 @@ def upload_products():
             header_row_idx = None
             for i, row in enumerate(rows):
                 row_str = [str(c).strip() if c else '' for c in row]
-                if any(x in row_str for x in ['ITEM NO.','Одежда','Обувь']):
+                if any(x in row_str for x in ['ITEM NO.', 'Одежда', 'Обувь']):
                     header_row_idx = i
                     for j, cell in enumerate(row_str):
-                        if cell in ('ITEM NO.','Одежда','Обувь','Аксессуары'): art_col = j
+                        if cell in ('ITEM NO.', 'Одежда', 'Обувь', 'Аксессуары'): art_col = j
                         if cell == 'Продано': sold_col = j
                         if cell == 'Остаток': stock_col = j
                         if j == 1: cat_col = j
@@ -765,7 +612,7 @@ def upload_products():
                 for row in rows[header_row_idx+1:]:
                     if not row or not row[art_col]: continue
                     art = str(row[art_col]).strip()
-                    if art in ('Одежда','Обувь','Аксессуары','nan',''):
+                    if art in ('Одежда', 'Обувь', 'Аксессуары', 'nan', ''):
                         if art == 'Обувь': current_cat = 'FTW'
                         elif art == 'Аксессуары': current_cat = 'ACC'
                         continue
@@ -774,174 +621,38 @@ def upload_products():
                     stock = int(float(str(row[stock_col]))) if stock_col and row[stock_col] and str(row[stock_col]) != 'None' else 0
                     if art and art != 'None' and len(art) > 3:
                         products.append((art, cat, sold, stock))
-        conn = get_db(); cur = conn.cursor()
-        cur.execute('DELETE FROM top_products')
-        cur.executemany('INSERT INTO top_products (article,category,sold,stock) VALUES (%s,%s,%s,%s)', products)
-        conn.commit(); cur.close(); conn.close()
+        db = get_db()
+        db.execute('DELETE FROM top_products')
+        for p in products:
+            db.execute('INSERT INTO top_products (article, category, sold, stock) VALUES (?,?,?,?)', p)
+        db.commit()
+        db.close()
         return jsonify({'ok': True, 'count': len(products)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/analytics/orders')
-@login_required
+@admin_required
 def analytics_orders():
-    if session.get('role') not in ('admin', 'regional'):
-        return jsonify({'error': 'Forbidden'}), 403
-    conn = get_db(); cur = conn.cursor()
-    if session['role'] == 'regional':
-        bs = session.get('branches', [])
-        cur.execute('''SELECT oi.article, SUM(oi.qty) as total_qty, COUNT(DISTINCT oi.order_id) as order_count
-            FROM order_items oi JOIN orders o ON o.id = oi.order_id
-            WHERE o.branch = ANY(%s) AND oi.article != %s AND oi.article != %s
-            GROUP BY oi.article ORDER BY total_qty DESC LIMIT 20''', (bs, '', 'None'))
-        top_articles = cur.fetchall()
-        cur.execute('''SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
-            FROM orders o JOIN order_items oi ON o.id = oi.order_id
-            WHERE o.branch = ANY(%s)
-            GROUP BY o.branch ORDER BY total_qty DESC''', (bs,))
-        branch_totals = cur.fetchall()
-    else:
-        cur.execute('''SELECT article, SUM(qty) as total_qty, COUNT(DISTINCT order_id) as order_count
-            FROM order_items WHERE article != '' AND article != 'None'
-            GROUP BY article ORDER BY total_qty DESC LIMIT 20''')
-        top_articles = cur.fetchall()
-        cur.execute('''SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
-            FROM orders o JOIN order_items oi ON o.id = oi.order_id
-            GROUP BY o.branch ORDER BY total_qty DESC''')
-        branch_totals = cur.fetchall()
-    cur.close(); conn.close()
+    db = get_db()
+    top_articles = db.execute('''
+        SELECT article, SUM(qty) as total_qty, COUNT(DISTINCT order_id) as order_count
+        FROM order_items WHERE article != '' AND article != 'None'
+        GROUP BY article ORDER BY total_qty DESC LIMIT 20
+    ''').fetchall()
+    branch_totals = db.execute('''
+        SELECT o.branch, SUM(oi.qty) as total_qty, COUNT(DISTINCT o.id) as order_count
+        FROM orders o JOIN order_items oi ON o.id = oi.order_id
+        GROUP BY o.branch ORDER BY total_qty DESC
+    ''').fetchall()
+    db.close()
     return jsonify({'top_articles': [dict(r) for r in top_articles], 'branch_totals': [dict(r) for r in branch_totals]})
 
-# ===== SALES =====
-
-@app.route('/api/sales/upload', methods=['POST'])
-@admin_required
-def upload_sales():
-    f = request.files.get('file')
-    if not f:
-        return jsonify({'error': 'Файл не найден'}), 400
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-        header_idx = None
-        for i, row in enumerate(rows):
-            row_s = [str(c).strip() if c else '' for c in row]
-            if 'Арт' in row_s or 'Артикул' in row_s:
-                header_idx = i; break
-        if header_idx is None:
-            return jsonify({'error': 'Не найден заголовок'}), 400
-        h1 = [str(c).strip() if c else '' for c in rows[header_idx]]
-        h2 = [str(c).strip() if c else '' for c in rows[header_idx+1]] if header_idx+1 < len(rows) else []
-        season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
-        for j, v in enumerate(h1):
-            if v == 'Магазин': branch_col = j
-            if v == 'Ссылка': ref_col = j
-            if v == 'Количество': qty_col = j
-            if v == 'Цена': price_col = j
-            if v == 'Сумма': amount_col = j
-        for j, v in enumerate(h2):
-            if 'Сезон' in v: season_col = j
-            if 'Артикул' in v: art_col = j
-            if 'Вид' in v: cat_col = j
-        replace = request.form.get('replace', 'false') == 'true'
-        conn = get_db(); cur = conn.cursor()
-        if replace:
-            cur.execute('DELETE FROM sales')
-        inserted = 0
-        for row in rows[header_idx+2:]:
-            if not row: continue
-            art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
-            if not art or art in ('None','nan',''): continue
-            season = str(row[season_col]).strip() if season_col is not None and row[season_col] else ''
-            cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
-            branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
-            ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
-            except: qty = 1
-            try: price = float(str(row[price_col])) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
-            except: price = 0
-            try: amount = float(str(row[amount_col])) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
-            except: amount = 0
-            sale_date = None
-            m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
-            if m:
-                try: sale_date = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
-                except: pass
-            cur.execute(
-                'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
-                (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
-            )
-            inserted += 1
-        conn.commit(); cur.close(); conn.close()
-        return jsonify({'ok': True, 'inserted': inserted})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/sales/analytics', methods=['GET'])
-@login_required
-def sales_analytics():
-    period = request.args.get('period', 'month')
-    category = request.args.get('category', '')
-    branch = request.args.get('branch', '')
-    limit = int(request.args.get('limit', 20))
-    conn = get_db(); cur = conn.cursor()
-    extra = ''
-    params = []
-    if period == 'week':
-        extra += " AND sale_date >= CURRENT_DATE - INTERVAL '7 days'"
-    elif period == 'month':
-        extra += " AND sale_date >= CURRENT_DATE - INTERVAL '30 days'"
-    elif period == 'season':
-        extra += " AND sale_date >= CURRENT_DATE - INTERVAL '90 days'"
-    if session['role'] == 'regional':
-        bs = session.get('branches', [])
-        if bs:
-            extra += ' AND branch = ANY(%s)'; params.append(bs)
-    elif branch:
-        extra += ' AND branch = %s'; params.append(branch)
-    if category:
-        extra += ' AND category = %s'; params.append(category)
-    cur.execute(f'''SELECT article, category,
-        SUM(qty) as total_qty, SUM(amount) as total_amount, COUNT(*) as tx_count
-        FROM sales WHERE 1=1 {extra}
-        GROUP BY article, category ORDER BY total_qty DESC LIMIT %s
-    ''', params + [limit])
-    top_articles = cur.fetchall()
-    cur.execute(f'''SELECT branch, SUM(qty) as total_qty, SUM(amount) as total_amount
-        FROM sales WHERE 1=1 {extra} GROUP BY branch ORDER BY total_qty DESC
-    ''', params)
-    by_branch = cur.fetchall()
-    cur.execute(f'''SELECT category, SUM(qty) as total_qty, SUM(amount) as total_amount
-        FROM sales WHERE 1=1 {extra} GROUP BY category ORDER BY total_qty DESC
-    ''', params)
-    by_category = cur.fetchall()
-    cur.execute(f'''SELECT SUM(qty) as total_qty, SUM(amount) as total_amount, COUNT(*) as tx_count
-        FROM sales WHERE 1=1 {extra}
-    ''', params)
-    totals = cur.fetchone()
-    cur.execute('SELECT MIN(sale_date) as min_date, MAX(sale_date) as max_date FROM sales')
-    dates = cur.fetchone()
-    cur.close(); conn.close()
-    return jsonify({
-        'top_articles': [dict(r) for r in top_articles],
-        'by_branch': [dict(r) for r in by_branch],
-        'by_category': [dict(r) for r in by_category],
-        'totals': dict(totals) if totals else {},
-        'dates': {'min': str(dates['min_date']) if dates and dates['min_date'] else None,
-                  'max': str(dates['max_date']) if dates and dates['max_date'] else None}
-    })
-
-@app.route('/api/sales/info')
-@admin_required
-def sales_info():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT COUNT(*) as c FROM sales'); total = cur.fetchone()['c']
-    cur.execute('SELECT MIN(sale_date) as mn, MAX(sale_date) as mx FROM sales'); dates = cur.fetchone()
-    cur.close(); conn.close()
-    return jsonify({'total': total, 'min_date': str(dates['mn']) if dates['mn'] else None, 'max_date': str(dates['mx']) if dates['mx'] else None})
-
-# ===== PHOTOS =====
+YADISK_TOKEN = os.environ.get('YADISK_TOKEN', '35a4110c9f5a4729ba8a54cf978276f4')
+YADISK_PUBLIC_KEY = 'https://disk.yandex.com/d/-plm2CMx-kHNuA'
+YADISK_FOLDER = '/06-White Background Pics'
+_photo_cache = {}
+_photo_url_cache = {}
 
 @app.route('/api/photos/<article>')
 def get_photos(article):
@@ -949,9 +660,17 @@ def get_photos(article):
     art_base = article.rstrip('A')
     if art_base in _photo_cache:
         return jsonify(_photo_cache[art_base])
+
     folder_path = f"{YADISK_FOLDER}/{art_base}"
-    url = ("https://cloud-api.yandex.net/v1/disk/public/resources?"
-        + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': folder_path, 'limit': 20, 'preview_size': '400x400'}))
+    url = (
+        "https://cloud-api.yandex.net/v1/disk/public/resources?"
+        + urllib.parse.urlencode({
+            'public_key': YADISK_PUBLIC_KEY,
+            'path': folder_path,
+            'limit': 20,
+            'preview_size': '400x400'
+        })
+    )
     try:
         req = urllib.request.Request(url, headers={'Authorization': f'OAuth {YADISK_TOKEN}'})
         with urllib.request.urlopen(req, timeout=8) as resp:
@@ -960,14 +679,18 @@ def get_photos(article):
         photos = []
         for item in items:
             name = item.get('name', '')
-            if name.lower().endswith(('.jpg','.jpeg','.png','.webp')):
-                dl_url = ("https://cloud-api.yandex.net/v1/disk/public/resources/download?"
-                    + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': f"{folder_path}/{name}"}))
+            if name.lower().endswith(('.jpg', '.jpeg', '.png', '.webp')):
+                # Get direct download link via server (has token)
+                dl_url = (
+                    "https://cloud-api.yandex.net/v1/disk/public/resources/download?"
+                    + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': f"{folder_path}/{name}"})
+                )
                 req2 = urllib.request.Request(dl_url, headers={'Authorization': f'OAuth {YADISK_TOKEN}'})
                 with urllib.request.urlopen(req2, timeout=8) as r2:
                     dl_data = _json.loads(r2.read())
                 href = dl_data.get('href', '')
                 if href:
+                    # Store real URL and return proxy URL
                     proxy_key = f"{art_base}/{name}"
                     _photo_url_cache[proxy_key] = href
                     photos.append(f"/api/photo-proxy/{urllib.parse.quote(art_base)}/{urllib.parse.quote(name)}")
@@ -977,15 +700,21 @@ def get_photos(article):
     except Exception as e:
         return jsonify({'photos': [], 'error': str(e)})
 
+
 @app.route('/api/photo-proxy/<art_base>/<filename>')
 def photo_proxy(art_base, filename):
-    import urllib.request, urllib.parse, json as _json
+    import urllib.request
+    from flask import Response
     key = f"{art_base}/{filename}"
     href = _photo_url_cache.get(key)
     if not href:
+        # Re-fetch download link
+        import urllib.parse, json as _json
         folder_path = f"{YADISK_FOLDER}/{art_base}"
-        dl_url = ("https://cloud-api.yandex.net/v1/disk/public/resources/download?"
-            + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': f"{folder_path}/{filename}"}))
+        dl_url = (
+            "https://cloud-api.yandex.net/v1/disk/public/resources/download?"
+            + urllib.parse.urlencode({'public_key': YADISK_PUBLIC_KEY, 'path': f"{folder_path}/{filename}"})
+        )
         try:
             req = urllib.request.Request(dl_url, headers={'Authorization': f'OAuth {YADISK_TOKEN}'})
             with urllib.request.urlopen(req, timeout=8) as r:
@@ -1004,974 +733,6 @@ def photo_proxy(art_base, filename):
     except:
         return 'Error', 500
 
-# ===== RECOMMENDATIONS =====
-
-@app.route('/api/recommendations')
-@login_required
-def get_recommendations():
-    branch = session.get('branch') or request.args.get('branch', '')
-    if not branch:
-        return jsonify([])
-    conn = get_db(); cur = conn.cursor()
-
-    # Get all A/B articles with their full size grid from WMS
-    cur.execute('''
-        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
-               MAX(c.sold) as sold, MIN(c.season) as season, MIN(c.category) as category,
-               array_agg(c.size ORDER BY c.size) as all_sizes,
-               array_agg(c.wms_stock ORDER BY c.size) as wms_stocks,
-               SUM(c.wms_stock) as total_wms
-        FROM catalog c
-        WHERE c.abc IN ('A', 'B', 'C')
-        GROUP BY c.article
-        HAVING COUNT(c.size) >= 3
-        ORDER BY MIN(c.abc), MAX(c.sold) DESC
-        LIMIT 200
-    ''')
-    articles = cur.fetchall()
-
-    # Get branch stock for all these articles
-    art_list = [r['article'] for r in articles]
-    if not art_list:
-        cur.close(); conn.close()
-        return jsonify([])
-
-    cur.execute('''
-        SELECT article, size, qty
-        FROM branch_stock
-        WHERE article = ANY(%s) AND branch = %s AND qty > 0
-    ''', (art_list, branch))
-    branch_stock = {}
-    for r in cur.fetchall():
-        branch_stock.setdefault(r['article'], {})[r['size']] = r['qty']
-
-    cur.close(); conn.close()
-
-    result = []
-    for art_row in articles:
-        art = art_row['article']
-        all_sizes = art_row['all_sizes'] or []
-        wms_stocks = art_row['wms_stocks'] or []
-        branch_sizes = branch_stock.get(art, {})
-
-        # Full size grid count
-        full_grid = len(all_sizes)
-        branch_has = len(branch_sizes)
-
-        # Missing sizes (in full grid but not at branch)
-        missing = []
-        for i, size in enumerate(all_sizes):
-            if size not in branch_sizes or branch_sizes[size] == 0:
-                wms = wms_stocks[i] if i < len(wms_stocks) else 0
-                missing.append({'size': size, 'wms': wms, 'available': wms > 0})
-
-        # Show if any missing sizes available on WMS
-        if not missing:
-            continue
-
-        result.append({
-            'article': art,
-            'name': art_row['name'] or '',
-            'abc': art_row['abc'] or 'C',
-            'sold': art_row['sold'] or 0,
-            'season': art_row['season'] or '',
-            'category': art_row['category'] or '',
-            'total_wms': art_row['total_wms'] or 0,
-            'full_grid': full_grid,
-            'branch_has': branch_has,
-            'missing_sizes': missing,
-            'available_missing': [m for m in missing if m['available']]
-        })
-
-    # Sort: most missing available sizes first
-    result.sort(key=lambda x: (-len(x['available_missing']), x['abc'], -x['sold']))
-    return jsonify(result[:100])
-
-@app.route('/api/recommendations/excel')
-@login_required
-def recommendations_excel():
-    branch = session.get('branch') or request.args.get('branch', '')
-    if not branch:
-        return jsonify({'error': 'Филиал не указан'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('''
-        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
-               MAX(c.sold) as sold, MIN(c.season) as season, MIN(c.category) as category,
-               array_agg(c.size ORDER BY c.size) as all_sizes,
-               array_agg(c.wms_stock ORDER BY c.size) as wms_stocks
-        FROM catalog c
-        WHERE c.abc IN ('A', 'B', 'C')
-        GROUP BY c.article
-        HAVING COUNT(c.size) >= 3
-        ORDER BY MIN(c.abc), MAX(c.sold) DESC
-        LIMIT 200
-    ''')
-    articles = cur.fetchall()
-    art_list = [r['article'] for r in articles]
-    cur.execute('SELECT article, size, qty FROM branch_stock WHERE article = ANY(%s) AND branch = %s AND qty > 0', (art_list, branch))
-    branch_stock = {}
-    for r in cur.fetchall():
-        branch_stock.setdefault(r['article'], {})[r['size']] = r['qty']
-    cur.close(); conn.close()
-
-    # Build recommendations
-    recs = []
-    for art_row in articles:
-        art = art_row['article']
-        all_sizes = art_row['all_sizes'] or []
-        wms_stocks = art_row['wms_stocks'] or []
-        branch_sizes = branch_stock.get(art, {})
-        missing = []
-        for i, size in enumerate(all_sizes):
-            if size not in branch_sizes or branch_sizes[size] == 0:
-                wms = wms_stocks[i] if i < len(wms_stocks) else 0
-                if wms > 0:
-                    missing.append({'size': size, 'wms': wms})
-        if missing:
-            for m in missing:
-                recs.append({
-                    'article': art,
-                    'name': art_row['name'] or '',
-                    'abc': art_row['abc'] or 'C',
-                    'season': art_row['season'] or '',
-                    'category': art_row['category'] or '',
-                    'size': m['size'],
-                    'wms': m['wms'],
-                    'qty': 1
-                })
-
-    # Generate Excel
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = 'Рекомендации'
-    thin = Side(style='thin')
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    header_fill = PatternFill('solid', fgColor='E31837')
-    # Title
-    ws.merge_cells('A1:H1')
-    title = ws['A1']
-    title.value = f'Рекомендации к дозаказу — {branch}'
-    title.font = Font(name='Arial', bold=True, size=12, color='FFFFFF')
-    title.fill = PatternFill('solid', fgColor='E31837')
-    title.alignment = Alignment(horizontal='center', vertical='center')
-    ws.row_dimensions[1].height = 24
-    # Headers
-    headers = ['№', 'Артикул', 'Название', 'Категория', 'Сезон', 'ABC', 'Размер', 'WMS склад', 'Заказать (шт)']
-    col_widths = [4, 16, 35, 12, 10, 6, 8, 10, 12]
-    for j, (h, w) in enumerate(zip(headers, col_widths), 1):
-        c = ws.cell(row=2, column=j, value=h)
-        c.font = Font(name='Arial', bold=True, size=10, color='FFFFFF')
-        c.fill = header_fill
-        c.alignment = Alignment(horizontal='center', vertical='center')
-        c.border = border
-        ws.column_dimensions[c.column_letter].width = w
-    ws.row_dimensions[2].height = 18
-    # ABC colors
-    abc_colors = {'A': 'FFF3CD', 'B': 'D4EDDA', 'C': 'F8F9FA'}
-    for i, rec in enumerate(recs, 1):
-        row = i + 2
-        vals = [i, rec['article'], rec['name'], rec['category'], rec['season'], rec['abc'], rec['size'], rec['wms'], 1]
-        fill_color = abc_colors.get(rec['abc'], 'FFFFFF')
-        for j, val in enumerate(vals, 1):
-            c = ws.cell(row=row, column=j, value=val)
-            c.font = Font(name='Arial', size=10)
-            c.border = border
-            c.fill = PatternFill('solid', fgColor=fill_color)
-            if j in (1, 6, 7, 8, 9):
-                c.alignment = Alignment(horizontal='center')
-        ws.row_dimensions[row].height = 15
-
-    buf = io.BytesIO()
-    wb.save(buf)
-    buf.seek(0)
-    ts = datetime.now().strftime('%Y%m%d_%H%M')
-    fname = f'Рекомендации_{branch.replace(" ","_")}_{ts}.xlsx'
-    return send_file(buf, as_attachment=True, download_name=fname,
-                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-@app.route('/api/recommendations/cross')
-@login_required
-def cross_recommendations():
-    '''Товары которые топ в других филиалах но отсутствуют в данном'''
-    branch = session.get('branch') or request.args.get('branch', '')
-    if not branch:
-        return jsonify([])
-    conn = get_db(); cur = conn.cursor()
-
-    # Топ продаж по другим филиалам
-    cur.execute('''
-        SELECT s.article, MIN(c.name) as name, MIN(c.abc) as abc,
-               SUM(s.qty) as total_sold, SUM(s.amount) as total_amount,
-               MIN(c.season) as season, MIN(c.category) as category,
-               array_agg(DISTINCT s.branch) as top_branches
-        FROM sales s
-        JOIN catalog c ON c.article = s.article OR c.article = s.article || 'A'
-        WHERE s.branch != %s
-        GROUP BY s.article
-        HAVING SUM(s.qty) >= 5
-        ORDER BY SUM(s.qty) DESC
-        LIMIT 300
-    ''', (branch,))
-    top_elsewhere = cur.fetchall()
-
-    if not top_elsewhere:
-        cur.close(); conn.close()
-        return jsonify([])
-
-    art_list = [r['article'] for r in top_elsewhere]
-    art_list_a = [a+'A' for a in art_list] + art_list
-
-    # Продажи в данном филиале
-    cur.execute('''
-        SELECT article, SUM(qty) as sold
-        FROM sales WHERE branch=%s AND article = ANY(%s)
-        GROUP BY article
-    ''', (branch, art_list + [a+'A' for a in art_list]))
-    branch_sales = {r['article']: r['sold'] for r in cur.fetchall()}
-
-    # Остатки в данном филиале
-    cur.execute('''
-        SELECT article, SUM(qty) as stock
-        FROM branch_stock WHERE branch=%s AND article = ANY(%s)
-        GROUP BY article
-    ''', (branch, art_list_a))
-    branch_stock = {r['article']: r['stock'] for r in cur.fetchall()}
-
-    # WMS остатки
-    cur.execute('''
-        SELECT article, array_agg(size ORDER BY size) as sizes,
-               array_agg(wms_stock ORDER BY size) as wms_stocks,
-               SUM(wms_stock) as total_wms
-        FROM catalog WHERE article = ANY(%s)
-        GROUP BY article
-    ''', (art_list_a,))
-    wms_data = {r['article']: r for r in cur.fetchall()}
-
-    cur.close(); conn.close()
-
-    result = []
-    for art_row in top_elsewhere:
-        art = art_row['article']
-        art_a = art + 'A'
-
-        # Продажи в данном филиале
-        my_sold = branch_sales.get(art, 0) + branch_sales.get(art_a, 0)
-        # Остатки в данном филиале
-        my_stock = branch_stock.get(art, 0) + branch_stock.get(art_a, 0)
-
-        # Пропускаем если уже хорошо продаётся
-        if my_sold >= art_row['total_sold'] * 0.3:
-            continue
-
-        # WMS данные
-        wms = wms_data.get(art) or wms_data.get(art_a)
-        total_wms = int(wms['total_wms']) if wms and wms['total_wms'] else 0
-        sizes = []
-        if wms:
-            for s, w in zip(wms['sizes'] or [], wms['wms_stocks'] or []):
-                if (w or 0) > 0:
-                    sizes.append({'size': s, 'wms': int(w or 0)})
-
-        if not sizes and total_wms == 0:
-            continue
-
-        # Топ филиалы где продаётся
-        top_branches = [b for b in (art_row['top_branches'] or []) if b != branch][:3]
-
-        result.append({
-            'article': art,
-            'name': art_row['name'] or '',
-            'abc': art_row['abc'] or 'C',
-            'season': art_row['season'] or '',
-            'category': art_row['category'] or '',
-            'total_sold_elsewhere': int(art_row['total_sold'] or 0),
-            'my_sold': my_sold,
-            'my_stock': my_stock,
-            'total_wms': total_wms,
-            'sizes': sizes,
-            'top_branches': top_branches
-        })
-
-    # Сортировка: больший разрыв продаж → сначала
-    result.sort(key=lambda x: -(x['total_sold_elsewhere'] - x['my_sold']))
-    return jsonify(result[:80])
-
-# ===== TRANSFERS =====
-
-@app.route('/api/transfers', methods=['GET'])
-@login_required
-def get_transfers():
-    conn = get_db(); cur = conn.cursor()
-    role = session.get('role')
-    branch = session.get('branch')
-    if role == 'admin':
-        cur.execute('SELECT * FROM transfers ORDER BY created_at DESC')
-    elif branch in FLAGMANS:
-        cur.execute('SELECT * FROM transfers WHERE to_branch=%s OR from_branch=%s ORDER BY created_at DESC', (branch, branch))
-    else:
-        cur.execute('SELECT * FROM transfers WHERE from_branch=%s ORDER BY created_at DESC', (branch,))
-    rows = cur.fetchall()
-    cur.close(); conn.close()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/transfers', methods=['POST'])
-@login_required
-def create_transfer():
-    # Only flagmans can create transfer requests
-    branch = session.get('branch')
-    if branch not in FLAGMANS and session.get('role') != 'admin':
-        return jsonify({'error': 'Только флагманы могут создавать заявки на перемещение'}), 403
-    data = request.get_json()
-    from_branch = data.get('from_branch')
-    to_branch = branch or data.get('to_branch')
-    article = data.get('article')
-    size = data.get('size')
-    qty = data.get('qty', 1)
-    note = data.get('note', '')
-    if not all([from_branch, to_branch, article, size]):
-        return jsonify({'error': 'Заполните все поля'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('INSERT INTO transfers (from_branch,to_branch,article,size,qty,note) VALUES (%s,%s,%s,%s,%s,%s) RETURNING id',
-               (from_branch, to_branch, article, size, qty, note))
-    tid = cur.fetchone()['id']
-    conn.commit()
-    cur.execute('SELECT * FROM transfers WHERE id=%s', (tid,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
-    return jsonify(dict(row)), 201
-
-@app.route('/api/transfers/<int:tid>/status', methods=['PATCH'])
-@admin_required
-def update_transfer_status(tid):
-    data = request.get_json()
-    status = data.get('status')
-    if status not in ('Новая', 'Подтверждена', 'Отклонена', 'Выполнена'):
-        return jsonify({'error': 'Invalid status'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE transfers SET status=%s WHERE id=%s', (status, tid))
-    conn.commit()
-    cur.execute('SELECT * FROM transfers WHERE id=%s', (tid,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
-    return jsonify(dict(row))
-
-@app.route('/api/transfers/suggestions', methods=['GET'])
-@login_required
-def transfer_suggestions():
-    '''Smart suggestions: A-items that sell well at flagman but poorly at donor branches'''
-    branch = session.get('branch')
-    if branch not in FLAGMANS and session.get('role') != 'admin':
-        return jsonify([])
-    target_branch = request.args.get('branch', branch)
-    conn = get_db(); cur = conn.cursor()
-
-    # Get A articles with their sales at target branch
-    cur.execute('''
-        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
-               MAX(c.sold) as total_sold,
-               COALESCE(SUM(CASE WHEN bs.branch=%s THEN bs.qty ELSE 0 END), 0) as my_stock
-        FROM catalog c
-        LEFT JOIN branch_stock bs ON bs.article=c.article
-        WHERE c.abc='A'
-        GROUP BY c.article
-        ORDER BY MAX(c.sold) DESC
-        LIMIT 60
-    ''', (target_branch,))
-    a_articles = cur.fetchall()
-
-    art_list = [r['article'] for r in a_articles]
-
-    # Sales at target branch
-    cur.execute('''
-        SELECT article, SUM(qty) as sold FROM sales
-        WHERE branch=%s AND article = ANY(%s)
-        GROUP BY article
-    ''', (target_branch, art_list))
-    my_sales = {r['article']: r['sold'] for r in cur.fetchall()}
-
-    # Sales + stock at ALL other branches
-    cur.execute('''
-        SELECT bs.article, bs.branch, bs.size, bs.qty as stock,
-               COALESCE(s.branch_sold, 0) as branch_sold
-        FROM branch_stock bs
-        LEFT JOIN (
-            SELECT article, branch, SUM(qty) as branch_sold
-            FROM sales WHERE article = ANY(%s)
-            GROUP BY article, branch
-        ) s ON s.article=bs.article AND s.branch=bs.branch
-        WHERE bs.article = ANY(%s) AND bs.branch != %s AND bs.qty > 0
-        ORDER BY bs.article, branch_sold ASC, bs.qty DESC
-    ''', (art_list, art_list, target_branch))
-    donor_rows = cur.fetchall()
-
-    # Group donors by article
-    donors_by_art = {}
-    for r in donor_rows:
-        donors_by_art.setdefault(r['article'], []).append(dict(r))
-
-    cur.close(); conn.close()
-
-    result = []
-    for art_row in a_articles:
-        art = art_row['article']
-        donors = donors_by_art.get(art, [])
-        if not donors:
-            continue
-
-        my_sold = my_sales.get(art, 0)
-        my_stock = int(art_row['my_stock'] or 0)
-
-        # Only suggest if target branch sells well (or has demand) but low stock
-        # OR if donors have stock but poor sales
-        weak_donors = [d for d in donors if d['branch_sold'] < (my_sold * 0.5 + 1)]
-        if not weak_donors:
-            weak_donors = donors[:3]  # fallback: show worst performers
-
-        result.append({
-            'article': art,
-            'name': art_row['name'] or '',
-            'abc': art_row['abc'] or 'A',
-            'total_sold': int(art_row['total_sold'] or 0),
-            'my_sold': my_sold,
-            'my_stock': my_stock,
-            'donors': weak_donors[:5]  # top 5 weak donors
-        })
-
-    # Sort: biggest gap between my sales and donor sales first
-    result.sort(key=lambda x: -(x['my_sold'] - min((d['branch_sold'] for d in x['donors']), default=0)))
-    return jsonify(result[:30])
-
-@app.route('/api/transfers/stats')
-@login_required
-def transfer_stats():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT COUNT(*) as c FROM transfers WHERE status='Новая'")
-    new = cur.fetchone()['c']
-    cur.close(); conn.close()
-    return jsonify({'new': new})
-
-# ===== SCHLOPKA =====
-
-BRANCH_SHEET_MAP = {
-    'алай': 'ALAYSKIY', 'атлас': 'ATLAS CHIMGAN', 'еко ': 'ECO PARK',
-    'хай': 'HIGH TOWN PLAZA', 'медж': 'MAGIC CITY', 'малика': 'MALIKA',
-    'новза': 'NOVZA', 'сккопус': 'Scopus Mall', 'шота': 'Shota Rustavely',
-    'сити': 'TASHKENT CITY MALL', 'галерея': 'Yunusabad gallery'
-}
-
-@app.route('/api/schlopka', methods=['GET'])
-@login_required
-def get_schlopka_sessions():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('''
-        SELECT s.*,
-            COUNT(CASE WHEN i.status='Собран' OR i.status='Забрал' THEN 1 END) as collected,
-            COUNT(i.id) as total_items
-        FROM schlopka_sessions s
-        LEFT JOIN schlopka_items i ON i.session_id = s.id
-        GROUP BY s.id
-        ORDER BY s.created_at DESC LIMIT 20
-    ''')
-    rows = cur.fetchall()
-    cur.close(); conn.close()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/schlopka/upload', methods=['POST'])
-@login_required
-def upload_schlopka():
-    f = request.files.get('file')
-    if not f:
-        return jsonify({'error': 'Файл не найден'}), 400
-    try:
-        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
-        items = []
-        for sheet_name in wb.sheetnames:
-            # Sheet name = from_branch
-            from_branch = sheet_name.strip()
-            ws = wb[sheet_name]
-            rows = list(ws.iter_rows(values_only=True))
-            # Find header row with 'Артикул'
-            header_idx = None
-            for i, row in enumerate(rows[:5]):
-                rv = [str(c).strip() if c else '' for c in row]
-                if 'Артикул' in rv:
-                    header_idx = i
-                    break
-            if header_idx is None:
-                continue
-            # Parse data rows
-            for row in rows[header_idx+1:]:
-                if not row or not row[0]: continue
-                art = str(row[0]).strip()
-                if not art or art in ('None','nan',''): continue
-                name_full = str(row[1]).strip() if row[1] else ''
-                to_branch = str(row[2]).strip() if len(row) > 2 and row[2] else ''
-                if not to_branch or to_branch in ('None','nan',''): continue
-                # Extract size from name
-                size = ''
-                if ', ' in name_full:
-                    parts = name_full.rsplit(', ', 1)
-                    name_full = parts[0].strip()
-                    size = parts[1].strip()
-                # Clean article prefix from name
-                art_base = art.rstrip('A')
-                if name_full.startswith(art_base):
-                    name_full = name_full[len(art_base):].strip()
-                items.append((art, name_full, size, from_branch, to_branch))
-
-        if not items:
-            return jsonify({'error': 'Нет данных в файле'}), 400
-
-        conn = get_db(); cur = conn.cursor()
-        fname = secure_filename(f.filename) if f.filename else 'schlopka.xlsx'
-        cur.execute('INSERT INTO schlopka_sessions (name,filename,created_by) VALUES (%s,%s,%s) RETURNING id',
-                   (f.filename or 'Схлопка', fname, session.get('username')))
-        sid = cur.fetchone()['id']
-        # Store from_branch in branch col, to_branch in note col
-        cur.executemany(
-            'INSERT INTO schlopka_items (session_id,article,name,size,branch,qty,note) VALUES (%s,%s,%s,%s,%s,%s,%s)',
-            [(sid, art, name, size, from_branch, 1, to_branch) for art, name, size, from_branch, to_branch in items]
-        )
-        conn.commit(); cur.close(); conn.close()
-        return jsonify({'ok': True, 'session_id': sid, 'count': len(items)})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
-
-@app.route('/api/schlopka/<int:sid>', methods=['GET'])
-@login_required
-def get_schlopka_detail(sid):
-    branch = session.get('branch')
-    role = session.get('role')
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT * FROM schlopka_sessions WHERE id=%s', (sid,))
-    sess = cur.fetchone()
-    if not sess:
-        cur.close(); conn.close()
-        return jsonify({'error': 'Не найдено'}), 404
-    q = 'SELECT * FROM schlopka_items WHERE session_id=%s'
-    params = [sid]
-    if role == 'user' and branch:
-        q += ' AND branch=%s'; params.append(branch)
-    q += ' ORDER BY branch, article, size'
-    cur.execute(q, params)
-    items = cur.fetchall()
-    # Branch summary for warehouse
-    cur.execute('''
-        SELECT branch,
-            COUNT(*) as total,
-            SUM(CASE WHEN branch_ready THEN 1 ELSE 0 END) as ready_count,
-            SUM(CASE WHEN branch_taken THEN 1 ELSE 0 END) as taken_count,
-            BOOL_AND(branch_ready) as all_ready,
-            BOOL_AND(branch_taken) as all_taken
-        FROM schlopka_items WHERE session_id=%s
-        GROUP BY branch ORDER BY branch
-    ''', (sid,))
-    branches = cur.fetchall()
-    cur.close(); conn.close()
-    return jsonify({'session': dict(sess), 'items': [dict(i) for i in items], 'branches': [dict(b) for b in branches]})
-
-@app.route('/api/schlopka/<int:sid>/bulk-status', methods=['PATCH'])
-@login_required
-def bulk_schlopka_status(sid):
-    data = request.get_json()
-    status = data.get('status')
-    branch = data.get('branch', '')
-    if status not in ('Не собран', 'В работе', 'Собран', 'Забрал'):
-        return jsonify({'error': 'Invalid status'}), 400
-    conn = get_db(); cur = conn.cursor()
-    if branch:
-        cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE session_id=%s AND branch=%s', (status, sid, branch))
-    else:
-        cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE session_id=%s', (status, sid))
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True})
-
-@app.route('/api/schlopka/items/<int:item_id>/status', methods=['PATCH'])
-@login_required
-def update_schlopka_status(item_id):
-    data = request.get_json()
-    status = data.get('status')
-    if status not in ('Не собран', 'В работе', 'Собран', 'Забрал'):
-        return jsonify({'error': 'Invalid status'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE id=%s', (status, item_id))
-    conn.commit()
-    cur.execute('SELECT * FROM schlopka_items WHERE id=%s', (item_id,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
-    return jsonify(dict(row))
-
-@app.route('/api/schlopka/<int:sid>/branch-ready', methods=['POST'])
-@login_required
-def branch_ready(sid):
-    '''Branch marks their items as ready for pickup'''
-    data = request.get_json() or {}
-    branch = data.get('branch') or session.get('branch')
-    if not branch:
-        return jsonify({'error': 'Branch required'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE schlopka_items SET branch_ready=TRUE WHERE session_id=%s AND branch=%s', (sid, branch))
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True})
-
-@app.route('/api/schlopka/<int:sid>/branch-taken', methods=['POST'])
-@login_required
-def branch_taken(sid):
-    '''Warehouse marks branch items as taken'''
-    data = request.get_json() or {}
-    branch = data.get('branch')
-    if not branch:
-        return jsonify({'error': 'Branch required'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("UPDATE schlopka_items SET branch_taken=TRUE, status='Забрал' WHERE session_id=%s AND branch=%s", (sid, branch))
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True})
-
-@app.route('/api/schlopka/<int:sid>/notify', methods=['POST'])
-@login_required
-def notify_schlopka(sid):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE schlopka_sessions SET ready_for_pickup=TRUE, ready_at=NOW() WHERE id=%s', (sid,))
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True})
-
-@app.route('/api/schlopka/<int:sid>/notify', methods=['DELETE'])
-@login_required
-def cancel_notify_schlopka(sid):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE schlopka_sessions SET ready_for_pickup=FALSE, ready_at=NULL WHERE id=%s', (sid,))
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True})
-
-@app.route('/api/schlopka/<int:sid>', methods=['DELETE'])
-@admin_required
-def delete_schlopka(sid):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('DELETE FROM schlopka_sessions WHERE id=%s', (sid,))
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True})
-
-def sync_catalog_from_yadisk():
-    import urllib.request, urllib.parse, json as _json
-    global _last_sync
-    try:
-        # Get download link
-        full_path = SYNC_FOLDER + '/' + SYNC_FILENAME
-        url = ('https://cloud-api.yandex.net/v1/disk/resources/download?path='
-               + urllib.parse.quote(full_path, safe=''))
-        req = urllib.request.Request(url, headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
-        with urllib.request.urlopen(req, timeout=15) as r:
-            href = _json.loads(r.read()).get('href', '')
-        if not href:
-            print('[SYNC] No download link')
-            return False
-        # Download file
-        req2 = urllib.request.Request(href)
-        with urllib.request.urlopen(req2, timeout=60) as r2:
-            file_data = r2.read()
-        # Process file — reuse upload_catalog logic
-        with app.app_context():
-            wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
-            ws = wb.active
-            rows = list(ws.iter_rows(values_only=True))
-            header_idx = None
-            branch_cols = {}
-            wms_col = None
-            for i, row in enumerate(rows):
-                row_vals = [str(c).strip() if c else '' for c in row]
-                if 'Артикул' in row_vals:
-                    header_idx = i
-                    for j, val in enumerate(row_vals):
-                        val_norm = val.replace('С','C').replace('с','c').replace('Е','E').replace('е','e')
-                        for branch in BRANCHES:
-                            branch_norm = branch.replace('С','C').replace('с','c').replace('Е','E').replace('е','e')
-                            if val_norm == branch_norm or val == branch:
-                                branch_cols[branch] = j; break
-                        if val == 'Склад WMS': wms_col = j
-                    break
-            if header_idx is None:
-                print('[SYNC] Header not found'); return False
-            header_row = [str(c).strip() if c else '' for c in rows[header_idx]]
-            name_col = size_col = season_col = category_col = None
-            art_col = 0
-            for j, val in enumerate(header_row):
-                if val == 'Характеристика' and size_col is None: size_col = j
-                if 'Номенклатура' in val and (',' in val or '.' in val) and 'Сезон' not in val and 'Вид' not in val and name_col is None: name_col = j
-                if 'Сезон' in val: season_col = j
-                if 'Вид' in val and category_col is None: category_col = j
-            if name_col is None:
-                for j, val in enumerate(header_row):
-                    if 'Номенклатура' in val and 'Сезон' not in val and 'Вид' not in val: name_col = j; break
-            data_start = header_idx + 1
-            for i in range(header_idx+1, min(header_idx+3, len(rows))):
-                rv = [str(c).strip() if c else '' for c in rows[i]]
-                if any('Доступно' in v for v in rv):
-                    data_start = i + 1; break
-            conn = get_db(); cur = conn.cursor()
-            # Save existing ABC/sold data before delete
-            cur.execute('SELECT article, MIN(abc) as abc, MAX(sold) as sold FROM catalog GROUP BY article')
-            abc_data = {r['article']: (r['abc'], r['sold']) for r in cur.fetchall()}
-            cur.execute('DELETE FROM catalog')
-            cur.execute('DELETE FROM branch_stock')
-            catalog_items = []
-            branch_items = []
-            for row in rows[data_start:]:
-                if not row or not row[art_col]: continue
-                art = str(row[art_col]).strip()
-                if not art or art in ('None','nan'): continue
-                size = ''
-                if size_col is not None and row[size_col]: size = str(row[size_col]).strip()
-                name = ''
-                if name_col is not None and row[name_col]:
-                    name_full = str(row[name_col]).strip()
-                    if not size and ', ' in name_full:
-                        parts = name_full.rsplit(', ', 1); name_full = parts[0].strip(); size = parts[1].strip()
-                    art_base = art.rstrip('A')
-                    if name_full.startswith(art_base): name_full = name_full[len(art_base):].strip()
-                    if size and name_full.endswith(f', {size}'): name_full = name_full[:-len(f', {size}')].strip()
-                    name = name_full
-                season = str(row[season_col]).strip() if season_col is not None and row[season_col] and str(row[season_col]) not in ('None','nan') else ''
-                category = str(row[category_col]).strip() if category_col is not None and row[category_col] and str(row[category_col]) not in ('None','nan') else ''
-                wms = 0
-                if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
-                    try: wms = int(float(str(row[wms_col])))
-                    except: pass
-                catalog_items.append((art, name, size, wms, season, category))
-                for branch, col in branch_cols.items():
-                    qty = row[col]
-                    if qty and str(qty) not in ('None','nan'):
-                        try:
-                            q = int(float(str(qty)))
-                            if q > 0: branch_items.append((art, size, branch, q))
-                        except: pass
-            cur.executemany('INSERT INTO catalog (article,name,size,wms_stock,season,category) VALUES (%s,%s,%s,%s,%s,%s)', catalog_items)
-            cur.executemany('INSERT INTO branch_stock (article,size,branch,qty) VALUES (%s,%s,%s,%s)', branch_items)
-            # Restore ABC/sold data
-            for art, (abc, sold) in abc_data.items():
-                if abc and abc != 'C':
-                    cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
-            conn.commit(); cur.close(); conn.close()
-            _last_sync = datetime.now().strftime('%Y-%m-%d %H:%M')
-            print(f'[SYNC] Done: {len(catalog_items)} items at {_last_sync}')
-            return True
-    except Exception as e:
-        print(f'[SYNC] Error: {e}')
-        return False
-
-def sync_scheduler():
-    time.sleep(10)  # wait for app to start
-    while True:
-        sync_catalog_from_yadisk()
-        time.sleep(SYNC_INTERVAL_HOURS * 3600)
-
-# Start background sync thread
-sync_thread = Thread(target=sync_scheduler, daemon=True)
-sync_thread.start()
-
-@app.route('/api/debug/counts')
-def debug_counts():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT COUNT(*) as c FROM catalog'); cat = cur.fetchone()['c']
-    cur.execute('SELECT COUNT(DISTINCT article) as c FROM catalog'); arts = cur.fetchone()['c']
-    cur.execute('SELECT COUNT(*) as c FROM sales'); sales = cur.fetchone()['c']
-    cur.execute('SELECT COUNT(*) as c FROM orders'); orders = cur.fetchone()['c']
-    cur.close(); conn.close()
-    return jsonify({'catalog_rows': cat, 'unique_articles': arts, 'sales_rows': sales, 'orders': orders})
-
-@app.route('/api/sync/status')
-@admin_required
-def sync_status():
-    return jsonify({'last_sync': _last_sync, 'interval_hours': SYNC_INTERVAL_HOURS, 'folder': SYNC_FOLDER})
-
-@app.route('/api/sync/now', methods=['POST'])
-@admin_required
-def sync_now():
-    ok = sync_catalog_from_yadisk()
-    return jsonify({'ok': ok, 'last_sync': _last_sync})
-
-@app.route('/api/catalog/dead-stock')
-@login_required
-def dead_stock():
-    '''Items on WMS with no sales in last 90 days'''
-    conn = get_db(); cur = conn.cursor()
-    cur.execute('''
-        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
-               MIN(c.season) as season, MIN(c.category) as category,
-               SUM(c.wms_stock) as total_wms,
-               MAX(c.sold) as total_sold,
-               COALESCE(MAX(s.last_sale), NULL) as last_sale,
-               COALESCE(SUM(s.qty_90), 0) as qty_90days
-        FROM catalog c
-        LEFT JOIN (
-            SELECT article,
-                   MAX(sale_date) as last_sale,
-                   SUM(CASE WHEN sale_date >= CURRENT_DATE - INTERVAL '90 days' THEN qty ELSE 0 END) as qty_90
-            FROM sales GROUP BY article
-        ) s ON s.article = c.article OR s.article = c.article || 'A' OR s.article || 'A' = c.article
-        WHERE c.wms_stock > 0
-        AND (c.season ILIKE %s OR c.season ILIKE %s OR c.season = '' OR c.season IS NULL)
-        GROUP BY c.article
-        HAVING SUM(c.wms_stock) > 0
-        AND COALESCE(SUM(s.qty_90), 0) = 0
-        ORDER BY SUM(c.wms_stock) DESC
-        LIMIT 100
-    ''', (f'%{season_code}%', '%SMU%'))
-    rows = cur.fetchall()
-    cur.close(); conn.close()
-    return jsonify([dict(r) for r in rows])
-
-@app.route('/api/ai/movement-plan', methods=['GET'])
-@login_required
-def ai_movement_plan():
-    '''Generate Excel movement plan based on sales vs stock analysis'''
-    conn = get_db(); cur = conn.cursor()
-    
-    my_branch = session.get('branch')
-    role = session.get('role')
-
-    # Get sales by article+branch
-    cur.execute('''
-        SELECT s.article, s.branch, SUM(s.qty) as sold,
-               COALESCE(bs.total_stock, 0) as stock
-        FROM sales s
-        LEFT JOIN (
-            SELECT article, branch, SUM(qty) as total_stock
-            FROM branch_stock GROUP BY article, branch
-        ) bs ON bs.article=s.article AND bs.branch=s.branch
-        WHERE s.sale_date >= CURRENT_DATE - INTERVAL '90 days'
-        GROUP BY s.article, s.branch, bs.total_stock
-        ORDER BY s.article, SUM(s.qty) DESC
-    ''')
-    sales_rows = cur.fetchall()
-    
-    # Get ABC A articles
-    cur.execute("SELECT DISTINCT article FROM catalog WHERE abc='A'")
-    a_articles = {r['article'] for r in cur.fetchall()}
-    cur.close(); conn.close()
-
-    # Build movement plan
-    by_article = {}
-    for r in sales_rows:
-        art = r['article']
-        if art not in by_article:
-            by_article[art] = []
-        by_article[art].append({'branch': r['branch'], 'sold': int(r['sold'] or 0), 'stock': int(r['stock'] or 0)})
-
-    movements = []
-    for art, branches in by_article.items():
-        if len(branches) < 2: continue
-        branches.sort(key=lambda x: x['sold'], reverse=True)
-        top = branches[0]  # best seller
-        for donor in branches[1:]:
-            gap = top['sold'] - donor['sold']
-            if gap >= 3 and donor['stock'] >= 1:
-                qty = min(donor['stock'], max(1, gap // 3))
-                movements.append({
-                    'article': art,
-                    'from_branch': donor['branch'],
-                    'to_branch': top['branch'],
-                    'donor_sold': donor['sold'],
-                    'receiver_sold': top['sold'],
-                    'donor_stock': donor['stock'],
-                    'qty': qty,
-                    'priority': 'A' if art in a_articles else 'B'
-                })
-
-    # Filter by branch if not admin
-    if my_branch and role != 'admin':
-        movements = [m for m in movements if m['from_branch'] == my_branch or m['to_branch'] == my_branch]
-
-    movements.sort(key=lambda x: (x['priority'], -(x['receiver_sold'] - x['donor_sold'])))
-
-    # Generate Excel
-    wb = openpyxl.Workbook()
-    ws = wb.active
-    ws.title = 'План перемещений'
-    thin = Side(style='thin')
-    border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    
-    # Title
-    ws.merge_cells('A1:H1')
-    t = ws['A1']
-    t.value = f'План перемещений товаров — {datetime.now().strftime("%d.%m.%Y")}'
-    t.font = Font(name='Arial', bold=True, size=12, color='FFFFFF')
-    t.fill = PatternFill('solid', fgColor='E31837')
-    t.alignment = Alignment(horizontal='center', vertical='center')
-    ws.row_dimensions[1].height = 24
-
-    headers = ['№', 'Артикул', 'ABC', 'Откуда', 'Продаж (донор)', 'Куда', 'Продаж (получатель)', 'Остаток у донора', 'Кол-во для передачи']
-    widths = [4, 16, 5, 20, 14, 20, 18, 16, 16]
-    fills = {'A': 'FFF3CD', 'B': 'D4EDDA'}
-    
-    for j, (h, w) in enumerate(zip(headers, widths), 1):
-        c = ws.cell(row=2, column=j, value=h)
-        c.font = Font(name='Arial', bold=True, size=10, color='FFFFFF')
-        c.fill = PatternFill('solid', fgColor='E31837')
-        c.alignment = Alignment(horizontal='center', vertical='center')
-        c.border = border
-        ws.column_dimensions[c.column_letter].width = w
-    ws.row_dimensions[2].height = 18
-
-    for i, m in enumerate(movements[:200], 1):
-        row = i + 2
-        fill_color = fills.get(m['priority'], 'FFFFFF')
-        vals = [i, m['article'], m['priority'], m['from_branch'], m['donor_sold'],
-                m['to_branch'], m['receiver_sold'], m['donor_stock'], m['qty']]
-        for j, val in enumerate(vals, 1):
-            c = ws.cell(row=row, column=j, value=val)
-            c.font = Font(name='Arial', size=10)
-            c.border = border
-            c.fill = PatternFill('solid', fgColor=fill_color)
-            if j in (1,3,5,7,8,9):
-                c.alignment = Alignment(horizontal='center')
-        ws.row_dimensions[row].height = 15
-
-    # Summary sheet
-    ws2 = wb.create_sheet('Сводка')
-    ws2['A1'] = 'Итого перемещений:'; ws2['B1'] = len(movements)
-    ws2['A2'] = 'Категория A:'; ws2['B2'] = sum(1 for m in movements if m['priority']=='A')
-    ws2['A3'] = 'Уникальных артикулов:'; ws2['B3'] = len(set(m['article'] for m in movements))
-    
-    buf = io.BytesIO()
-    wb.save(buf); buf.seek(0)
-    branch_slug = (my_branch or 'все').replace(' ','_') if my_branch and role!='admin' else 'все_филиалы'
-    fname = f'план_перемещений_{branch_slug}_{datetime.now().strftime("%Y%m%d")}.xlsx'
-    return send_file(buf, as_attachment=True, download_name=fname,
-                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
-
-@app.route('/api/ai/analyze', methods=['POST'])
-@login_required
-def ai_analyze():
-    import urllib.request, json as _json
-    data = request.get_json()
-    prompt = data.get('prompt', '')
-    if not prompt:
-        return jsonify({'error': 'No prompt'}), 400
-    try:
-        payload = _json.dumps({
-            'model': 'claude-sonnet-4-6',
-            'max_tokens': 1500,
-            'messages': [{'role': 'user', 'content': prompt}]
-        }).encode()
-        api_key = os.environ.get('ANTHROPIC_API_KEY', '')
-        if not api_key:
-            return jsonify({'error': 'ANTHROPIC_API_KEY не настроен в Railway Variables'}), 500
-        req = urllib.request.Request(
-            'https://api.anthropic.com/v1/messages',
-            data=payload,
-            headers={
-                'Content-Type': 'application/json',
-                'x-api-key': api_key,
-                'anthropic-version': '2023-06-01'
-            },
-            method='POST'
-        )
-        with urllib.request.urlopen(req, timeout=30) as r:
-            result = _json.loads(r.read())
-        text = result.get('content', [{}])[0].get('text', 'Нет ответа')
-        return jsonify({'text': text})
-    except Exception as e:
-        return jsonify({'error': str(e)}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
