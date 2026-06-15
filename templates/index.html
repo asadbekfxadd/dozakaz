@@ -2616,7 +2616,7 @@ function renderMobileOrders(orders){
         ${prioBadge(o.priority)}
       </div>
       <div style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:10px">
-        ${o.filename?`<a href="/api/download/${o.id}" class="file-chip">📎 ${o.original_name?.slice(0,20)||'файл'}...</a>`:''}
+        
         <a href="/api/orders/${o.id}/excel" class="file-chip" download>📥 Excel</a>
       </div>
       ${currentRole==='admin'?`<div class="order-card-mobile-actions">
