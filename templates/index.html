@@ -1750,7 +1750,7 @@ async function loadModalBranches(article){
     return '<div style="background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:12px 14px">'+
       '<div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:8px">'+
       '<div style="font-size:13px;font-weight:700;text-transform:uppercase">'+b.branch+'</div>'+
-      (canTransfer?'<button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="quickTransfer(''+article+'',''+b.branch+'')">➡ Забрать</button>':'')+ 
+      (canTransfer?'<button class="btn-secondary" style="padding:4px 10px;font-size:11px" onclick="quickTransfer(\''+article+'\',\''+b.branch+'\')">&#10145; Забрать</button>':'')+ 
       '</div>'+
       '<div style="display:flex;gap:16px;margin-bottom:8px">'+
       '<div style="text-align:center"><div style="font-size:18px;font-weight:800;color:var(--amber)">'+b.stock+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Остаток</div></div>'+
