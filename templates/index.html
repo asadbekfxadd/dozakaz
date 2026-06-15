@@ -996,6 +996,21 @@ td.muted{color:var(--text2)}
             <option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option>
             <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option>
           </select>
+          <input type="text" id="rec-search" placeholder="🔍 Артикул..." oninput="filterRecs()" style="min-width:160px">
+          <select id="rec-season" onchange="filterRecs()">
+            <option value="">Все кварталы</option>
+            <option value="Q1">Q1 (Весна)</option>
+            <option value="Q2">Q2 (Лето)</option>
+            <option value="Q3">Q3 (Осень)</option>
+            <option value="Q4">Q4 (Зима)</option>
+            <option value="SMU">SMU</option>
+          </select>
+          <select id="rec-abc" onchange="filterRecs()">
+            <option value="">Все категории</option>
+            <option value="A">A — Топ</option>
+            <option value="B">B — Средние</option>
+            <option value="C">C — Остальные</option>
+          </select>
           <button class="btn-secondary" onclick="loadRecommendations()">&#8635; Обновить</button>
           <button class="btn-primary" onclick="downloadRecExcel()" style="padding:8px 16px">&#128229; Скачать Excel</button>
         </div>
@@ -2507,6 +2522,21 @@ function downloadRecExcel(){
   window.location.href = '/api/recommendations/excel?branch=' + encodeURIComponent(branch);
 }
 
+var _allRecs = [];
+
+function filterRecs(){
+  var search = (document.getElementById('rec-search')?.value||'').toLowerCase().trim();
+  var season = document.getElementById('rec-season')?.value||'';
+  var abc = document.getElementById('rec-abc')?.value||'';
+  var items = _allRecs.filter(item=>{
+    if(search && !item.article.toLowerCase().includes(search) && !item.name.toLowerCase().includes(search)) return false;
+    if(season && !(item.season||'').includes(season)) return false;
+    if(abc && item.abc !== abc) return false;
+    return true;
+  });
+  renderRecGrid(items);
+}
+
 async function loadRecommendations(){
   var branch = currentBranch;
   if(!branch && currentRole==='admin'){
@@ -2547,6 +2577,18 @@ async function loadRecommendations(){
     '<div style="background:var(--green2);border:1px solid var(--green);border-radius:8px;padding:12px 20px;text-align:center"><div style="font-size:22px;font-weight:700;color:var(--green)">'+availableMissing+'</div><div style="font-size:11px;color:var(--text2);text-transform:uppercase">Есть на WMS</div></div>' +
     '</div>';
 
+  _allRecs = items;
+  renderRecGrid(items);
+}
+
+function renderRecGrid(items){
+  if(!items.length){
+    document.getElementById('rec-empty').style.display='block';
+    document.getElementById('rec-empty').textContent='Нет рекомендаций по выбранным фильтрам';
+    document.getElementById('rec-grid').innerHTML='';
+    return;
+  }
+  document.getElementById('rec-empty').style.display='none';
   document.getElementById('rec-grid').innerHTML = items.map(item=>{
     var itemJson = JSON.stringify({
       article:item.article, name:item.name, abc:item.abc, sold:item.sold,
