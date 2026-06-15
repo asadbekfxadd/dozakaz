@@ -277,6 +277,36 @@ def get_order_items(oid):
     cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
 
+def upload_to_yadisk(file_path, filename):
+    '''Upload file to Yandex Disk /li-ning-orders/ folder'''
+    import urllib.request, urllib.parse, json as _json
+    try:
+        folder = '/li-ning-orders'
+        # Create folder if not exists
+        folder_url = ('https://cloud-api.yandex.net/v1/disk/resources?'
+                     + urllib.parse.urlencode({'path': folder}))
+        req = urllib.request.Request(folder_url, method='PUT',
+                                    headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
+        try: urllib.request.urlopen(req, timeout=5)
+        except: pass
+        # Get upload URL
+        upload_url = ('https://cloud-api.yandex.net/v1/disk/resources/upload?'
+                     + urllib.parse.urlencode({'path': f'{folder}/{filename}', 'overwrite': 'true'}))
+        req2 = urllib.request.Request(upload_url,
+                                     headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
+        with urllib.request.urlopen(req2, timeout=10) as r:
+            href = _json.loads(r.read()).get('href', '')
+        if not href:
+            return False
+        # Upload file
+        with open(file_path, 'rb') as f:
+            req3 = urllib.request.Request(href, data=f.read(), method='PUT')
+            urllib.request.urlopen(req3, timeout=30)
+        return True
+    except Exception as e:
+        print(f'[YADISK UPLOAD] Error: {e}')
+        return False
+
 def generate_order_excel(branch, items):
     wb = openpyxl.Workbook()
     ws = wb.active
@@ -340,15 +370,20 @@ def create_order():
             return jsonify({'error': 'Только .xlsx, .xls, .csv'}), 400
         original_name = f.filename
         filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{secure_filename(f.filename)}'
-        f.save(os.path.join(app.config['UPLOAD_FOLDER'], filename))
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        f.save(file_path)
+        upload_to_yadisk(file_path, original_name)
     if not filename and items:
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         branch_slug = branch.replace(' ','_').replace('.','')
         original_name = f'ДОЗАКАЗ_{branch_slug}_{ts}.xlsx'
         filename = f'{ts}_{secure_filename(original_name)}'
         excel_buf = generate_order_excel(branch, items)
-        with open(os.path.join(app.config['UPLOAD_FOLDER'], filename), 'wb') as out:
+        file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
+        with open(file_path, 'wb') as out:
             out.write(excel_buf.read())
+        # Upload to Yandex Disk for permanent storage
+        upload_to_yadisk(file_path, original_name)
     conn = get_db(); cur = conn.cursor()
     cur.execute(
         'INSERT INTO orders (branch,responsible,date,priority,note,filename,original_name) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id',
@@ -402,14 +437,38 @@ def download_order_excel(oid):
 @app.route('/api/download/<int:oid>')
 @login_required
 def download(oid):
+    import urllib.request, urllib.parse, json as _json
     conn = get_db(); cur = conn.cursor()
     cur.execute('SELECT * FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
     cur.close(); conn.close()
     if not row or not row['filename']:
         return 'Not found', 404
-    return send_from_directory(app.config['UPLOAD_FOLDER'], row['filename'],
-                               as_attachment=True, download_name=row['original_name'])
+    local_path = os.path.join(app.config['UPLOAD_FOLDER'], row['filename'])
+    # Try local first
+    if os.path.exists(local_path):
+        return send_from_directory(app.config['UPLOAD_FOLDER'], row['filename'],
+                                   as_attachment=True, download_name=row['original_name'])
+    # Try Yandex Disk
+    try:
+        yadisk_path = f'/li-ning-orders/{row["original_name"]}'
+        url = ('https://cloud-api.yandex.net/v1/disk/resources/download?path='
+               + urllib.parse.quote(yadisk_path, safe=''))
+        req = urllib.request.Request(url, headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            href = _json.loads(r.read()).get('href', '')
+        if href:
+            req2 = urllib.request.Request(href)
+            with urllib.request.urlopen(req2, timeout=30) as r2:
+                data = r2.read()
+            # Save locally for next time
+            with open(local_path, 'wb') as f:
+                f.write(data)
+            return send_from_directory(app.config['UPLOAD_FOLDER'], row['filename'],
+                                       as_attachment=True, download_name=row['original_name'])
+    except Exception as e:
+        print(f'[DOWNLOAD] Yandex Disk error: {e}')
+    return 'Файл не найден. Используйте кнопку Excel для скачивания.', 404
 
 @app.route('/api/stats')
 @login_required
