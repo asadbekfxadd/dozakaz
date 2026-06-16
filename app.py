@@ -1642,8 +1642,7 @@ def get_schlopka_detail(sid):
     q = 'SELECT * FROM schlopka_items WHERE session_id=%s'
     params = [sid]
     if role == 'user' and branch:
-        # Show items where this branch is donor OR receiver (note field)
-        q += ' AND (branch=%s OR note=%s)'; params.extend([branch, branch])
+        q += ' AND branch=%s'; params.append(branch)
     q += ' ORDER BY branch, article, size'
     cur.execute(q, params)
     items = cur.fetchall()

@@ -2667,21 +2667,13 @@ function renderSchlopkaItems(){
 
   var statusColor = {'Не собран':'var(--accent)','В работе':'var(--amber)','Собран':'var(--green)','Забрал':'var(--blue)'};
 
-  // For branch users: split into "отдаём" and "получаем"
+  // For branch users: show only their branch items
   if(currentRole==='user' && currentBranch){
-    var giving = currentSchlopkaItems.filter(i=>i.branch===currentBranch);
-    var receiving = currentSchlopkaItems.filter(i=>i.note===currentBranch && i.branch!==currentBranch);
-    if(giving.length || receiving.length){
-      var html = '';
-      if(giving.length){
-        html += '<tr><td colspan="7" style="background:rgba(255,23,68,.06);padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--accent);letter-spacing:1px;border-bottom:1px solid var(--border)">📤 Отдаём ('+giving.length+' позиций)</td></tr>';
-        html += giving.map(item=>renderSchlopkaRow(item,statusColor)).join('');
-      }
-      if(receiving.length){
-        html += '<tr><td colspan="7" style="background:rgba(0,230,118,.06);padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--green);letter-spacing:1px;border-bottom:1px solid var(--border)">📥 Получаем ('+receiving.length+' позиций)</td></tr>';
-        html += receiving.map(item=>renderSchlopkaRow(item,statusColor)).join('');
-      }
-      document.getElementById('schlopka-tbody').innerHTML = html;
+    var myItems = currentSchlopkaItems.filter(i=>i.branch===currentBranch);
+    if(myItems.length){
+      document.getElementById('schlopka-tbody').innerHTML =
+        '<tr><td colspan="5" style="background:rgba(255,23,68,.06);padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--accent);letter-spacing:1px;border-bottom:1px solid var(--border)">📤 Список к отгрузке — '+currentBranch+' ('+myItems.length+' позиций)</td></tr>'+
+        myItems.map(item=>renderSchlopkaRow(item,statusColor)).join('');
       renderSchlopkaStats();
       return;
     }
