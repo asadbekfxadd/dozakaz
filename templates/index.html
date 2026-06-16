@@ -850,7 +850,13 @@ td.muted{color:var(--text2)}
     <div id="page-transfers" class="page">
       <div class="topbar">
         <div><div class="topbar-title">Перемещение товаров</div><div class="topbar-sub">Заявки на переброску A-товаров между филиалами</div></div>
-        <button class="btn-secondary" onclick="loadTransfers()">&#8635; Обновить</button>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn-primary" onclick="openTransferCart()" style="position:relative">
+            🛒 Корзина перемещений
+            <span id="transfer-cart-count" style="position:absolute;top:-6px;right:-6px;background:#fff;color:var(--accent);border-radius:50%;width:18px;height:18px;font-size:10px;font-weight:700;display:none;align-items:center;justify-content:center;border:1px solid var(--accent)">0</span>
+          </button>
+          <button class="btn-secondary" onclick="loadTransfers()">&#8635; Обновить</button>
+        </div>
       </div>
       <div class="content">
         <!-- Suggestions for flagmans -->
@@ -886,7 +892,10 @@ td.muted{color:var(--text2)}
               <label>Комментарий</label>
               <input type="text" id="tf-note" placeholder="Причина перемещения...">
             </div>
-            <button class="btn-primary" onclick="submitTransfer()">Создать заявку</button>
+            <div style="display:flex;gap:8px">
+              <button class="btn-secondary" onclick="addToTransferCart()">+ В корзину</button>
+              <button class="btn-primary" onclick="submitTransfer()">Создать сейчас</button>
+            </div>
           </div>
         </div>
         <!-- Transfers list -->
@@ -1234,6 +1243,21 @@ td.muted{color:var(--text2)}
     </div>
     <div class="form-group" style="margin-bottom:12px"><label>Комментарий</label><input type="text" id="cart-note" placeholder="Комментарий к заявке..."></div>
     <button class="btn-primary" style="width:100%" onclick="submitCartOrder()">Оформить заявку</button>
+  </div>
+</div>
+
+<!-- TRANSFER CART PANEL -->
+<div class="cart-panel" id="transfer-cart-panel">
+  <div class="cart-header">
+    <div class="cart-title">🔄 Корзина перемещений</div>
+    <button class="cart-close" onclick="closeTransferCart()">✕</button>
+  </div>
+  <div class="cart-items" id="transfer-cart-items">
+    <div style="padding:24px;text-align:center;color:var(--text3)">Корзина пуста</div>
+  </div>
+  <div class="cart-footer">
+    <div id="transfer-cart-summary" style="font-size:12px;color:var(--text2);margin-bottom:12px"></div>
+    <button class="btn-primary" style="width:100%" onclick="submitTransferCart()">✓ Создать все заявки</button>
   </div>
 </div>
 
@@ -2092,6 +2116,98 @@ function showPage(name,btn){
       if(window._warehouseTimer) clearInterval(window._warehouseTimer);
       window._warehouseTimer = setInterval(loadSchlopkaSessions, 30000);
     }
+  }
+}
+
+var transferCart = [];
+
+function openTransferCart(){
+  document.getElementById('transfer-cart-panel').classList.add('open');
+  renderTransferCart();
+}
+function closeTransferCart(){
+  document.getElementById('transfer-cart-panel').classList.remove('open');
+}
+
+function addToTransferCart(){
+  var from_branch = document.getElementById('tf-from').value;
+  var article = document.getElementById('tf-article').value.trim();
+  var size = document.getElementById('tf-size').value.trim();
+  var qty = parseInt(document.getElementById('tf-qty').value)||1;
+  var note = document.getElementById('tf-note').value.trim();
+  if(!from_branch||!article||!size){toast('Заполните все поля',true);return;}
+  transferCart.push({from_branch, article, size, qty, note, id:Date.now()});
+  document.getElementById('tf-article').value='';
+  document.getElementById('tf-size').value='';
+  document.getElementById('tf-qty').value='1';
+  document.getElementById('tf-note').value='';
+  updateTransferCartBadge();
+  renderTransferCart();
+  toast('Добавлено в корзину');
+}
+
+function updateTransferCartBadge(){
+  var badge = document.getElementById('transfer-cart-count');
+  if(transferCart.length>0){
+    badge.style.display='flex';
+    badge.textContent=transferCart.length;
+  } else {
+    badge.style.display='none';
+  }
+}
+
+function renderTransferCart(){
+  var el = document.getElementById('transfer-cart-items');
+  var summary = document.getElementById('transfer-cart-summary');
+  if(!transferCart.length){
+    el.innerHTML='<div style="padding:24px;text-align:center;color:var(--text3)">Корзина пуста<br><small>Добавьте позиции через форму</small></div>';
+    summary.textContent='';
+    return;
+  }
+  summary.textContent = transferCart.length + ' позиций';
+  el.innerHTML = transferCart.map(item=>
+    '<div class="cart-item" style="position:relative">'+
+    '<button onclick="removeFromTransferCart('+item.id+')" style="position:absolute;top:8px;right:8px;background:none;border:none;color:var(--text3);cursor:pointer;font-size:14px">✕</button>'+
+    '<div class="cart-item-art">'+item.article+' — '+item.size+'</div>'+
+    '<div class="cart-item-name" style="color:var(--text2)">Из: <strong>'+item.from_branch+'</strong></div>'+
+    '<div style="display:flex;align-items:center;gap:8px;margin-top:8px">'+
+    '<span style="font-size:11px;color:var(--text3)">Кол-во:</span>'+
+    '<input type="number" min="1" value="'+item.qty+'" style="width:60px;padding:4px 8px;font-size:13px;text-align:center" onchange="updateTransferCartQty('+item.id+',this.value)">'+
+    (item.note?'<span style="font-size:11px;color:var(--text3)">'+item.note+'</span>':'')+'</div>'+
+    '</div>'
+  ).join('');
+}
+
+function removeFromTransferCart(id){
+  transferCart = transferCart.filter(i=>i.id!==id);
+  updateTransferCartBadge();
+  renderTransferCart();
+}
+
+function updateTransferCartQty(id, val){
+  var item = transferCart.find(i=>i.id===id);
+  if(item) item.qty = parseInt(val)||1;
+}
+
+async function submitTransferCart(){
+  if(!transferCart.length){toast('Корзина пуста',true);return;}
+  var btn = event.target; btn.disabled=true; btn.textContent='Создаю...';
+  var errors = 0;
+  for(var item of transferCart){
+    var r = await fetch('/api/transfers',{method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({from_branch:item.from_branch,article:item.article,size:item.size,qty:item.qty,note:item.note})});
+    if(!r.ok) errors++;
+  }
+  btn.disabled=false; btn.textContent='✓ Создать все заявки';
+  if(errors===0){
+    toast('Создано '+transferCart.length+' заявок на перемещение!');
+    transferCart=[];
+    updateTransferCartBadge();
+    renderTransferCart();
+    closeTransferCart();
+    loadTransfers();
+  } else {
+    toast('Создано с ошибками: '+errors+' не удалось',true);
   }
 }
 
