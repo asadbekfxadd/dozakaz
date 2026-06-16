@@ -24,6 +24,22 @@
   --shadow:0 4px 24px rgba(0,0,0,.08);
   --shadow-accent:0 4px 20px rgba(227,24,55,.2);
 }
+[data-theme="dark"]{
+  --bg:#080808;--bg2:#0f0f0f;--bg3:#161616;--bg4:#1e1e1e;
+  --border:#222;--border2:#333;
+  --text:#f5f5f5;--text2:#999;--text3:#555;
+  --accent:#ff1744;--accent2:#1a0008;--accent3:#ff4569;
+  --green:#00e676;--green2:#00150a;
+  --amber:#ffab00;--amber2:#1a1200;
+  --blue:#2979ff;--blue2:#001033;
+  --shadow:0 4px 24px rgba(0,0,0,.6);
+  --shadow-accent:0 4px 20px rgba(255,23,68,.3);
+}
+[data-theme="dark"] .login-wrap{background:#050505}
+[data-theme="dark"] .login-card{background:rgba(15,15,15,.95);border-color:var(--border2)}
+[data-theme="dark"] .topbar{background:rgba(15,15,15,.95)}
+[data-theme="dark"] .sidebar{background:#0f0f0f}
+[data-theme="dark"] .mobile-nav{background:#0f0f0f}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;min-height:100vh}
 a{color:var(--accent);text-decoration:none}
 
@@ -892,10 +908,7 @@ td.muted{color:var(--text2)}
               <label>Комментарий</label>
               <input type="text" id="tf-note" placeholder="Причина перемещения...">
             </div>
-            <div style="display:flex;gap:8px">
-              <button class="btn-secondary" onclick="addToTransferCart()">+ В корзину</button>
-              <button class="btn-primary" onclick="submitTransfer()">Создать сейчас</button>
-            </div>
+            <button class="btn-primary" style="width:100%;font-size:16px;padding:12px" onclick="addToTransferCartAndOpen()">+ Добавить</button>
           </div>
         </div>
         <!-- Transfers list -->
@@ -1317,7 +1330,29 @@ document.getElementById('r-date').value=new Date().toISOString().slice(0,10);
 const BRANCH_MAP={'magic':'MAGIC CITY','novza':'NOVZA','atlas':'ATLAS CHIMGAN','Family Park':'Family park','alayskiy':'ALAYSKIY','tashcityMall':'TASHKENT CITY MALL','Hitown':'HIGH TOWN PLAZA','Malika':'MALIKA','ekopark':'ECO PARK','Shoto-Rust':'Shota Rustavely','Shoto-Rust-2':'Shota Rustavely','Gallary-1':'Yunusabad gallery','Gallary-2':'Yunusabad gallery'};
 const ONEC_MAP={'MAGIC CITY':'MAGIC CITY','NOVZA':'NOVZA','ATLAS CHIMGAN':'ATLAS CHIMGAN','Family park':'Family park','ALAYSKIY':'ALAYSKIY','TASHKENT CITY MALL':'TASHKENT CITY MALL','HIGH TOWN PLAZA':'HIGH TOWN PLAZA','MALIKA':'MALIKA','ECO PARK':'ECO PARK','Shota Rustavely':'Shota Rustavely','Scopus Mall':'Scopus Mall','UZBEGIM ANDIJAN':'UZBEGIM ANDIJAN','M. BARAKA':'M. BARAKA','Yunusabad gallery':'Yunusabad gallery'};
 
+function toggleTheme(){
+  var isDark = document.documentElement.getAttribute('data-theme')==='dark';
+  var newTheme = isDark ? 'light' : 'dark';
+  applyTheme(newTheme);
+  localStorage.setItem('lining-theme', newTheme);
+}
+
+function applyTheme(theme){
+  if(theme==='dark'){
+    document.documentElement.setAttribute('data-theme','dark');
+    document.getElementById('theme-icon').textContent='☀️';
+    document.getElementById('theme-label').textContent='Дневной режим';
+  } else {
+    document.documentElement.removeAttribute('data-theme');
+    document.getElementById('theme-icon').textContent='🌙';
+    document.getElementById('theme-label').textContent='Ночной режим';
+  }
+}
+
 async function init(){
+  // Apply saved theme
+  var saved = localStorage.getItem('lining-theme')||'light';
+  applyTheme(saved);
   var r=await fetch('/api/me');var d=await r.json();
   if(d.logged_in){currentRole=d.role;currentBranch=d.branch;showApp(d);}
   else document.getElementById('login-wrap').style.display='flex';
@@ -2127,6 +2162,11 @@ function openTransferCart(){
 }
 function closeTransferCart(){
   document.getElementById('transfer-cart-panel').classList.remove('open');
+}
+
+function addToTransferCartAndOpen(){
+  addToTransferCart();
+  openTransferCart();
 }
 
 function addToTransferCart(){
