@@ -2672,13 +2672,13 @@ function renderSchlopkaItems(){
     var myItems = currentSchlopkaItems.filter(i=>i.branch===currentBranch);
     if(myItems.length){
       document.getElementById('schlopka-tbody').innerHTML =
-        '<tr><td colspan="5" style="background:rgba(255,23,68,.06);padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--accent);letter-spacing:1px;border-bottom:1px solid var(--border)">📤 Список к отгрузке — '+currentBranch+' ('+myItems.length+' позиций)</td></tr>'+
+        '<tr><td colspan="6" style="background:rgba(255,23,68,.06);padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--accent);letter-spacing:1px;border-bottom:1px solid var(--border)">📤 Список к отгрузке — '+currentBranch+' ('+myItems.length+' позиций)</td></tr>'+
         myItems.map(item=>renderSchlopkaRow(item,statusColor)).join('');
       renderSchlopkaStats();
       return;
     }
   }
-  document.getElementById('schlopka-items-tbody').innerHTML = items.map(item=>
+  document.getElementById('schlopka-tbody').innerHTML = items.map(item=>
     '<tr id="sitem-'+item.id+'">'+
     '<td style="font-weight:700;text-transform:uppercase">'+item.article+'</td>'+
     '<td style="color:var(--text2);font-size:12px">'+item.name+'</td>'+
@@ -2698,7 +2698,34 @@ function renderSchlopkaItems(){
     ))+
     '</div></td>'+
     '</tr>'
-  ).join('') || '<tr><td colspan="7"><div class="empty-state">Нет позиций</div></td></tr>';
+  ).join('') || '<tr><td colspan="6"><div class="empty-state">Нет позиций</div></td></tr>';
+}
+
+function renderSchlopkaStats(){
+  var total = currentSchlopkaItems.length;
+  var notReady = currentSchlopkaItems.filter(i=>i.status==='Не собран').length;
+  var ready = currentSchlopkaItems.filter(i=>i.status==='В работе').length;
+  var sent = currentSchlopkaItems.filter(i=>i.status==='Собран'||i.status==='Забрал').length;
+  document.getElementById('schlopka-stats-cards').innerHTML =
+    '<div style="background:var(--accent2);border:1px solid rgba(255,23,68,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--accent)">'+notReady+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Не собран</div></div>'+
+    '<div style="background:var(--amber2);border:1px solid rgba(255,171,0,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--amber)">'+ready+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">В работе</div></div>'+
+    '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--green)">'+sent+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Собран</div></div>';
+}
+
+function renderSchlopkaRow(item, statusColor){
+  return '<tr id="sitem-'+item.id+'">'+
+    '<td style="font-weight:700;text-transform:uppercase">'+item.article+'</td>'+
+    '<td style="color:var(--text2);font-size:12px">'+item.name+'</td>'+
+    '<td><span style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700">'+(item.size||'—')+'</span></td>'+
+    '<td style="color:var(--text2);font-size:12px">'+item.branch+'</td>'+
+    '<td style="color:var(--green);font-size:12px;font-weight:600">'+(item.note||'—')+'</td>'+
+    '<td><span style="color:'+(statusColor[item.status]||'var(--text3)')+';font-weight:700;font-size:11px;text-transform:uppercase">● '+item.status+'</span></td>'+
+    '<td><div style="display:flex;gap:4px">'+
+    (item.status==='Не собран'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+',\'В работе\')" style="font-size:11px;padding:4px 10px">&#9654; В работу</button>':'')+
+    (item.status==='В работе'?'<button class="btn-icon success" onclick="setSchlopkaStatus('+item.id+',\'Собран\')" style="font-size:11px;padding:4px 10px">&#10003; Собран</button>':'')+
+    (item.status!=='Не собран'?'<button class="btn-icon" onclick="setSchlopkaStatus('+item.id+',\'Не собран\')" style="font-size:11px;padding:4px 10px;color:var(--text3)">&#8635;</button>':'')+
+    '</div></td>'+
+    '</tr>';
 }
 
 async function setSchlopkaStatus(itemId, status){
