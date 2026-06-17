@@ -2671,14 +2671,14 @@ function renderSchlopkaItems(){
   if(currentRole==='user' && currentBranch){
     var myItems = currentSchlopkaItems.filter(i=>i.branch===currentBranch);
     if(myItems.length){
-      document.getElementById('schlopka-tbody').innerHTML =
+      document.getElementById('schlopka-items-tbody').innerHTML =
         '<tr><td colspan="6" style="background:rgba(255,23,68,.06);padding:10px 16px;font-size:11px;font-weight:700;text-transform:uppercase;color:var(--accent);letter-spacing:1px;border-bottom:1px solid var(--border)">📤 Список к отгрузке — '+currentBranch+' ('+myItems.length+' позиций)</td></tr>'+
         myItems.map(item=>renderSchlopkaRow(item,statusColor)).join('');
       renderSchlopkaStats();
       return;
     }
   }
-  document.getElementById('schlopka-tbody').innerHTML = items.map(item=>
+  document.getElementById('schlopka-items-tbody').innerHTML = items.map(item=>
     '<tr id="sitem-'+item.id+'">'+
     '<td style="font-weight:700;text-transform:uppercase">'+item.article+'</td>'+
     '<td style="color:var(--text2);font-size:12px">'+item.name+'</td>'+
