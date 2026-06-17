@@ -393,6 +393,15 @@ def create_order():
     for item in items:
         cur.execute('INSERT INTO order_items (order_id,article,name,size,qty,wms_stock) VALUES (%s,%s,%s,%s,%s,%s)',
                    (order_id, item.get('article',''), item.get('name',''), item.get('size',''), item.get('qty',1), item.get('wms_stock',0)))
+        # Deduct from WMS stock
+        art = item.get('article','')
+        size = item.get('size','')
+        qty = item.get('qty',1)
+        if art and size and qty:
+            cur.execute('''
+                UPDATE catalog SET wms_stock = GREATEST(0, wms_stock - %s)
+                WHERE article=%s AND size=%s
+            ''', (qty, art, size))
     conn.commit()
     cur.execute('SELECT * FROM orders WHERE id=%s', (order_id,))
     row = cur.fetchone()
