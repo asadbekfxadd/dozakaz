@@ -1888,7 +1888,7 @@ function removeCartSize(art,size){if(cart[art]){delete cart[art].sizes[size];if(
 function updateCartQty(art,size,val){var q=parseInt(val)||1;if(cart[art]&&cart[art].sizes[size])cart[art].sizes[size].qty=q;updateCartUI();}
 function openCart(){
   document.getElementById('cart-panel').classList.add('open');
-  if(currentRole==='regional'){
+  if(currentRole==='regional'||currentRole==='admin'){
     document.getElementById('cart-branch-wrap').style.display='block';
   }
 }
@@ -1899,7 +1899,7 @@ async function submitCartOrder(){
   var priority=document.getElementById('cart-priority').value;
   var note=document.getElementById('cart-note').value.trim();
   var branch=currentBranch;
-  if(currentRole==='regional'){
+  if(currentRole==='regional'||currentRole==='admin'){
     branch=document.getElementById('cart-branch-sel').value;
   } else if(!branch){
     branch=document.getElementById('r-branch').value;
