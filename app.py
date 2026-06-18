@@ -1905,16 +1905,16 @@ def upload_discount():
     conn = get_db(); cur = conn.cursor()
     
     if f:
-        # Excel/CSV file with articles
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
-        # Find article column
         art_col = 0
         for i, row in enumerate(rows[:3]):
-            rv = [str(c).strip() if c else '' for c in row]
-            if 'Артикул' in rv:
-                art_col = rv.index('Артикул')
+            rv = [str(c).strip().lower() if c else '' for c in row]
+            if any('артикул' in v or 'article' in v for v in rv):
+                for j, v in enumerate(rv):
+                    if 'артикул' in v or 'article' in v:
+                        art_col = j; break
                 rows = rows[i+1:]
                 break
         articles = []
