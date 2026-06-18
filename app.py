@@ -138,6 +138,7 @@ def init_db():
     cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_at TIMESTAMP')
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE catalog ADD COLUMN IF NOT EXISTS discount INTEGER DEFAULT 0")
     cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_items (
         id SERIAL PRIMARY KEY,
         session_id INTEGER REFERENCES schlopka_sessions(id) ON DELETE CASCADE,
@@ -691,6 +692,7 @@ def get_catalog():
             'season': art_row['season'] or '',
             'category': art_row['category'] or '',
             'total_wms': art_row['total_wms'] or 0,
+            'discount': art_row['discount'] or 0,
             'sizes': sizes_out
         })
     return jsonify(result)
@@ -1889,6 +1891,57 @@ def sync_now():
     ok = sync_catalog_from_yadisk()
     return jsonify({'ok': ok, 'last_sync': _last_sync})
 
+@app.route('/api/catalog/discount-upload', methods=['POST'])
+@admin_required
+def upload_discount():
+    '''Upload list of articles with 70% discount'''
+    f = request.files.get('file')
+    data = request.get_json()
+    conn = get_db(); cur = conn.cursor()
+    
+    if f:
+        # Excel/CSV file with articles
+        wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+        # Find article column
+        art_col = 0
+        for i, row in enumerate(rows[:3]):
+            rv = [str(c).strip() if c else '' for c in row]
+            if 'Артикул' in rv:
+                art_col = rv.index('Артикул')
+                rows = rows[i+1:]
+                break
+        articles = []
+        for row in rows:
+            if row and row[art_col]:
+                art = str(row[art_col]).strip()
+                if art and art not in ('None', 'nan', ''):
+                    articles.append(art)
+    elif data:
+        articles = data.get('articles', [])
+    else:
+        return jsonify({'error': 'Нет данных'}), 400
+    
+    # Reset all discounts first
+    cur.execute("UPDATE catalog SET discount=0 WHERE discount=70")
+    # Set 70% for uploaded articles
+    count = 0
+    for art in articles:
+        cur.execute("UPDATE catalog SET discount=70 WHERE article=%s OR article=%s OR article=%s",
+                   (art, art+'A', art.rstrip('A')))
+        count += cur.rowcount
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True, 'updated': count, 'articles': len(articles)})
+
+@app.route('/api/catalog/discount-clear', methods=['POST'])
+@admin_required
+def clear_discount():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("UPDATE catalog SET discount=0")
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
+
 @app.route('/api/catalog/dead-stock')
 @login_required
 def dead_stock():
@@ -2076,3 +2129,4 @@ def ai_analyze():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+

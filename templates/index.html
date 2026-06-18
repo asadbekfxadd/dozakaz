@@ -790,6 +790,8 @@ td.muted{color:var(--text2)}
             <label style="cursor:pointer"><input type="file" id="catalog-file" accept=".xlsx" style="display:none" onchange="uploadCatalog(this)"><span class="btn-secondary" onclick="document.getElementById('catalog-file').click()">↑ Остатки</span></label>
             <label style="cursor:pointer"><input type="file" id="abc-file" accept=".xlsx" style="display:none" onchange="uploadABC(this)"><span class="btn-secondary" onclick="document.getElementById('abc-file').click()">&#8593; ABC</span></label>
             <label style="cursor:pointer"><input type="file" id="abc-full-file" accept=".xlsx" style="display:none" onchange="uploadABCFile(this)"><span class="btn-secondary" onclick="document.getElementById('abc-full-file').click()">&#8593; ABC файл</span></label>
+            <label style="cursor:pointer"><input type="file" id="discount-file" accept=".xlsx,.csv" style="display:none" onchange="uploadDiscount(this)"><span class="btn-secondary" onclick="document.getElementById('discount-file').click()" style="color:#f59e0b;border-color:rgba(245,158,11,.3)">🔥 Скидки 70%</span></label>
+            <button class="btn-secondary" onclick="clearDiscount()" style="color:var(--text3);font-size:11px">✕ Скидки</button>
           </div>
           <button class="btn-secondary" onclick="openCart()">🛒 Корзина <span id="cart-count-btn">0</span></button>
         </div>
@@ -803,6 +805,10 @@ td.muted{color:var(--text2)}
           <select id="cat-abc" onchange="loadCatalog()"><option value="">Все категории</option><option value="A">A — Топ товары</option><option value="B">B — Средние</option><option value="C">C — Остальные</option></select>
           <select id="cat-stock" onchange="loadCatalog()"><option value="">Любой остаток WMS</option><option value="yes">Есть на складе</option><option value="no">Нет на складе</option></select>
           <select id="cat-season" onchange="loadCatalog()"><option value="">Все сезоны</option></select>
+          <select id="cat-discount" onchange="loadCatalog()">
+            <option value="">Без скидки</option>
+            <option value="yes">🔥 Скидка 70%</option>
+          </select>
           <button class="btn-secondary" onclick="loadCatalog()" style="padding:8px 14px">↻ Обновить</button>
           <span id="cat-count" style="font-size:12px;color:var(--text3)"></span>
         </div>
@@ -1664,6 +1670,8 @@ async function loadCatalog(){
   if(abc)params.abc=abc;
   if(stock)params.stock=stock;
   if(season)params.season=season;
+  var discount=document.getElementById('cat-discount').value;
+  if(discount)params.discount=discount;
   var r=await fetch('/api/catalog?'+new URLSearchParams(params));
   if(!r.ok)return;
   var items=await r.json();
@@ -1703,7 +1711,9 @@ async function loadCatalog(){
     var itemJson=JSON.stringify(item).replace(/"/g,'&quot;');
     var branchTotal=item.sizes.reduce((s,sz)=>s+(sz.branch||0),0);
     var urgentCard=currentRole==='user'&&(item.abc==='A'||item.abc==='B')&&branchTotal===0&&item.total_wms>0;
-    return '<div class="catalog-card" onclick="openModal('+itemJson+')" style="'+(urgentCard?'border-color:rgba(255,23,68,.5);background:rgba(255,23,68,.03)':'')+'">'
+    var discountCard=item.discount>0;
+    var cardStyle=discountCard?'border-color:rgba(245,158,11,.4);background:rgba(245,158,11,.03)':urgentCard?'border-color:rgba(255,23,68,.5);background:rgba(255,23,68,.03)':'';
+    return '<div class="catalog-card" onclick="openModal('+itemJson+')" style="'+cardStyle+'">'
       +'<div id="card-img-'+item.article+'" style="width:100%;height:140px;background:var(--bg3);border-radius:6px;margin-bottom:8px;overflow:hidden;display:flex;align-items:center;justify-content:center">'
       +'<img src="" alt="" style="max-width:100%;max-height:140px;object-fit:contain;display:none" onerror="this.parentElement.style.display=\'none\'" onload="this.style.display=\'block\'" data-article="'+item.article+'">'
       +'<span style="color:var(--text3);font-size:11px">&#128247;</span></div>'
@@ -1713,6 +1723,7 @@ async function loadCatalog(){
         var urgent=currentRole==='user'&&(item.abc==='A'||item.abc==='B')&&branchTotal===0;
         return urgent?'<div style="background:rgba(255,23,68,.1);border:1px solid rgba(255,23,68,.3);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--accent);font-weight:700;margin-bottom:6px;display:inline-block">⚡ НУЖНО ЗАКАЗАТЬ</div><br>':'';
       })()
+      +(item.discount>0?'<div style="display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:800;margin-bottom:6px;letter-spacing:.5px;box-shadow:0 2px 8px rgba(245,158,11,.4)">🔥 СКИДКА '+item.discount+'%</div><br>':'')
       +'<div class="catalog-article">'+item.article+' '+abcBadge(item.abc)+(item.season?'<span style="background:var(--bg3);color:var(--text2);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">'+item.season+'</span>':'')+'</div>'
       +'<div class="catalog-name">'+item.name+(item.category?'<span style="color:var(--text3);font-size:11px;margin-left:6px">'+item.category+'</span>':'')+'</div>'
       +'</div>'+(cartQty>0?'<span style="background:var(--accent);color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">'+cartQty+' в корзине</span>':'')+'</div>'
@@ -1919,6 +1930,23 @@ async function submitCartOrder(){
   if(!r.ok){toast(d.error||'Ошибка',true);return;}
   cart={};updateCartUI();closeCart();toast('Заявка оформлена!');
   showPage('dash',document.querySelector('.nav-item'));
+}
+
+async function uploadDiscount(inp){
+  var file=inp.files[0];if(!file)return;
+  var fd=new FormData();fd.append('file',file);
+  toast('Загружаю список скидок...');
+  var r=await fetch('/api/catalog/discount-upload',{method:'POST',body:fd});
+  var d=await r.json();
+  if(!r.ok){toast(d.error||'Ошибка',true);return;}
+  toast('🔥 Скидка 70% установлена для '+d.articles+' артикулов (обновлено '+d.updated+' позиций)');
+  loadCatalog();inp.value='';
+}
+
+async function clearDiscount(){
+  if(!confirm('Убрать скидки у всех товаров?')) return;
+  var r=await fetch('/api/catalog/discount-clear',{method:'POST'});
+  if(r.ok){toast('Скидки убраны');loadCatalog();}
 }
 
 async function uploadCatalog(inp){
