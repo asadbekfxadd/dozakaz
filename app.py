@@ -625,6 +625,10 @@ def get_catalog():
     if season_filter:
         where += ' AND season = %s'; params.append(season_filter)
 
+    discount_filter = request.args.get('discount', '')
+    if discount_filter == 'yes':
+        where += ' AND discount > 0'
+
     cur.execute(f'''
         SELECT
             article,
@@ -633,7 +637,8 @@ def get_catalog():
             MAX(sold) as sold,
             MIN(season) as season,
             MIN(category) as category,
-            SUM(wms_stock) as total_wms
+            SUM(wms_stock) as total_wms,
+            MAX(discount) as discount
         FROM catalog
         WHERE {where}
         GROUP BY article
@@ -641,10 +646,10 @@ def get_catalog():
         {" AND SUM(wms_stock) > 0" if stock_filter == "yes" else ""}
         {" AND SUM(wms_stock) = 0" if stock_filter == "no" else ""}
         ORDER BY
+            MAX(discount) DESC,
             CASE MIN(abc) WHEN 'A' THEN 1 WHEN 'B' THEN 2 ELSE 3 END,
             MAX(sold) DESC,
             article
-        -- Branch users see low-stock items first (handled in post-processing)
         LIMIT {per_page} OFFSET {(page-1)*per_page}
     ''', params)
     articles = cur.fetchall()
@@ -2129,4 +2134,3 @@ def ai_analyze():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
