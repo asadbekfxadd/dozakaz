@@ -790,7 +790,7 @@ td.muted{color:var(--text2)}
             <label style="cursor:pointer"><input type="file" id="catalog-file" accept=".xlsx" style="display:none" onchange="uploadCatalog(this)"><span class="btn-secondary" onclick="document.getElementById('catalog-file').click()">↑ Остатки</span></label>
             <label style="cursor:pointer"><input type="file" id="abc-file" accept=".xlsx" style="display:none" onchange="uploadABC(this)"><span class="btn-secondary" onclick="document.getElementById('abc-file').click()">&#8593; ABC</span></label>
             <label style="cursor:pointer"><input type="file" id="abc-full-file" accept=".xlsx" style="display:none" onchange="uploadABCFile(this)"><span class="btn-secondary" onclick="document.getElementById('abc-full-file').click()">&#8593; ABC файл</span></label>
-            <label style="cursor:pointer"><input type="file" id="discount-file" accept=".xlsx,.csv" style="display:none" onchange="uploadDiscount(this)"><span class="btn-secondary" onclick="document.getElementById('discount-file').click()" style="color:#f59e0b;border-color:rgba(245,158,11,.3)">🔥 Скидки 70%</span></label>
+            <button class="btn-secondary" onclick="openDiscountModal()" style="color:#f59e0b;border-color:rgba(245,158,11,.3)">🔥 Скидки 70%</button>
             <button class="btn-secondary" onclick="clearDiscount()" style="color:var(--text3);font-size:11px">✕ Скидки</button>
           </div>
           <button class="btn-secondary" onclick="openCart()">🛒 Корзина <span id="cart-count-btn">0</span></button>
@@ -1281,6 +1281,19 @@ td.muted{color:var(--text2)}
   <div class="cart-footer">
     <div id="transfer-cart-summary" style="font-size:12px;color:var(--text2);margin-bottom:12px"></div>
     <button class="btn-primary" style="width:100%" onclick="submitTransferCart()">✓ Создать все заявки</button>
+  </div>
+</div>
+
+<!-- DISCOUNT MODAL -->
+<div class="modal-overlay" id="discount-modal-overlay" onclick="if(event.target===this)closeDiscountModal()" style="display:none">
+  <div class="modal" style="max-width:480px">
+    <div class="modal-title">🔥 Загрузить список скидок 70%</div>
+    <div class="modal-sub">Вставьте артикулы — по одному на строку или через запятую</div>
+    <textarea id="discount-articles-text" style="width:100%;height:200px;font-size:12px;font-family:monospace;resize:vertical;margin-bottom:14px" placeholder="ABTV007-2A&#10;ABTV009-3A&#10;AFDU459-6A&#10;..."></textarea>
+    <div style="display:flex;gap:10px;justify-content:flex-end">
+      <button class="btn-secondary" onclick="closeDiscountModal()">Отмена</button>
+      <button class="btn-primary" onclick="submitDiscountText()">🔥 Применить скидку 70%</button>
+    </div>
   </div>
 </div>
 
@@ -1930,6 +1943,31 @@ async function submitCartOrder(){
   if(!r.ok){toast(d.error||'Ошибка',true);return;}
   cart={};updateCartUI();closeCart();toast('Заявка оформлена!');
   showPage('dash',document.querySelector('.nav-item'));
+}
+
+function openDiscountModal(){
+  document.getElementById('discount-modal-overlay').style.display='flex';
+}
+function closeDiscountModal(){
+  document.getElementById('discount-modal-overlay').style.display='none';
+}
+
+async function submitDiscountText(){
+  var text = document.getElementById('discount-articles-text').value.trim();
+  if(!text){toast('Введите артикулы',true);return;}
+  var articles = text.replace(/70%/g,'').split('\n').concat(text.split(',').concat(text.split(';'))).map(a=>a.trim()).filter(a=>a&&a.length>3&&!a.includes('%'));
+  if(!articles.length){toast('Не найдено артикулов',true);return;}
+  toast('Применяю скидку для '+articles.length+' артикулов...');
+  var r = await fetch('/api/catalog/discount-upload',{
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body:JSON.stringify({articles})
+  });
+  var d = await r.json();
+  if(!r.ok){toast(d.error||'Ошибка',true);return;}
+  toast('🔥 Скидка 70% применена для '+d.articles+' артикулов (обновлено '+d.updated+' позиций)');
+  closeDiscountModal();
+  loadCatalog();
 }
 
 async function uploadDiscount(inp){
