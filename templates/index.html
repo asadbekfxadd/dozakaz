@@ -1145,7 +1145,7 @@ td.muted{color:var(--text2)}
             <div style="font-size:15px;font-weight:600;margin-bottom:4px">Перетащите файл сюда</div>
             <div style="font-size:12px;color:var(--text2);margin-bottom:16px">или нажмите для выбора (.xlsx)</div>
             <button class="btn-secondary" style="padding:8px 20px" onclick="document.getElementById('dist-file-input').click()">Выбрать файл</button>
-            <input type="file" id="dist-file-input" accept=".xlsx" style="display:none" onchange="distSetFile(this.files[0])">
+            <input type="file" id="dist-file-input" accept=".xlsx" style="display:none" onchange="if(typeof distSetFile==='function')distSetFile(this.files[0])">
           </div>
           <div id="dist-file-info" style="display:none;margin-top:16px;padding:12px 16px;background:var(--bg3);border-radius:8px;align-items:center;gap:12px">
             <span style="font-size:22px">📄</span>
@@ -1422,12 +1422,12 @@ function toggleTheme(){
 function applyTheme(theme){
   if(theme==='light'){
     document.documentElement.setAttribute('data-theme','light');
-    document.getElementById('theme-icon').textContent='🌙';
-    document.getElementById('theme-label').textContent='Ночной режим';
+    var ti=document.getElementById('theme-icon'); if(ti) ti.textContent='🌙';
+    var tl=document.getElementById('theme-label'); if(tl) tl.textContent='Ночной режим';
   } else {
     document.documentElement.removeAttribute('data-theme');
-    document.getElementById('theme-icon').textContent='☀️';
-    document.getElementById('theme-label').textContent='Дневной режим';
+    var ti=document.getElementById('theme-icon'); if(ti) ti.textContent='☀️';
+    var tl=document.getElementById('theme-label'); if(tl) tl.textContent='Дневной режим';
   }
 }
 
@@ -2324,7 +2324,7 @@ function showPage(name,btn){
   if(name==='topsales')loadTopSales();
   if(name==='recommendations')loadRecommendations();
   if(name==='transfers')loadTransfers();
-  if(name==='distribution'){clearDist();}
+  if(name==='distribution'){if(typeof distClear==='function')distClear();}
   if(name==='ai'){
     document.getElementById('ai-empty').style.display='block';
     document.getElementById('ai-result').style.display='none';
