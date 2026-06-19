@@ -1145,7 +1145,7 @@ td.muted{color:var(--text2)}
             <div style="font-size:15px;font-weight:600;margin-bottom:4px">Перетащите файл сюда</div>
             <div style="font-size:12px;color:var(--text2);margin-bottom:16px">или нажмите для выбора (.xlsx)</div>
             <button class="btn-secondary" style="padding:8px 20px" onclick="document.getElementById('dist-file-input').click()">Выбрать файл</button>
-            <input type="file" id="dist-file-input" accept=".xlsx" style="display:none" onchange="if(typeof distSetFile==='function')distSetFile(this.files[0])">
+            <input type="file" id="dist-file-input" accept=".xlsx" style="display:none" onchange="distSetFile(this.files[0])">
           </div>
           <div id="dist-file-info" style="display:none;margin-top:16px;padding:12px 16px;background:var(--bg3);border-radius:8px;align-items:center;gap:12px">
             <span style="font-size:22px">📄</span>
@@ -3319,6 +3319,70 @@ ${JSON.stringify(salesD.by_category, null, 1)}
 
 init();
 loadSyncStatus();
+
+// ===== DISTRIBUTION =====
+var _distFile = null;
+function distHandleDrop(e){
+  e.preventDefault();
+  document.getElementById('dist-drop-zone').style.borderColor='rgba(255,255,255,.15)';
+  var file=e.dataTransfer.files[0];
+  if(file&&file.name.endsWith('.xlsx'))distSetFile(file);
+  else{document.getElementById('dist-error-text').textContent='Поддерживается только .xlsx';document.getElementById('dist-error').style.display='block';}
+}
+function distSetFile(file){
+  if(!file)return;
+  _distFile=file;
+  document.getElementById('dist-fname').textContent=file.name;
+  document.getElementById('dist-fsize').textContent=(file.size/1024).toFixed(1)+' KB';
+  document.getElementById('dist-file-info').style.display='flex';
+  document.getElementById('dist-drop-zone').style.display='none';
+  var btn=document.getElementById('dist-run-btn');
+  btn.disabled=false;btn.style.opacity='1';
+  document.getElementById('dist-error').style.display='none';
+  document.getElementById('dist-status').style.display='none';
+}
+function distClear(){
+  _distFile=null;
+  var inp=document.getElementById('dist-file-input');if(inp)inp.value='';
+  var fi=document.getElementById('dist-file-info');if(fi)fi.style.display='none';
+  var dz=document.getElementById('dist-drop-zone');if(dz)dz.style.display='block';
+  var btn=document.getElementById('dist-run-btn');if(btn){btn.disabled=true;btn.style.opacity='0.5';}
+  var de=document.getElementById('dist-error');if(de)de.style.display='none';
+  var ds=document.getElementById('dist-status');if(ds)ds.style.display='none';
+}
+async function distRun(){
+  if(!_distFile)return;
+  document.getElementById('dist-error').style.display='none';
+  document.getElementById('dist-status').style.display='block';
+  document.getElementById('dist-spinner').style.display='block';
+  document.getElementById('dist-status-text').textContent='Обрабатывается... Пожалуйста, подождите';
+  document.getElementById('dist-run-btn').disabled=true;
+  document.getElementById('dist-run-btn').style.opacity='0.6';
+  try{
+    var fd=new FormData();fd.append('file',_distFile);
+    var resp=await fetch('/api/distribution/run',{method:'POST',body:fd});
+    if(!resp.ok){var err=await resp.json().catch(()=>({error:'HTTP '+resp.status}));throw new Error(err.error||'Ошибка сервера');}
+    var blob=await resp.blob();
+    var url=URL.createObjectURL(blob);
+    var a=document.createElement('a');
+    var cd=resp.headers.get('Content-Disposition')||'';
+    var m=cd.match(/filename[^;=\n]*=(['"]?)(.*?)\1/);
+    a.download=m?m[2]:'distribution.xlsx';
+    a.href=url;document.body.appendChild(a);a.click();a.remove();
+    URL.revokeObjectURL(url);
+    document.getElementById('dist-status-text').textContent='✅ Готово! Файл скачан.';
+    document.getElementById('dist-spinner').style.display='none';
+    toast('Распределение рассчитано!');
+  }catch(err){
+    document.getElementById('dist-status').style.display='none';
+    document.getElementById('dist-error-text').textContent=err.message;
+    document.getElementById('dist-error').style.display='block';
+    toast(err.message,true);
+  }finally{
+    document.getElementById('dist-run-btn').disabled=false;
+    document.getElementById('dist-run-btn').style.opacity='1';
+  }
+}
 </script>
 </body>
 </html>
