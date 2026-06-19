@@ -2131,6 +2131,125 @@ def ai_analyze():
     except Exception as e:
         return jsonify({'error': str(e)}), 500
 
+@app.route('/api/distribution/run', methods=['POST'])
+@login_required
+def run_distribution():
+    if session.get('role') not in ('admin', 'warehouse'):
+        return jsonify({'error': 'Нет доступа'}), 403
+    f = request.files.get('file')
+    if not f:
+        return jsonify({'error': 'Файл не найден'}), 400
+    try:
+        wb_in = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
+        sheet_name = None
+        for sn in wb_in.sheetnames:
+            ws_t = wb_in[sn]
+            rows_t = list(ws_t.iter_rows(max_row=3, values_only=True))
+            if len(rows_t) >= 3 and rows_t[2] and rows_t[2][0] == 'Артикул':
+                sheet_name = sn
+                break
+        if not sheet_name:
+            return jsonify({'error': 'Не найден лист с данными (нужен "Артикул" в строке 3)'}), 400
+        ws = wb_in[sheet_name]
+        all_rows = list(ws.iter_rows(values_only=True))
+        priority_row = all_rows[0]
+        header_row   = all_rows[2]
+        data_rows    = all_rows[3:]
+        STORE_COLS = list(range(8, 22))
+        WMS_COL    = 22
+        MIN_COLS   = list(range(25, 39))
+        stores     = [header_row[c] for c in STORE_COLS]
+        priorities = [priority_row[c] for c in STORE_COLS]
+        store_order = sorted(range(14), key=lambda i: (priorities[i] if priorities[i] is not None else 99))
+        results = []; total_wms_in = 0; total_alloc = 0
+        for row in data_rows:
+            if not any(row): continue
+            art = row[0]
+            if not art or str(art) == 'Итого': continue
+            nom=row[4] or ''; size=row[5] or ''; cat=row[2] or ''; div=row[1] or ''
+            wms = int(row[WMS_COL] or 0) if WMS_COL < len(row) else 0
+            cur_stock   = [int(row[c] or 0) if c < len(row) else 0 for c in STORE_COLS]
+            min_targets = [int(row[mc] or 0) if mc < len(row) else 0 for mc in MIN_COLS]
+            alloc=[0]*14; remaining=wms; total_wms_in+=wms
+            for rank_idx in store_order:
+                if remaining <= 0: break
+                need = max(0, min_targets[rank_idx] - cur_stock[rank_idx])
+                give = min(need, remaining)
+                alloc[rank_idx] = give
+                remaining -= give
+            total_alloc += sum(alloc)
+            results.append({'art':art,'div':div,'cat':cat,'nom':nom,'size':size,'wms':wms,'wms_left':remaining,'alloc':alloc})
+        wb_out = openpyxl.Workbook()
+        ws_out = wb_out.active
+        ws_out.title = 'Распределение'
+        from openpyxl.utils import get_column_letter as gcl
+        thin=Side(style='thin',color='CCCCCC'); brd=Border(left=thin,right=thin,top=thin,bottom=thin)
+        ctr=Alignment(horizontal='center',vertical='center',wrap_text=True); lft=Alignment(horizontal='left',vertical='center')
+        hdr_fill=PatternFill('solid',fgColor='1A1A2E'); alloc_fill=PatternFill('solid',fgColor='C8E6C9')
+        zero_fill=PatternFill('solid',fgColor='FFEBEE'); wms_fill=PatternFill('solid',fgColor='FFF3E0')
+        left_fill=PatternFill('solid',fgColor='FFF9C4'); total_fill=PatternFill('solid',fgColor='E3F2FD')
+        fixed_hdrs=['Артикул','Дивизион','Категория','Номенклатура','Размер','WMS','Остаток WMS']
+        store_hdrs=[f'{s}\n(дозаказ)' for s in stores]
+        all_hdrs=fixed_hdrs+store_hdrs
+        for ci,h in enumerate(all_hdrs,1):
+            cell=ws_out.cell(row=1,column=ci,value=h)
+            cell.fill=hdr_fill; cell.font=Font(bold=True,color='FFFFFF',size=9)
+            cell.alignment=ctr; cell.border=brd
+        ws_out.row_dimensions[1].height=36
+        for ri,row in enumerate(results,2):
+            vals=[row['art'],row['div'],row['cat'],row['nom'],row['size'],row['wms'],row['wms_left']]
+            for ci,v in enumerate(vals,1):
+                cell=ws_out.cell(row=ri,column=ci,value=v)
+                cell.border=brd; cell.alignment=ctr if ci>=5 else lft; cell.font=Font(size=9)
+                if ci==6: cell.fill=wms_fill
+                elif ci==7 and (v or 0)>0: cell.fill=left_fill
+            for i,give in enumerate(row['alloc']):
+                ci=8+i
+                cell=ws_out.cell(row=ri,column=ci,value=give if give else None)
+                cell.border=brd; cell.alignment=ctr
+                cell.font=Font(size=9,bold=(give>0),color=('1B5E20' if give>0 else '000000'))
+                cell.fill=alloc_fill if give>0 else zero_fill
+        last=len(results)+2
+        ws_out.cell(row=last,column=1,value='ИТОГО').font=Font(bold=True,size=10)
+        ws_out.cell(row=last,column=6,value=total_wms_in).font=Font(bold=True)
+        ws_out.cell(row=last,column=7,value=total_wms_in-total_alloc).font=Font(bold=True)
+        for i in range(14):
+            ci=8+i; t=sum(r['alloc'][i] for r in results)
+            cell=ws_out.cell(row=last,column=ci,value=t)
+            cell.font=Font(bold=True,size=10); cell.fill=total_fill; cell.alignment=ctr; cell.border=brd
+        for ci in range(1,8): ws_out.cell(row=last,column=ci).fill=total_fill
+        widths=[12,8,11,36,7,7,9]+[11]*14
+        for i,w in enumerate(widths,1): ws_out.column_dimensions[gcl(i)].width=w
+        ws_out.freeze_panes='H2'
+        ws2=wb_out.create_sheet('Сводка')
+        hdrs2=['Магазин','Приоритет','Дозаказ (шт)','Артикулов']
+        for ci,h in enumerate(hdrs2,1):
+            cell=ws2.cell(row=1,column=ci,value=h)
+            cell.fill=hdr_fill; cell.font=Font(bold=True,color='FFFFFF'); cell.alignment=ctr
+        ws2.row_dimensions[1].height=24
+        store_totals=[sum(r['alloc'][i] for r in results) for i in range(14)]
+        store_arts=[sum(1 for r in results if r['alloc'][i]>0) for i in range(14)]
+        for i,(store,prio,tot,arts) in enumerate(zip(stores,priorities,store_totals,store_arts),2):
+            ws2.cell(row=i,column=1,value=store).font=Font(size=10)
+            ws2.cell(row=i,column=2,value=prio).alignment=ctr
+            ws2.cell(row=i,column=3,value=tot).alignment=ctr
+            ws2.cell(row=i,column=4,value=arts).alignment=ctr
+            if tot>0:
+                ws2.cell(row=i,column=3).fill=alloc_fill
+                ws2.cell(row=i,column=3).font=Font(bold=True,color='1B5E20')
+        r_total=16
+        ws2.cell(row=r_total,column=1,value='ВСЕГО').font=Font(bold=True)
+        ws2.cell(row=r_total,column=3,value=total_alloc).font=Font(bold=True)
+        ws2.cell(row=r_total+1,column=1,value='Остаток WMS').font=Font(bold=True)
+        ws2.cell(row=r_total+1,column=3,value=total_wms_in-total_alloc).font=Font(bold=True)
+        for col,w in zip(range(1,5),[28,10,14,12]): ws2.column_dimensions[gcl(col)].width=w
+        output=io.BytesIO(); wb_out.save(output); output.seek(0)
+        fname=f'distribution_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+        return send_file(output,mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',as_attachment=True,download_name=fname)
+    except Exception as e:
+        import traceback
+        return jsonify({'error':str(e),'tb':traceback.format_exc()}),500
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
