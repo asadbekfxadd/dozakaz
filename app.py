@@ -2186,11 +2186,10 @@ def run_distribution():
             'UZBEGIM ANDIJAN',
         ]
 
-        # Kids articles (start with Y) — only these stores
+        FLAGMANS = {'TASHKENT CITY MALL', 'ALAYSKIY', 'ATLAS CHIMGAN', 'Shota Rustavely'}
         KIDS_STORES = {'TASHKENT CITY MALL', 'MAGIC CITY'}
-
         POPULAR_SIZES = {'S', 'M', 'L', 'XL', '7.5', '8', '8.5', '9', '9.5', '10', '7,5', '8,5', '9,5'}
-        MIN_QTY = 4  # minimum per article per store (not per size)
+        MIN_QTY = 4  # minimum per article per store
 
         # Build store index map for sorting
         def store_priority(s):
@@ -2203,9 +2202,10 @@ def run_distribution():
         # Sort stores by priority
         sorted_store_indices = sorted(range(n_stores), key=lambda i: store_priority(stores[i]))
 
-        # First pass: group rows by article to count total qty per article
-        from collections import defaultdict, OrderedDict
-        art_rows = OrderedDict()  # art -> list of row dicts
+        from collections import OrderedDict
+
+        # Group rows by article
+        art_rows = OrderedDict()
         for row in data_rows:
             if not row or not row[0]: continue
             art = str(row[0]).strip()
@@ -2217,59 +2217,44 @@ def run_distribution():
                 art_rows[art] = []
             art_rows[art].append({'nom': nom_full, 'qty': qty})
 
-        # Second pass: for each article, decide which stores get it (min 4 total per store)
-        # then distribute sizes within those stores
         results = []; total_qty_in = 0; total_alloc = 0
 
         for art, rows in art_rows.items():
             is_kids = art.startswith('Y') or art.startswith('y')
+            total_qty_in += sum(r['qty'] for r in rows)
+
+            # Total qty for this article
             total_art_qty = sum(r['qty'] for r in rows)
-            total_qty_in += total_art_qty
 
             # Determine eligible stores
-            eligible = []
+            # If total qty < MIN_QTY * n_all_stores → flagmans only
+            # Kids (Y...) → only KIDS_STORES
+            all_eligible = []
+            flagman_eligible = []
             for si in sorted_store_indices:
                 store_name = (stores[si] or '').strip()
                 if is_kids and store_name not in KIDS_STORES:
                     continue
-                eligible.append(si)
+                all_eligible.append(si)
+                if store_name in FLAGMANS:
+                    flagman_eligible.append(si)
 
-            # Figure out how many stores can receive this article (min MIN_QTY total sizes)
-            # Each store needs at least MIN_QTY pieces total across all sizes
-            n_sizes = len(rows)
-            # Minimum to give a store = MIN_QTY pieces (spread across sizes)
-            # We distribute sizes to stores: each store gets 1 of each size normally,
-            # popular sizes get 2. Min total per store = MIN_QTY
-            store_allocs = {}  # si -> list of per-size allocs
-            remaining_per_size = [r['qty'] for r in rows]
+            # Decide: flagmans only or all?
+            n_all = len(all_eligible)
+            enough_for_all = total_art_qty >= MIN_QTY * n_all
+            eligible = all_eligible if enough_for_all else flagman_eligible
 
-            for si in eligible:
-                size_alloc = []
-                store_total = 0
-                for j, r in enumerate(rows):
-                    # Extract size
-                    nom_stripped = r['nom'].strip()
-                    if nom_stripped.endswith(')') and '(' in nom_stripped:
-                        size_hint = nom_stripped[nom_stripped.rfind('(')+1:-1].strip()
-                    elif ',' in nom_stripped:
-                        size_hint = nom_stripped.rsplit(',', 1)[-1].strip()
-                    else:
-                        size_hint = ''
-                    per = 2 if size_hint in POPULAR_SIZES else 1
-                    give = per if remaining_per_size[j] >= per else (remaining_per_size[j] if remaining_per_size[j] > 0 else 0)
-                    size_alloc.append(give)
-                    store_total += give
+            n_eligible = len(eligible)
+            if n_eligible == 0:
+                for r in rows:
+                    results.append({'art':art,'nom':r['nom'],'qty':r['qty'],'is_kids':is_kids,
+                                    'size':'','is_popular':False,'wms_left':r['qty'],'alloc':[0]*n_stores})
+                continue
 
-                # Only give to store if total >= MIN_QTY
-                if store_total >= MIN_QTY:
-                    store_allocs[si] = size_alloc
-                    for j, give in enumerate(size_alloc):
-                        remaining_per_size[j] -= give
-                else:
-                    store_allocs[si] = [0] * n_sizes
-
-            # Build result rows per size
-            for j, r in enumerate(rows):
+            # For each size: distribute round-robin (1 by 1) across eligible stores
+            # Popular sizes (S/M/L/XL, 7.5-10) get double on second pass
+            for r in rows:
+                qty = r['qty']
                 nom_stripped = r['nom'].strip()
                 if nom_stripped.endswith(')') and '(' in nom_stripped:
                     size_hint = nom_stripped[nom_stripped.rfind('(')+1:-1].strip()
@@ -2278,21 +2263,64 @@ def run_distribution():
                 else:
                     size_hint = ''
 
-                alloc = [0] * n_stores
-                for si, sa in store_allocs.items():
-                    alloc[si] = sa[j]
+                is_popular = size_hint in POPULAR_SIZES
 
+                # Round-robin distribution: deal 1 card at a time to each store
+                store_counts = {si: 0 for si in eligible}
+                remaining = qty
+                round_num = 0
+
+                while remaining > 0:
+                    gave_any = False
+                    for si in eligible:
+                        if remaining <= 0:
+                            break
+                        # Popular sizes: give 2 on first pass, 1 on subsequent
+                        give = 2 if (is_popular and round_num == 0) else 1
+                        give = min(give, remaining)
+                        store_counts[si] += give
+                        remaining -= give
+                        gave_any = True
+                    round_num += 1
+                    if not gave_any:
+                        break
+
+                # Build alloc array
+                alloc = [0] * n_stores
+                for si in eligible:
+                    alloc[si] = store_counts[si]
+
+                # Check minimum: store must have >= MIN_QTY total for this article
+                # We check this after distributing all sizes together
+                # For now apply per-size distribution, min check done below
                 total_alloc += sum(alloc)
                 results.append({
                     'art': art,
                     'nom': r['nom'],
-                    'qty': r['qty'],
+                    'qty': qty,
                     'is_kids': is_kids,
                     'size': size_hint,
-                    'is_popular': size_hint in POPULAR_SIZES,
-                    'wms_left': remaining_per_size[j],
+                    'is_popular': is_popular,
+                    'wms_left': remaining,
                     'alloc': alloc
                 })
+
+        # Post-process: zero out stores that got < MIN_QTY total for an article
+        art_store_totals = {}  # (art, si) -> total
+        for r in results:
+            art = r['art']
+            for si, give in enumerate(r['alloc']):
+                key = (art, si)
+                art_store_totals[key] = art_store_totals.get(key, 0) + give
+
+        for r in results:
+            art = r['art']
+            for si in range(n_stores):
+                if art_store_totals.get((art, si), 0) < MIN_QTY:
+                    freed = r['alloc'][si]
+                    r['alloc'][si] = 0
+                    r['wms_left'] += freed
+                    total_alloc -= freed
         wb_out = openpyxl.Workbook()
         ws_out = wb_out.active
         ws_out.title = 'Распределение'
