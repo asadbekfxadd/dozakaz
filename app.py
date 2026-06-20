@@ -2168,6 +2168,41 @@ def run_distribution():
         if n_stores == 0:
             return jsonify({'error': 'Не найдены колонки магазинов'}), 400
 
+        # Priority order of stores
+        PRIORITY_ORDER = [
+            'TASHKENT CITY MALL',
+            'ALAYSKIY',
+            'ATLAS CHIMGAN',
+            'Shota Rustavely',
+            'MAGIC CITY',
+            'HIGH TOWN PLAZA',
+            'MALIKA',
+            'ECO PARK',
+            'NOVZA',
+            'Scopus Mall',
+            'Yunusabad gallery',
+            'M. BARAKA',
+            'Family park',
+            'UZBEGIM ANDIJAN',
+        ]
+
+        # Kids articles (start with Y) — only these stores
+        KIDS_STORES = {'TASHKENT CITY MALL', 'MAGIC CITY'}
+
+        POPULAR_SIZES = {'S', 'M', 'L', 'XL', '7.5', '8', '8.5', '9', '9.5', '10', '7,5', '8,5', '9,5'}
+        MIN_QTY = 3  # minimum per store
+
+        # Build store index map for sorting
+        def store_priority(s):
+            s = (s or '').strip()
+            for i, p in enumerate(PRIORITY_ORDER):
+                if p.lower() == s.lower():
+                    return i
+            return 99
+
+        # Sort stores by priority
+        sorted_store_indices = sorted(range(n_stores), key=lambda i: store_priority(stores[i]))
+
         results = []; total_qty_in = 0; total_alloc = 0
 
         for row in data_rows:
@@ -2181,7 +2216,10 @@ def run_distribution():
 
             total_qty_in += qty
 
-            # Extract size from nom_full — last part in parentheses or after last space
+            # Check if kids article
+            is_kids = art.startswith('Y') or art.startswith('y')
+
+            # Extract size
             size_hint = ''
             nom_stripped = nom_full.strip()
             if nom_stripped.endswith(')') and '(' in nom_stripped:
@@ -2189,28 +2227,39 @@ def run_distribution():
             elif ',' in nom_stripped:
                 size_hint = nom_stripped.rsplit(',', 1)[-1].strip()
 
-            POPULAR_SIZES = {'S', 'M', 'L', 'XL', '7.5', '8', '8.5', '9', '9.5', '10', '7,5', '8,5', '9,5'}
             is_popular = size_hint in POPULAR_SIZES
             per_store = 2 if is_popular else 1
+            give_qty = max(per_store, MIN_QTY)  # always at least MIN_QTY
 
-            alloc = []
-            remaining_qty = qty
-            for i in range(n_stores):
-                if remaining_qty >= per_store:
-                    alloc.append(per_store)
-                    remaining_qty -= per_store
-                elif remaining_qty > 0:
-                    alloc.append(remaining_qty)
-                    remaining_qty = 0
-                else:
-                    alloc.append(0)
+            alloc = [0] * n_stores
+            remaining = qty
+
+            for si in sorted_store_indices:
+                store_name = (stores[si] or '').strip()
+
+                # Kids articles only go to CITY MALL and MAGIC CITY
+                if is_kids and store_name not in KIDS_STORES:
+                    continue
+
+                # Only give if we have enough for minimum
+                if remaining >= give_qty:
+                    alloc[si] = give_qty
+                    remaining -= give_qty
+                elif remaining >= MIN_QTY:
+                    # Give minimum if possible
+                    alloc[si] = MIN_QTY
+                    remaining -= MIN_QTY
+                # else: skip this store (not enough for minimum)
 
             total_alloc += sum(alloc)
             results.append({
                 'art': art,
                 'nom': nom_full,
                 'qty': qty,
-                'wms_left': qty - sum(alloc),
+                'is_kids': is_kids,
+                'size': size_hint,
+                'is_popular': is_popular,
+                'wms_left': remaining,
                 'alloc': alloc
             })
         wb_out = openpyxl.Workbook()
@@ -2223,7 +2272,7 @@ def run_distribution():
         zero_fill=PatternFill('solid',fgColor='FFEBEE'); total_fill=PatternFill('solid',fgColor='E3F2FD')
         wms_fill=PatternFill('solid',fgColor='FFF3E0')
 
-        fixed_hdrs=['Артикул','Номенклатура','Кол-во (приход)']
+        fixed_hdrs=['Артикул','Номенклатура','Кол-во (приход)','Остаток']
         store_hdrs=[s for s in stores]
         all_hdrs=fixed_hdrs+store_hdrs
 
@@ -2233,15 +2282,18 @@ def run_distribution():
             cell.alignment=ctr; cell.border=brd
         ws_out.row_dimensions[1].height=36
 
+        kids_fill = PatternFill('solid',fgColor='E8F5E9')
         for ri,row in enumerate(results,2):
-            vals=[row['art'],row['nom'],row['qty']]
+            vals=[row['art'],row['nom'],row['qty'],row['wms_left']]
             for ci,v in enumerate(vals,1):
                 cell=ws_out.cell(row=ri,column=ci,value=v)
                 cell.border=brd; cell.font=Font(size=9)
                 cell.alignment=lft if ci==2 else ctr
                 if ci==3: cell.fill=wms_fill
+                if ci==4 and (v or 0)>0: cell.fill=PatternFill('solid',fgColor='FFF9C4')
+                if row.get('is_kids'): cell.font=Font(size=9,color='1B5E20',bold=(ci==1))
             for i,give in enumerate(row['alloc']):
-                ci=4+i
+                ci=5+i
                 cell=ws_out.cell(row=ri,column=ci,value=give if give else None)
                 cell.border=brd; cell.alignment=ctr
                 cell.font=Font(size=9,bold=(give>0),color=('1B5E20' if give>0 else '000000'))
@@ -2251,16 +2303,18 @@ def run_distribution():
         ws_out.cell(row=last,column=1,value='ИТОГО').font=Font(bold=True,size=10)
         ws_out.cell(row=last,column=3,value=total_qty_in).font=Font(bold=True)
         ws_out.cell(row=last,column=3).fill=total_fill
+        ws_out.cell(row=last,column=4,value=total_qty_in-total_alloc).font=Font(bold=True)
+        ws_out.cell(row=last,column=4).fill=total_fill
         for i in range(n_stores):
-            ci=4+i; t=sum(r['alloc'][i] for r in results)
+            ci=5+i; t=sum(r['alloc'][i] for r in results)
             cell=ws_out.cell(row=last,column=ci,value=t)
             cell.font=Font(bold=True,size=10); cell.fill=total_fill
             cell.alignment=ctr; cell.border=brd
-        for ci in range(1,4): ws_out.cell(row=last,column=ci).fill=total_fill
+        for ci in range(1,5): ws_out.cell(row=last,column=ci).fill=total_fill
 
-        widths=[14,40,10]+[12]*n_stores
+        widths=[14,40,10,9]+[12]*n_stores
         for i,w in enumerate(widths,1): ws_out.column_dimensions[gcl(i)].width=w
-        ws_out.freeze_panes='D2'
+        ws_out.freeze_panes='E2'
 
         ws2=wb_out.create_sheet('Сводка')
         hdrs2=['Магазин','Получает (шт)','Артикулов']
