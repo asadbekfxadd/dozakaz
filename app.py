@@ -18,6 +18,41 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 ALLOWED = {'.xlsx', '.xls', '.csv'}
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
+# Power BI config
+PBI_TENANT_ID = os.environ.get('PBI_TENANT_ID', '7365ebbc-66ba-4712-8260-23fe81d5c482')
+PBI_CLIENT_ID = os.environ.get('PBI_CLIENT_ID', '9d271a44-ec56-4859-9015-0824bac220e5')
+PBI_CLIENT_SECRET = os.environ.get('PBI_CLIENT_SECRET', '')
+PBI_REPORT_ID = '0e916fd9-34dc-4a5c-bb81-4addd6ca95a7'
+PBI_APP_ID = '9f8ee641-5763-44a2-a684-69199c8a9d40'
+_pbi_token_cache = {'token': None, 'expires': 0}
+
+def get_pbi_token():
+    import urllib.request, urllib.parse, json as _json, time
+    if _pbi_token_cache['token'] and time.time() < _pbi_token_cache['expires']:
+        return _pbi_token_cache['token']
+    secret = PBI_CLIENT_SECRET or os.environ.get('PBI_CLIENT_SECRET', '')
+    if not secret:
+        return None
+    url = f'https://login.microsoftonline.com/{PBI_TENANT_ID}/oauth2/v2.0/token'
+    data = urllib.parse.urlencode({
+        'grant_type': 'client_credentials',
+        'client_id': PBI_CLIENT_ID,
+        'client_secret': secret,
+        'scope': 'https://analysis.windows.net/powerbi/api/.default'
+    }).encode()
+    try:
+        req = urllib.request.Request(url, data=data, method='POST')
+        with urllib.request.urlopen(req, timeout=15) as r:
+            result = _json.loads(r.read())
+        token = result.get('access_token')
+        expires_in = result.get('expires_in', 3600)
+        _pbi_token_cache['token'] = token
+        _pbi_token_cache['expires'] = time.time() + expires_in - 60
+        return token
+    except Exception as e:
+        print(f'[PBI TOKEN] Error: {e}')
+        return None
+
 USERS = {
     'admin': {'password': '123456', 'role': 'admin', 'branch': None, 'branches': None},
     'ANNA_V': {'password': 'region1', 'role': 'regional', 'branch': None, 'branches': ['HIGH TOWN PLAZA','MAGIC CITY','NOVZA','Scopus Mall']},
@@ -2964,6 +2999,134 @@ def warehouse_report():
             'singles_count': len(singles),
         }
     })
+
+
+# ===== POWER BI =====
+
+def _pbi_export_file():
+    """Internal: export Power BI report and return raw bytes"""
+    import urllib.request, json as _json, time
+    token = get_pbi_token()
+    if not token:
+        raise Exception('PBI_CLIENT_SECRET не настроен в Railway Variables')
+
+    # Start export job
+    url = f'https://api.powerbi.com/v1.0/myorg/groups/me/reports/{PBI_REPORT_ID}/ExportTo'
+    payload = _json.dumps({'format': 'XLSX'}).encode()
+    req = urllib.request.Request(url, data=payload, method='POST',
+        headers={'Authorization': f'Bearer {token}', 'Content-Type': 'application/json'})
+    with urllib.request.urlopen(req, timeout=30) as r:
+        job = _json.loads(r.read())
+
+    export_id = job.get('id')
+    if not export_id:
+        raise Exception(f'Не удалось запустить экспорт: {job}')
+
+    # Poll for completion (max 90 sec)
+    for _ in range(18):
+        time.sleep(5)
+        poll_url = f'https://api.powerbi.com/v1.0/myorg/groups/me/reports/{PBI_REPORT_ID}/exports/{export_id}'
+        req2 = urllib.request.Request(poll_url, headers={'Authorization': f'Bearer {token}'})
+        with urllib.request.urlopen(req2, timeout=15) as r2:
+            status = _json.loads(r2.read())
+        if status.get('status') == 'Succeeded':
+            break
+        if status.get('status') == 'Failed':
+            raise Exception(f'Экспорт не удался: {status}')
+
+    # Download file
+    dl_url = f'https://api.powerbi.com/v1.0/myorg/groups/me/reports/{PBI_REPORT_ID}/exports/{export_id}/file'
+    req3 = urllib.request.Request(dl_url, headers={'Authorization': f'Bearer {token}'})
+    with urllib.request.urlopen(req3, timeout=60) as r3:
+        return r3.read()
+
+
+@app.route('/api/powerbi/export')
+@admin_required
+def powerbi_export():
+    """Export Power BI report to Excel for download"""
+    try:
+        file_data = _pbi_export_file()
+        fname = f'PowerBI_Report_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+        return send_file(
+            io.BytesIO(file_data),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=fname
+        )
+    except Exception as e:
+        return jsonify({'error': str(e)}), 500
+
+
+@app.route('/api/powerbi/sync', methods=['POST'])
+@admin_required
+def powerbi_sync():
+    """Export from Power BI and immediately import as sales data"""
+    import re as _re
+    replace = request.json.get('replace', False) if request.is_json else False
+    try:
+        file_data = _pbi_export_file()
+        wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+
+        # Find header row
+        header_idx = None
+        for i, row in enumerate(rows[:10]):
+            row_s = [str(c).strip() if c else '' for c in row]
+            if any('артикул' in v.lower() or 'article' in v.lower() for v in row_s):
+                header_idx = i; break
+        if header_idx is None:
+            return jsonify({'error': 'Не найден заголовок в файле Power BI'}), 400
+
+        h = [str(c).strip() if c else '' for c in rows[header_idx]]
+        season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
+        for j, v in enumerate(h):
+            vl = v.lower()
+            if 'сезон' in vl or 'season' in vl: season_col = j
+            if 'артикул' in vl or 'article' in vl: art_col = j
+            if 'вид' in vl or 'category' in vl or 'type' in vl: cat_col = j
+            if 'магазин' in vl or 'branch' in vl or 'store' in vl: branch_col = j
+            if 'ссылка' in vl or 'ref' in vl or 'чек' in vl: ref_col = j
+            if 'количество' in vl or 'qty' in vl or 'кол' in vl: qty_col = j
+            if 'цена' in vl or 'price' in vl: price_col = j
+            if 'сумма' in vl or 'amount' in vl or 'выручка' in vl: amount_col = j
+
+        conn = get_db(); cur = conn.cursor()
+        if replace:
+            cur.execute('DELETE FROM sales')
+
+        inserted = 0
+        for row in rows[header_idx+1:]:
+            if not row: continue
+            art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
+            if not art or art in ('None','nan',''): continue
+            season = str(row[season_col]).strip() if season_col is not None and row[season_col] else ''
+            cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
+            branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
+            ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            except: qty = 1
+            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            except: price = 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            except: amount = 0
+            sale_date = None
+            m = _re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
+            if m:
+                try: sale_date = f'{m.group(3)}-{m.group(2)}-{m.group(1)}'
+                except: pass
+            cur.execute(
+                'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
+                (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
+            )
+            inserted += 1
+
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({'ok': True, 'inserted': inserted, 'replaced': replace})
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'tb': traceback.format_exc()}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

@@ -1262,30 +1262,43 @@ td.muted{color:var(--text2)}
     <div id="page-powerbi" class="page">
       <div class="topbar">
         <div>
-          <div class="topbar-title">Power BI Аналитика</div>
-          <div class="topbar-sub">Интерактивный отчёт LI-NING Uzbekistan</div>
-        </div>
-        <div style="display:flex;gap:8px">
-          <button class="btn-secondary" onclick="loadPowerBI()">↻ Обновить</button>
-          <a href="https://app.powerbi.com/groups/me/apps/9f8ee641-5763-44a2-a684-69199c8a9d40/reports/0e916fd9-34dc-4a5c-bb81-4addd6ca95a7" target="_blank" class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px">↗ Открыть в Power BI</a>
+          <div class="topbar-title">Power BI Отчёт</div>
+          <div class="topbar-sub">Экспорт аналитики в Excel</div>
         </div>
       </div>
-      <div class="content" style="padding:0;height:calc(100vh - 80px)">
-        <div id="pbi-loading" style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:16px">
-          <div style="font-size:40px">📊</div>
-          <div style="font-size:16px;font-weight:700;color:var(--text)">Загрузка Power BI отчёта...</div>
-          <div style="font-size:12px;color:var(--text3)">Получаем токен доступа</div>
+      <div class="content">
+        <div style="max-width:480px">
+          <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:32px;text-align:center">
+            <div style="font-size:56px;margin-bottom:16px">📊</div>
+            <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px">Power BI Отчёт</div>
+            <div style="font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.6">
+              Скачайте полный аналитический отчёт LI-NING Uzbekistan в формате Excel.<br>
+              Данные из Power BI — продажи, остатки, конверсия по всем филиалам.
+            </div>
+            <button class="btn-primary" id="pbi-export-btn" onclick="exportPowerBI()" style="width:100%;padding:14px;font-size:14px;margin-bottom:12px">
+              📥 Скачать отчёт Excel
+            </button>
+            <a href="https://app.powerbi.com/groups/me/apps/9f8ee641-5763-44a2-a684-69199c8a9d40/reports/0e916fd9-34dc-4a5c-bb81-4addd6ca95a7" target="_blank" class="btn-secondary" style="width:100%;padding:12px;font-size:13px;display:block;text-align:center;box-sizing:border-box">
+              ↗ Открыть в Power BI
+            </a>
+            <div id="pbi-status" style="margin-top:16px;font-size:12px;color:var(--text3)"></div>
+          </div>
+
+          <!-- Auto sync from Power BI -->
+          <div style="margin-top:20px;background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:24px">
+            <div style="font-size:11px;font-weight:700;text-transform:uppercase;letter-spacing:1px;color:var(--text3);margin-bottom:4px">⚡ Авто-синхронизация</div>
+            <div style="font-size:12px;color:var(--text2);margin-bottom:16px">Скачивает отчёт из Power BI и сразу загружает продажи на сайт — без промежуточного файла</div>
+            <div style="display:flex;gap:8px;flex-direction:column">
+              <button class="btn-primary" id="pbi-sync-btn" onclick="syncFromPBI(false)" style="width:100%;padding:12px">
+                ⚡ Синхронизировать продажи из Power BI
+              </button>
+              <button class="btn-secondary" id="pbi-sync-replace-btn" onclick="syncFromPBI(true)" style="width:100%;padding:10px;font-size:12px">
+                ↺ Заменить все продажи из Power BI
+              </button>
+            </div>
+            <div id="pbi-sync-status" style="margin-top:12px;font-size:12px;color:var(--text3)"></div>
+          </div>
         </div>
-        <div id="pbi-error" style="display:none;padding:40px;text-align:center">
-          <div style="font-size:40px;margin-bottom:16px">⚠️</div>
-          <div id="pbi-error-msg" style="color:var(--accent);font-size:14px;margin-bottom:16px"></div>
-          <div style="font-size:12px;color:var(--text3);margin-bottom:20px">Убедитесь что PBI_CLIENT_SECRET добавлен в Railway Variables</div>
-          <a href="https://app.powerbi.com/groups/me/apps/9f8ee641-5763-44a2-a684-69199c8a9d40/reports/0e916fd9-34dc-4a5c-bb81-4addd6ca95a7" target="_blank" class="btn-primary">Открыть напрямую в Power BI ↗</a>
-        </div>
-        <iframe id="pbi-iframe"
-          style="display:none;width:100%;height:100%;border:none;border-radius:0"
-          allowfullscreen>
-        </iframe>
       </div>
     </div>
 
@@ -2508,7 +2521,7 @@ function showPage(name,btn){
   if(name==='distribution'){if(typeof distClear==='function')distClear();}
   if(name==='zerosales'){loadZeroSales();}
   if(name==='warehouse-report'){loadWarehouseReport();}
-  if(name==='powerbi'){loadPowerBI();}
+  if(name==='powerbi'){}
   if(name==='ai'){
     document.getElementById('ai-empty').style.display='block';
     document.getElementById('ai-result').style.display='none';
@@ -3613,6 +3626,34 @@ function renderWrTab(){
   }
 }
 
+async function syncFromPBI(replace){
+  var status = document.getElementById('pbi-sync-status');
+  var btn = document.getElementById(replace ? 'pbi-sync-replace-btn' : 'pbi-sync-btn');
+  var otherBtn = document.getElementById(replace ? 'pbi-sync-btn' : 'pbi-sync-replace-btn');
+  btn.disabled = true; otherBtn.disabled = true;
+  btn.textContent = '⏳ Экспортирую из Power BI (~30-60 сек)...';
+  status.textContent = 'Подключаюсь к Power BI, запускаю экспорт...';
+  status.style.color = 'var(--text3)';
+  try {
+    var r = await fetch('/api/powerbi/sync', {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({replace: replace})
+    });
+    var d = await r.json();
+    if(!r.ok) throw new Error(d.error||'Ошибка');
+    status.textContent = '✅ Синхронизировано! Загружено '+d.inserted+' строк продаж'+(replace?' (старые удалены)':'');
+    status.style.color = 'var(--green)';
+    toast('Power BI синхронизирован: '+d.inserted+' строк');
+  } catch(e) {
+    status.textContent = '❌ '+e.message;
+    status.style.color = 'var(--accent)';
+    toast(e.message, true);
+  }
+  btn.disabled = false; otherBtn.disabled = false;
+  btn.textContent = replace ? '↺ Заменить все продажи из Power BI' : '⚡ Синхронизировать продажи из Power BI';
+}
+
 // ===== ZERO SALES =====
 var _zsData = [];
 var _zsFilter = 'all';
@@ -3734,38 +3775,36 @@ async function createAutoSchlopka(){
 }
 
 // ===== POWER BI =====
-async function loadPowerBI(){
-  document.getElementById('pbi-loading').style.display='flex';
-  document.getElementById('pbi-error').style.display='none';
-  document.getElementById('pbi-iframe').style.display='none';
-
+async function exportPowerBI(){
+  var btn = document.getElementById('pbi-export-btn');
+  var status = document.getElementById('pbi-status');
+  btn.disabled = true;
+  btn.textContent = '⏳ Генерирую отчёт... (~30 сек)';
+  status.textContent = 'Power BI экспортирует данные, подождите...';
+  status.style.color = 'var(--text3)';
   try {
-    var r = await fetch('/api/powerbi/token');
-    var d = await r.json();
-
-    if(!r.ok || d.error){
-      // Fallback: show iframe with direct URL (works if user is logged into Power BI)
-      document.getElementById('pbi-loading').style.display='none';
-      var iframe = document.getElementById('pbi-iframe');
-      iframe.src = 'https://app.powerbi.com/reportEmbed?reportId=0e916fd9-34dc-4a5c-bb81-4addd6ca95a7&appId=9f8ee641-5763-44a2-a684-69199c8a9d40&autoAuth=true&ctid=7365ebbc-66ba-4712-8260-23fe81d5c482';
-      iframe.style.display='block';
-      return;
+    var r = await fetch('/api/powerbi/export');
+    if(!r.ok){
+      var d = await r.json();
+      throw new Error(d.error || 'Ошибка экспорта');
     }
-
-    // Embed with token
-    var iframe = document.getElementById('pbi-iframe');
-    var embedUrl = d.embed_url + '&config=eyJjbHVzdGVyVXJsIjoiaHR0cHM6Ly9XQUJJLVdFU1QtRVVST1BFLUUtUFJJTUFSWS1yZWRpcmVjdC5hbmFseXNpcy53aW5kb3dzLm5ldC8ifQ==';
-    iframe.src = embedUrl;
-    iframe.style.display='block';
-    document.getElementById('pbi-loading').style.display='none';
-
+    var blob = await r.blob();
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    a.href = url;
+    a.download = 'PowerBI_Report_' + new Date().toISOString().slice(0,10) + '.xlsx';
+    a.click();
+    URL.revokeObjectURL(url);
+    status.textContent = '✅ Отчёт скачан!';
+    status.style.color = 'var(--green)';
+    toast('Power BI отчёт скачан!');
   } catch(e) {
-    // Direct embed fallback
-    document.getElementById('pbi-loading').style.display='none';
-    var iframe = document.getElementById('pbi-iframe');
-    iframe.src = 'https://app.powerbi.com/reportEmbed?reportId=0e916fd9-34dc-4a5c-bb81-4addd6ca95a7&appId=9f8ee641-5763-44a2-a684-69199c8a9d40&autoAuth=true&ctid=7365ebbc-66ba-4712-8260-23fe81d5c482';
-    iframe.style.display='block';
+    status.textContent = '❌ ' + e.message;
+    status.style.color = 'var(--accent)';
+    toast(e.message, true);
   }
+  btn.disabled = false;
+  btn.textContent = '📥 Скачать отчёт Excel';
 }
 
 var _distFile = null;
