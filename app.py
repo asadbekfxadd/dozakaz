@@ -2819,6 +2819,151 @@ def auto_schlopka():
         'articles': len(set(i[0] for i in schlopka_items))
     })
 
+
+# ===== WAREHOUSE MORNING REPORT =====
+
+@app.route('/api/warehouse/report')
+@login_required
+def warehouse_report():
+    """
+    Утренний отчёт склада:
+    - Артикулы с остатком WMS < 10 шт (по размеру)
+    - Артикулы с суммарным остатком по сети < 10 шт
+    Исключает товары на скидке 70%
+    """
+    if session.get('role') not in ('admin', 'warehouse'):
+        return jsonify({'error': 'Нет доступа'}), 403
+
+    conn = get_db(); cur = conn.cursor()
+
+    # 1. Мало на складе WMS (по каждому размеру < 10)
+    cur.execute("""
+        SELECT
+            c.article,
+            MIN(c.name) as name,
+            MIN(c.abc) as abc,
+            MIN(c.season) as season,
+            MIN(c.category) as category,
+            c.size,
+            c.wms_stock,
+            SUM(bs.qty) as network_stock
+        FROM catalog c
+        LEFT JOIN branch_stock bs ON bs.article = c.article AND bs.size = c.size
+        WHERE c.wms_stock > 0 AND c.wms_stock < 10
+        AND c.discount = 0
+        GROUP BY c.article, c.name, c.abc, c.season, c.category, c.size, c.wms_stock
+        ORDER BY c.wms_stock ASC, MIN(c.abc), c.article
+        LIMIT 300
+    """)
+    low_wms_rows = cur.fetchall()
+
+    # 2. Мало по сети (суммарный остаток < 10)
+    cur.execute("""
+        SELECT
+            c.article,
+            MIN(c.name) as name,
+            MIN(c.abc) as abc,
+            MIN(c.season) as season,
+            MIN(c.category) as category,
+            SUM(c.wms_stock) as total_wms,
+            SUM(bs.qty) as total_network,
+            COUNT(DISTINCT c.size) as size_count,
+            array_agg(c.size ORDER BY c.size) as sizes,
+            array_agg(c.wms_stock ORDER BY c.size) as wms_stocks
+        FROM catalog c
+        LEFT JOIN branch_stock bs ON bs.article = c.article
+        WHERE c.discount = 0
+        GROUP BY c.article
+        HAVING SUM(c.wms_stock) + COALESCE(SUM(bs.qty), 0) < 10
+        AND SUM(c.wms_stock) + COALESCE(SUM(bs.qty), 0) > 0
+        ORDER BY MIN(c.abc), SUM(c.wms_stock) + COALESCE(SUM(bs.qty), 0) ASC
+        LIMIT 200
+    """)
+    low_network_rows = cur.fetchall()
+
+    # 3. Единички на складе (wms_stock = 1)
+    cur.execute("""
+        SELECT
+            c.article,
+            MIN(c.name) as name,
+            MIN(c.abc) as abc,
+            MIN(c.season) as season,
+            MIN(c.category) as category,
+            array_agg(c.size ORDER BY c.size) as sizes,
+            array_agg(c.wms_stock ORDER BY c.size) as wms_stocks
+        FROM catalog c
+        WHERE c.discount = 0
+        GROUP BY c.article
+        HAVING SUM(CASE WHEN c.wms_stock = 1 THEN 1 ELSE 0 END) > 0
+        AND MIN(c.abc) IN ('A', 'B')
+        ORDER BY MIN(c.abc), c.article
+        LIMIT 200
+    """)
+    singles_rows = cur.fetchall()
+
+    cur.close(); conn.close()
+
+    # Format results
+    low_wms = []
+    for r in low_wms_rows:
+        low_wms.append({
+            'article': r['article'],
+            'name': r['name'] or '',
+            'abc': r['abc'] or 'C',
+            'season': r['season'] or '',
+            'category': r['category'] or '',
+            'size': r['size'],
+            'wms_stock': int(r['wms_stock'] or 0),
+            'network_stock': int(r['network_stock'] or 0),
+        })
+
+    low_network = []
+    for r in low_network_rows:
+        sizes_detail = []
+        sizes = r['sizes'] or []
+        stocks = r['wms_stocks'] or []
+        for i, sz in enumerate(sizes):
+            w = int(stocks[i] or 0) if i < len(stocks) else 0
+            sizes_detail.append({'size': sz, 'wms': w})
+        low_network.append({
+            'article': r['article'],
+            'name': r['name'] or '',
+            'abc': r['abc'] or 'C',
+            'season': r['season'] or '',
+            'category': r['category'] or '',
+            'total_wms': int(r['total_wms'] or 0),
+            'total_network': int(r['total_network'] or 0),
+            'sizes': sizes_detail,
+        })
+
+    singles = []
+    for r in singles_rows:
+        sizes = r['sizes'] or []
+        stocks = r['wms_stocks'] or []
+        single_sizes = [{'size': sizes[i], 'wms': int(stocks[i] or 0)}
+                        for i in range(len(sizes)) if i < len(stocks) and int(stocks[i] or 0) == 1]
+        if single_sizes:
+            singles.append({
+                'article': r['article'],
+                'name': r['name'] or '',
+                'abc': r['abc'] or 'C',
+                'season': r['season'] or '',
+                'category': r['category'] or '',
+                'single_sizes': single_sizes,
+            })
+
+    return jsonify({
+        'low_wms': low_wms,
+        'low_network': low_network,
+        'singles': singles,
+        'generated_at': datetime.now().strftime('%d.%m.%Y %H:%M'),
+        'summary': {
+            'low_wms_count': len(low_wms),
+            'low_network_count': len(low_network),
+            'singles_count': len(singles),
+        }
+    })
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

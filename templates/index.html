@@ -695,6 +695,10 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Конверсия
       </button>
+      <button class="nav-item" onclick="showPage('warehouse-report',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
+        Отчёт склада
+      </button>
       <button class="nav-item" onclick="showPage('zerosales',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
         Zero Sales
@@ -1068,6 +1072,69 @@ td.muted{color:var(--text2)}
         </div>
         <div id="rec-grid" class="catalog-grid"></div>
         <div id="rec-cross-grid" class="catalog-grid" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- WAREHOUSE REPORT -->
+    <div id="page-warehouse-report" class="page">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Утренний отчёт склада</div>
+          <div class="topbar-sub" id="wr-generated-at">Остатки требующие внимания</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" onclick="loadWarehouseReport()">↻ Обновить</button>
+        </div>
+      </div>
+      <div class="content">
+        <!-- Summary cards -->
+        <div id="wr-stats" style="display:flex;gap:10px;margin-bottom:24px;flex-wrap:wrap"></div>
+
+        <!-- Tab switcher -->
+        <div style="display:flex;gap:8px;margin-bottom:20px">
+          <button class="period-tab active" id="wr-tab-singles" onclick="wrTab('singles',this)">⚠️ Единички A/B</button>
+          <button class="period-tab" id="wr-tab-wms" onclick="wrTab('wms',this)">📦 Мало на WMS (&lt;10)</button>
+          <button class="period-tab" id="wr-tab-network" onclick="wrTab('network',this)">🌐 Мало в сети (&lt;10)</button>
+        </div>
+
+        <!-- Singles tab -->
+        <div id="wr-singles-tab">
+          <div style="font-size:11px;color:var(--amber);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">
+            ⚠️ A/B артикулы с единичными остатками на складе — риск дефицита
+          </div>
+          <div class="orders-wrap">
+            <table>
+              <thead><tr><th>Артикул</th><th>Название</th><th>ABC</th><th>Сезон</th><th>Категория</th><th>Размеры с 1 шт на WMS</th></tr></thead>
+              <tbody id="wr-singles-tbody"><tr><td colspan="6"><div class="empty-state">Загрузка...</div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Low WMS tab -->
+        <div id="wr-wms-tab" style="display:none">
+          <div style="font-size:11px;color:var(--accent);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">
+            📦 Размеры с остатком на WMS меньше 10 шт
+          </div>
+          <div class="orders-wrap">
+            <table>
+              <thead><tr><th>Артикул</th><th>Название</th><th>ABC</th><th>Размер</th><th>На WMS</th><th>В сети</th></tr></thead>
+              <tbody id="wr-wms-tbody"><tr><td colspan="6"><div class="empty-state">Загрузка...</div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
+
+        <!-- Low network tab -->
+        <div id="wr-network-tab" style="display:none">
+          <div style="font-size:11px;color:var(--amber);font-weight:700;text-transform:uppercase;letter-spacing:1px;margin-bottom:12px">
+            🌐 Артикулы с суммарным остатком в сети менее 10 шт
+          </div>
+          <div class="orders-wrap">
+            <table>
+              <thead><tr><th>Артикул</th><th>Название</th><th>ABC</th><th>Сезон</th><th>WMS</th><th>В сети</th><th>Размеры</th></tr></thead>
+              <tbody id="wr-network-tbody"><tr><td colspan="7"><div class="empty-state">Загрузка...</div></td></tr></tbody>
+            </table>
+          </div>
+        </div>
       </div>
     </div>
 
@@ -1584,14 +1651,14 @@ function showApp(d){
     loadTransferBadge();
     document.querySelectorAll('.flagman-only').forEach(el=>el.style.display='flex');
   } else if(d.role==='warehouse'){
-    // Склад видит только схлопку
+    // Склад видит схлопку и отчёт склада
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
     document.querySelectorAll('.flagman-only').forEach(el=>el.style.display='none');
     document.querySelectorAll('.nav-item').forEach(el=>el.style.display='none');
     document.getElementById('th-actions').style.display='none';
     document.getElementById('catalog-upload-btns').style.display='none';
-    // Показываем только схлопку
-    setTimeout(()=>showPage('schlopka', null), 100);
+    // Показываем отчёт склада (утренний) и схлопку
+    setTimeout(()=>showPage('warehouse-report', null), 100);
   } else if(d.role==='user'){
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
     document.getElementById('th-actions').style.display='none';
@@ -2405,6 +2472,7 @@ function showPage(name,btn){
   if(name==='transfers')loadTransfers();
   if(name==='distribution'){if(typeof distClear==='function')distClear();}
   if(name==='zerosales'){loadZeroSales();}
+  if(name==='warehouse-report'){loadWarehouseReport();}
   if(name==='ai'){
     document.getElementById('ai-empty').style.display='block';
     document.getElementById('ai-result').style.display='none';
@@ -3401,6 +3469,114 @@ init();
 loadSyncStatus();
 
 // ===== DISTRIBUTION =====
+// ===== WAREHOUSE REPORT =====
+var _wrData = null;
+var _wrTab = 'singles';
+
+async function loadWarehouseReport(){
+  document.getElementById('wr-stats').innerHTML = '<div style="color:var(--text3);font-size:12px">Загрузка...</div>';
+  var r = await fetch('/api/warehouse/report');
+  if(!r.ok){ toast('Ошибка загрузки отчёта', true); return; }
+  _wrData = await r.json();
+
+  // Update generated at
+  var ga = document.getElementById('wr-generated-at');
+  if(ga) ga.textContent = 'Сформирован: ' + _wrData.generated_at;
+
+  // Stats
+  var s = _wrData.summary;
+  document.getElementById('wr-stats').innerHTML =
+    '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px 18px;text-align:center;cursor:pointer" onclick="wrTab(\'singles\',document.getElementById(\'wr-tab-singles\'))">' +
+    '<div style="font-size:24px;font-weight:800;color:var(--amber)">'+s.singles_count+'</div>' +
+    '<div style="font-size:10px;color:var(--text3);text-transform:uppercase">Единички A/B</div></div>' +
+    '<div style="background:rgba(255,23,68,.08);border:1px solid rgba(255,23,68,.2);border-radius:10px;padding:12px 18px;text-align:center;cursor:pointer" onclick="wrTab(\'wms\',document.getElementById(\'wr-tab-wms\'))">' +
+    '<div style="font-size:24px;font-weight:800;color:var(--accent)">'+s.low_wms_count+'</div>' +
+    '<div style="font-size:10px;color:var(--text3);text-transform:uppercase">Мало на WMS</div></div>' +
+    '<div style="background:rgba(59,130,246,.08);border:1px solid rgba(59,130,246,.2);border-radius:10px;padding:12px 18px;text-align:center;cursor:pointer" onclick="wrTab(\'network\',document.getElementById(\'wr-tab-network\'))">' +
+    '<div style="font-size:24px;font-weight:800;color:var(--blue)">'+s.low_network_count+'</div>' +
+    '<div style="font-size:10px;color:var(--text3);text-transform:uppercase">Мало в сети</div></div>';
+
+  renderWrTab();
+}
+
+function wrTab(tab, btn){
+  _wrTab = tab;
+  document.querySelectorAll('#page-warehouse-report .period-tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  ['singles','wms','network'].forEach(t=>{
+    var el = document.getElementById('wr-'+t+'-tab');
+    if(el) el.style.display = t===tab ? 'block' : 'none';
+  });
+  renderWrTab();
+}
+
+function renderWrTab(){
+  if(!_wrData) return;
+
+  if(_wrTab === 'singles'){
+    var tbody = document.getElementById('wr-singles-tbody');
+    if(!_wrData.singles.length){
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">Нет единичных остатков A/B артикулов 🎉</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = _wrData.singles.map(item=>{
+      var chips = item.single_sizes.map(s=>
+        '<span style="background:rgba(245,158,11,.15);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;color:var(--amber);margin:1px;display:inline-block">⚠ '+s.size+'</span>'
+      ).join('');
+      return '<tr>'+
+        '<td style="font-weight:700;font-size:12px;text-transform:uppercase">'+item.article+'</td>'+
+        '<td style="font-size:11px;color:var(--text2);max-width:180px"><span title="'+item.name+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.name+'</span></td>'+
+        '<td>'+abcBadge(item.abc)+'</td>'+
+        '<td style="font-size:11px;color:var(--text3)">'+item.season+'</td>'+
+        '<td style="font-size:11px;color:var(--text3)">'+item.category+'</td>'+
+        '<td><div style="display:flex;flex-wrap:wrap;gap:2px">'+chips+'</div></td>'+
+        '</tr>';
+    }).join('');
+  }
+
+  if(_wrTab === 'wms'){
+    var tbody = document.getElementById('wr-wms-tbody');
+    if(!_wrData.low_wms.length){
+      tbody.innerHTML = '<tr><td colspan="6"><div class="empty-state">Нет критических остатков на WMS 🎉</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = _wrData.low_wms.map(item=>{
+      var wmsColor = item.wms_stock <= 3 ? 'var(--accent)' : item.wms_stock <= 6 ? 'var(--amber)' : 'var(--text)';
+      return '<tr>'+
+        '<td style="font-weight:700;font-size:12px;text-transform:uppercase">'+item.article+'</td>'+
+        '<td style="font-size:11px;color:var(--text2);max-width:180px"><span title="'+item.name+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.name+'</span></td>'+
+        '<td>'+abcBadge(item.abc)+'</td>'+
+        '<td><span style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:2px 8px;font-size:12px;font-weight:700">'+item.size+'</span></td>'+
+        '<td style="text-align:center;font-weight:800;font-size:14px;color:'+wmsColor+'">'+item.wms_stock+'</td>'+
+        '<td style="text-align:center;color:var(--text2)">'+item.network_stock+'</td>'+
+        '</tr>';
+    }).join('');
+  }
+
+  if(_wrTab === 'network'){
+    var tbody = document.getElementById('wr-network-tbody');
+    if(!_wrData.low_network.length){
+      tbody.innerHTML = '<tr><td colspan="7"><div class="empty-state">Нет артикулов с критически низким остатком в сети 🎉</div></td></tr>';
+      return;
+    }
+    tbody.innerHTML = _wrData.low_network.map(item=>{
+      var netColor = item.total_network <= 3 ? 'var(--accent)' : 'var(--amber)';
+      var sizeChips = item.sizes.map(s=>
+        '<span style="background:var(--bg3);border:1px solid var(--border);border-radius:4px;padding:1px 5px;font-size:9px;margin:1px;display:inline-block;color:'+(s.wms>0?'var(--green)':'var(--text3)')+'">'+s.size+': '+s.wms+'</span>'
+      ).join('');
+      return '<tr>'+
+        '<td style="font-weight:700;font-size:12px;text-transform:uppercase">'+item.article+'</td>'+
+        '<td style="font-size:11px;color:var(--text2);max-width:160px"><span title="'+item.name+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.name+'</span></td>'+
+        '<td>'+abcBadge(item.abc)+'</td>'+
+        '<td style="font-size:11px;color:var(--text3)">'+item.season+'</td>'+
+        '<td style="text-align:center;font-weight:700;color:var(--text2)">'+item.total_wms+'</td>'+
+        '<td style="text-align:center;font-weight:800;font-size:14px;color:'+netColor+'">'+item.total_network+'</td>'+
+        '<td><div style="display:flex;flex-wrap:wrap;gap:1px">'+sizeChips+'</div></td>'+
+        '</tr>';
+    }).join('');
+  }
+}
+
 // ===== ZERO SALES =====
 var _zsData = [];
 var _zsFilter = 'all';
