@@ -682,6 +682,32 @@ def get_catalog():
         for r in cur.fetchall():
             branch_stock_map[(r['article'], r['size'])] = r['qty']
 
+    # Get sales stats for all articles (7d, 30d, velocity)
+    sales_stats = {}
+    try:
+        cur2 = conn2 = get_db(); cur2 = conn2.cursor()
+        art_list_for_sales = [art_row['article'] for art_row in articles]
+        if art_list_for_sales:
+            cur2.execute('''
+                SELECT article,
+                    SUM(CASE WHEN sale_date >= CURRENT_DATE - 7 THEN qty ELSE 0 END) as sold_7d,
+                    SUM(CASE WHEN sale_date >= CURRENT_DATE - 30 THEN qty ELSE 0 END) as sold_30d,
+                    SUM(CASE WHEN sale_date >= CURRENT_DATE - 90 THEN qty ELSE 0 END) as sold_90d
+                FROM sales
+                WHERE article = ANY(%s)
+                GROUP BY article
+            ''', (art_list_for_sales,))
+            for r in cur2.fetchall():
+                velocity = round(r['sold_30d'] / 30, 2) if r['sold_30d'] else 0
+                sales_stats[r['article']] = {
+                    'sold_7d': r['sold_7d'] or 0,
+                    'sold_30d': r['sold_30d'] or 0,
+                    'sold_90d': r['sold_90d'] or 0,
+                    'velocity': velocity
+                }
+        cur2.close(); conn2.close()
+    except: pass
+
     cur.close(); conn.close()
 
     result = []
@@ -689,6 +715,7 @@ def get_catalog():
         art = art_row['article']
         sizes = all_sizes.get(art, [])
         sizes_out = [{'size': s['size'], 'wms': s['wms'], 'branch': branch_stock_map.get((art, s['size']), 0)} for s in sizes]
+        ss = sales_stats.get(art, {'sold_7d': 0, 'sold_30d': 0, 'sold_90d': 0, 'velocity': 0})
         result.append({
             'article': art,
             'name': art_row['name'] or '',
@@ -698,6 +725,10 @@ def get_catalog():
             'category': art_row['category'] or '',
             'total_wms': art_row['total_wms'] or 0,
             'discount': art_row['discount'] or 0,
+            'sold_7d': ss['sold_7d'],
+            'sold_30d': ss['sold_30d'],
+            'sold_90d': ss['sold_90d'],
+            'velocity': ss['velocity'],
             'sizes': sizes_out
         })
     return jsonify(result)
@@ -2404,5 +2435,3 @@ def run_distribution():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-ndk.dir=C\:\\Users\\Lenovo\\AppData\\Local\\Android\\Sdk\\ndk-bundle
-ndk.dir=C\:\\Users\\Lenovo\\AppData\\Local\\Android\\Sdk\\ndk\\30.0.14904198
