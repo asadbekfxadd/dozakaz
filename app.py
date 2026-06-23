@@ -2491,13 +2491,14 @@ def zero_sales():
     - Флаг авто-схлопки (суммарный остаток < 50)
     """
     role = session.get('role')
+    # Branch: from session (store user) or from URL param (admin selecting branch)
     branch = session.get('branch') or request.args.get('branch', '')
     days = int(request.args.get('days', 30))
 
     conn = get_db(); cur = conn.cursor()
 
-    # Артикулы которые есть в филиале но не продавались N дней
-    if role == 'user' and branch:
+    # Single branch query (user role OR admin with selected branch)
+    if branch:
         cur.execute("""
             SELECT
                 bs.article,
@@ -2505,9 +2506,13 @@ def zero_sales():
                 MIN(c.abc) as abc,
                 MIN(c.season) as season,
                 MIN(c.category) as category,
+                bs.branch,
                 SUM(bs.qty) as branch_stock,
                 COUNT(DISTINCT bs.size) as branch_sizes,
-                SUM(c.wms_stock) as wms_stock
+                SUM(c.wms_stock) as wms_stock,
+                array_agg(DISTINCT bs.size ORDER BY bs.size) as branch_size_list,
+                array_agg(c.size ORDER BY c.size) as all_wms_sizes,
+                array_agg(c.wms_stock ORDER BY c.size) as all_wms_stocks
             FROM branch_stock bs
             JOIN catalog c ON c.article = bs.article
             WHERE bs.branch = %s AND bs.qty > 0
@@ -2521,12 +2526,13 @@ def zero_sales():
                 WHERE branch = %s
                 AND sale_date >= CURRENT_DATE - %s
             )
-            GROUP BY bs.article
+            AND c.discount = 0
+            GROUP BY bs.article, bs.branch
             ORDER BY MIN(c.abc), SUM(bs.qty) DESC
             LIMIT 200
         """, (branch, branch, days, branch, days))
     else:
-        # Admin: все филиалы агрегировано
+        # Admin: all branches
         cur.execute("""
             SELECT
                 bs.article,
@@ -2536,7 +2542,11 @@ def zero_sales():
                 MIN(c.category) as category,
                 bs.branch,
                 SUM(bs.qty) as branch_stock,
-                COUNT(DISTINCT bs.size) as branch_sizes
+                COUNT(DISTINCT bs.size) as branch_sizes,
+                SUM(c.wms_stock) as wms_stock,
+                array_agg(DISTINCT bs.size ORDER BY bs.size) as branch_size_list,
+                array_agg(c.size ORDER BY c.size) as all_wms_sizes,
+                array_agg(c.wms_stock ORDER BY c.size) as all_wms_stocks
             FROM branch_stock bs
             JOIN catalog c ON c.article = bs.article
             WHERE bs.qty > 0
@@ -2548,6 +2558,7 @@ def zero_sales():
                 SELECT DISTINCT article || 'A' FROM sales
                 WHERE sale_date >= CURRENT_DATE - %s
             )
+            AND c.discount = 0
             GROUP BY bs.article, bs.branch
             ORDER BY MIN(c.abc), SUM(bs.qty) DESC
             LIMIT 500
@@ -2583,6 +2594,23 @@ def zero_sales():
         is_broken_grid = branch_sizes_count < 3
         needs_schlopka = total_network < 50 and total_network > 0
 
+        # Build WMS sizes info: which sizes available on WMS but missing in branch
+        branch_size_list = r['branch_size_list'] or []
+        all_wms_sizes = r['all_wms_sizes'] or []
+        all_wms_stocks = r['all_wms_stocks'] or []
+        wms_sizes_detail = []
+        for i, sz in enumerate(all_wms_sizes):
+            wms_qty = int(all_wms_stocks[i] or 0) if i < len(all_wms_stocks) else 0
+            has_in_branch = sz in branch_size_list
+            wms_sizes_detail.append({
+                'size': sz,
+                'wms': wms_qty,
+                'in_branch': has_in_branch,
+                'can_order': wms_qty > 0 and not has_in_branch
+            })
+        total_wms = int(r['wms_stock'] or 0) if 'wms_stock' in r else 0
+        can_order_count = sum(1 for s in wms_sizes_detail if s['can_order'])
+
         item = {
             'article': art,
             'name': r['name'] or '',
@@ -2593,6 +2621,9 @@ def zero_sales():
             'branch_sizes': branch_sizes_count,
             'network_stock': total_network,
             'network_sizes': total_sizes,
+            'wms_total': total_wms,
+            'wms_sizes': wms_sizes_detail,
+            'can_order_count': can_order_count,
             'is_broken_grid': is_broken_grid,
             'needs_schlopka': needs_schlopka,
             'days_no_sale': days,
@@ -2612,34 +2643,147 @@ def zero_sales():
 @admin_required
 def auto_schlopka():
     """
-    Автоматически создаёт схлопку для артикулов с network_stock < 50.
-    Собирает товары со всех филиалов и направляет на флагманы.
+    Авто-схлопка: собирает артикулы с сетью < 50 шт и
+    равномерно распределяет по 4 флагманам (по 1 шт каждого размера).
+    Правильная сетка = по 1 штуке КАЖДОГО размера (не 3 одинаковых).
     """
     data = request.get_json() or {}
     articles = data.get('articles', [])
-    days = int(data.get('days', 30))
 
     if not articles:
         return jsonify({'error': 'Нет артикулов'}), 400
 
+    FLAGMAN_LIST = ['TASHKENT CITY MALL', 'ALAYSKIY', 'ATLAS CHIMGAN', 'Shota Rustavely']
+
     conn = get_db(); cur = conn.cursor()
 
-    # Получаем остатки по филиалам для этих артикулов
+    # Все остатки по этим артикулам во всех филиалах
+    # Фильтруем артикулы на скидке 70% — они только для аутлетов
+    cur.execute("SELECT DISTINCT article FROM catalog WHERE discount > 0")
+    discount_arts = {r['article'] for r in cur.fetchall()}
+    articles = [a for a in articles if a not in discount_arts]
+
+    if not articles:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Все артикулы на скидке 70% — они только для аутлетов'}), 400
+
     cur.execute("""
         SELECT bs.article, bs.branch, bs.size, bs.qty,
                MIN(c.name) as name, MIN(c.category) as category
         FROM branch_stock bs
         JOIN catalog c ON c.article = bs.article
         WHERE bs.article = ANY(%s) AND bs.qty > 0
-        AND bs.branch NOT IN %s
+        AND c.discount = 0
         GROUP BY bs.article, bs.branch, bs.size, bs.qty
-        ORDER BY bs.article, bs.branch
-    """, (articles, tuple(FLAGMANS)))
-
+        ORDER BY bs.article, bs.size
+    """, (articles,))
     rows = cur.fetchall()
+
     if not rows:
         cur.close(); conn.close()
-        return jsonify({'error': 'Нет остатков в не-флагманских филиалах'}), 400
+        return jsonify({'error': 'Нет остатков'}), 400
+
+    # Продажи флагманов за 30 дней по этим артикулам
+    art_list_no_a = [a.rstrip('A') for a in articles]
+    cur.execute("""
+        SELECT article, branch, SUM(qty) as sold_30d
+        FROM sales
+        WHERE (article = ANY(%s) OR article = ANY(%s))
+        AND branch = ANY(%s)
+        AND sale_date >= CURRENT_DATE - 30
+        GROUP BY article, branch
+    """, (articles, art_list_no_a, FLAGMAN_LIST))
+    sales_by_flagman = {}  # (art, branch) -> sold_30d
+    for r in cur.fetchall():
+        art_key = r['article'].rstrip('A') + 'A' if not r['article'].endswith('A') else r['article']
+        sales_by_flagman[(art_key, r['branch'])] = int(r['sold_30d'] or 0)
+        sales_by_flagman[(r['article'], r['branch'])] = int(r['sold_30d'] or 0)
+
+    from collections import defaultdict
+    art_sizes = defaultdict(lambda: defaultdict(dict))
+    art_names = {}
+    for r in rows:
+        art_sizes[r['article']][r['size']][r['branch']] = int(r['qty'] or 0)
+        art_names[r['article']] = r['name'] or r['category'] or ''
+
+    # Исключаем из доноров Самарканд и Андижан
+    NO_TAKE_BRANCHES = {'UZBEGIM ANDIJAN', 'Samarkand', 'SAMARKAND', 'М.БАРАКА САМАРКАНД'}
+
+    schlopka_items = []  # (article, name, size, from_branch, to_flagman, qty)
+
+    for art, sizes_data in art_sizes.items():
+        name = art_names.get(art, '')
+        all_sizes = sorted(sizes_data.keys())
+
+        # Продажи флагманов по этому артикулу за 30 дней
+        flagman_sales = {}
+        total_flagman_sales = 0
+        for f in FLAGMAN_LIST:
+            sold = sales_by_flagman.get((art, f), 0)
+            flagman_sales[f] = sold
+            total_flagman_sales += sold
+
+        # Если никто ничего не продавал — делим поровну
+        if total_flagman_sales == 0:
+            flagman_weights = {f: 1/len(FLAGMAN_LIST) for f in FLAGMAN_LIST}
+        else:
+            flagman_weights = {f: flagman_sales[f]/total_flagman_sales for f in FLAGMAN_LIST}
+
+        # Считаем суммарный остаток который можно собрать (из всех доноров кроме NO_TAKE)
+        # и сколько нужно дать каждому флагману
+        for size in all_sizes:
+            branch_stocks = sizes_data[size]
+
+            # Доноры — не флагманы и не запрещённые филиалы
+            donors = {b: q for b, q in branch_stocks.items()
+                      if b not in FLAGMAN_LIST and b not in NO_TAKE_BRANCHES and q > 0}
+            if not donors:
+                continue
+
+            total_available = sum(donors.values())
+            if total_available == 0:
+                continue
+
+            # Сколько уже есть у флагманов
+            flagman_has = {f: branch_stocks.get(f, 0) for f in FLAGMAN_LIST}
+
+            # Распределяем пропорционально продажам
+            # Сначала считаем целевое кол-во для каждого флагмана
+            targets = {}
+            for f in FLAGMAN_LIST:
+                weight = flagman_weights[f]
+                # Базовая норма: минимум 1 сетка, максимум пропорционально
+                base = max(1, round(total_available * weight))
+                targets[f] = base
+
+            # Сортируем флагманов по продажам (самые продающие — первыми)
+            sorted_flagmans = sorted(FLAGMAN_LIST, key=lambda f: flagman_sales[f], reverse=True)
+
+            remaining_donors = dict(donors)
+            for flagman in sorted_flagmans:
+                current = flagman_has[flagman]
+                target = targets[flagman]
+                need = max(0, target - current)
+
+                for _ in range(need):
+                    if not remaining_donors:
+                        break
+                    best_donor = max(remaining_donors, key=lambda b: remaining_donors[b])
+                    schlopka_items.append((art, name, size, best_donor, flagman, 1))
+                    remaining_donors[best_donor] -= 1
+                    if remaining_donors[best_donor] <= 0:
+                        del remaining_donors[best_donor]
+
+            # Остаток после флагманов — отдаём самому продающему
+            if remaining_donors and sorted_flagmans:
+                top_flagman = sorted_flagmans[0]
+                for donor, qty in remaining_donors.items():
+                    if qty > 0:
+                        schlopka_items.append((art, name, size, donor, top_flagman, qty))
+
+    if not schlopka_items:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Флагманы уже имеют полные сетки по этим артикулам'}), 400
 
     # Создаём сессию схлопки
     session_name = f'Авто-схлопка {datetime.now().strftime("%d.%m.%Y %H:%M")}'
@@ -2650,30 +2794,29 @@ def auto_schlopka():
     )
     sid = cur.fetchone()['id']
 
-    # Определяем куда направлять (приоритет флагманов)
-    flagman_priority = ['TASHKENT CITY MALL', 'ALAYSKIY', 'ATLAS CHIMGAN', 'Shota Rustavely']
-
+    # Группируем по from_branch (лист схлопки = откуда)
+    from collections import Counter
     items_inserted = 0
-    for r in rows:
-        # Определяем целевой флагман (у кого меньше всего этого артикула)
-        to_branch = flagman_priority[0]  # по умолчанию Сити Молл
-
-        name = r['name'] or r['category'] or ''
-        note = to_branch  # куда везти
-
+    for art, name, size, from_branch, to_flagman, qty in schlopka_items:
         cur.execute(
             'INSERT INTO schlopka_items (session_id,article,name,size,branch,qty,note) VALUES (%s,%s,%s,%s,%s,%s,%s)',
-            (sid, r['article'], name, r['size'], r['branch'], r['qty'], note)
+            (sid, art, name, size, from_branch, qty, to_flagman)
         )
         items_inserted += 1
 
-    conn.commit(); cur.close(); conn.close()
+    conn.commit()
 
+    # Summary per flagman
+    flagman_totals = Counter(item[4] for item in schlopka_items)
+
+    cur.close(); conn.close()
     return jsonify({
         'ok': True,
         'session_id': sid,
         'session_name': session_name,
-        'items': items_inserted
+        'items': items_inserted,
+        'by_flagman': dict(flagman_totals),
+        'articles': len(set(i[0] for i in schlopka_items))
     })
 
 if __name__ == '__main__':

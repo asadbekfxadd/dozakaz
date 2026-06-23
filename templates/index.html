@@ -1076,7 +1076,7 @@ td.muted{color:var(--text2)}
       <div class="topbar">
         <div>
           <div class="topbar-title">Zero Sales</div>
-          <div class="topbar-sub">Артикулы без продаж за 30 дней</div>
+          <div class="topbar-sub" id="zs-sub-title">Артикулы без продаж за 30 дней</div>
         </div>
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="zs-branch" class="admin-only" onchange="loadZeroSales()" style="min-width:180px">
@@ -1112,9 +1112,11 @@ td.muted{color:var(--text2)}
                 <th>ABC</th>
                 <th>Сезон</th>
                 <th id="zs-branch-col">Филиал</th>
-                <th>Остаток в филиале</th>
+                <th>В филиале</th>
                 <th>Размеров</th>
-                <th>Остаток в сети</th>
+                <th>В сети</th>
+                <th>WMS склад</th>
+                <th>Можно дозаказать</th>
                 <th>Статус</th>
               </tr>
             </thead>
@@ -3418,6 +3420,12 @@ async function loadZeroSales(){
   if(!r.ok){ toast('Ошибка загрузки', true); return; }
   _zsData = await r.json();
 
+  // Update subtitle
+  var subTitle = document.getElementById('zs-sub-title');
+  if(subTitle) subTitle.textContent = branch
+    ? 'Артикулы без продаж за 30 дней — ' + branch
+    : 'Артикулы без продаж за 30 дней — все филиалы';
+
   // Stats
   var total = _zsData.length;
   var broken = _zsData.filter(i=>i.is_broken_grid).length;
@@ -3460,7 +3468,12 @@ function renderZeroSales(){
 
   var branch = currentBranch;
   if(currentRole==='admin'){ var sel=document.getElementById('zs-branch'); if(sel) branch=sel.value; }
-  var showBranch = currentRole==='admin' && !branch;
+  var branch2 = currentBranch;
+  if(currentRole==='admin'){ var sel2=document.getElementById('zs-branch'); if(sel2) branch2=sel2.value; }
+  var showBranch = currentRole==='admin' && !branch2;
+  // Toggle branch column header visibility
+  var branchCol = document.getElementById('zs-branch-col');
+  if(branchCol) branchCol.style.display = showBranch ? '' : 'none';
 
   document.getElementById('zs-tbody').innerHTML = data.map(item=>{
     var statusBadges = '';
@@ -3503,7 +3516,8 @@ async function createAutoSchlopka(){
   btn.disabled = false; btn.textContent = '⚡ Авто-схлопка на флагманы';
 
   if(!r.ok){ toast(d.error||'Ошибка', true); return; }
-  toast('✅ Схлопка создана: '+d.items+' позиций → '+d.session_name);
+  var summary = d.by_flagman ? Object.entries(d.by_flagman).map(([b,q])=>b.split(' ')[0]+': '+q).join(', ') : '';
+  toast('✅ Схлопка: '+d.articles+' арт, '+d.items+' поз → '+summary);
   showPage('schlopka', null);
 }
 
