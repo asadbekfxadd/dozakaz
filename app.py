@@ -990,24 +990,22 @@ def upload_sales():
         if header_idx is None:
             return jsonify({'error': 'Не найден заголовок'}), 400
         h1 = [str(c).strip() if c else '' for c in rows[header_idx]]
-        h2 = [str(c).strip() if c else '' for c in rows[header_idx+1]] if header_idx+1 < len(rows) else []
         season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
         for j, v in enumerate(h1):
+            if 'Сезон' in v: season_col = j
+            if 'Артикул' in v: art_col = j
+            if 'Вид' in v and cat_col is None: cat_col = j
             if v == 'Магазин': branch_col = j
             if v == 'Ссылка': ref_col = j
             if v == 'Количество': qty_col = j
             if v == 'Цена': price_col = j
             if v == 'Сумма': amount_col = j
-        for j, v in enumerate(h2):
-            if 'Сезон' in v: season_col = j
-            if 'Артикул' in v: art_col = j
-            if 'Вид' in v: cat_col = j
         replace = request.form.get('replace', 'false') == 'true'
         conn = get_db(); cur = conn.cursor()
         if replace:
             cur.execute('DELETE FROM sales')
         inserted = 0
-        for row in rows[header_idx+2:]:
+        for row in rows[header_idx+1:]:
             if not row: continue
             art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
             if not art or art in ('None','nan',''): continue
