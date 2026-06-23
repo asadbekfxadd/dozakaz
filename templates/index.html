@@ -695,6 +695,10 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Конверсия
       </button>
+      <button class="nav-item" onclick="showPage('zerosales',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="12" r="10"/><line x1="8" y1="12" x2="16" y2="12"/></svg>
+        Zero Sales
+      </button>
       <button class="nav-item" onclick="showPage('schlopka',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 01-2 2H5a2 2 0 01-2-2V5a2 2 0 012-2h11"/></svg>
         Схлопка
@@ -1064,6 +1068,61 @@ td.muted{color:var(--text2)}
         </div>
         <div id="rec-grid" class="catalog-grid"></div>
         <div id="rec-cross-grid" class="catalog-grid" style="display:none"></div>
+      </div>
+    </div>
+
+    <!-- ZERO SALES -->
+    <div id="page-zerosales" class="page">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Zero Sales</div>
+          <div class="topbar-sub">Артикулы без продаж за 30 дней</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="zs-branch" class="admin-only" onchange="loadZeroSales()" style="min-width:180px">
+            <option value="">— все филиалы —</option>
+            <option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option>
+            <option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option>
+            <option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option>
+            <option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option>
+            <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option>
+          </select>
+          <button class="btn-secondary" onclick="loadZeroSales()">↻ Обновить</button>
+          <button id="zs-schlopka-btn" class="btn-primary" style="display:none;background:var(--amber)" onclick="createAutoSchlopka()">
+            ⚡ Авто-схлопка на флагманы
+          </button>
+        </div>
+      </div>
+      <div class="content">
+        <!-- Stats -->
+        <div id="zs-stats" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+        <!-- Filters -->
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="period-tab active" id="zs-filter-all" onclick="zsFilter('all',this)">Все</button>
+          <button class="period-tab" id="zs-filter-broken" onclick="zsFilter('broken',this)">🔴 Битая сетка</button>
+          <button class="period-tab" id="zs-filter-schlopka" onclick="zsFilter('schlopka',this)">⚡ Нужна схлопка (&lt;50шт)</button>
+        </div>
+        <!-- Table -->
+        <div class="orders-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Артикул</th>
+                <th>Название</th>
+                <th>ABC</th>
+                <th>Сезон</th>
+                <th id="zs-branch-col">Филиал</th>
+                <th>Остаток в филиале</th>
+                <th>Размеров</th>
+                <th>Остаток в сети</th>
+                <th>Статус</th>
+              </tr>
+            </thead>
+            <tbody id="zs-tbody">
+              <tr><td colspan="9"><div class="empty-state">Выберите филиал или нажмите обновить</div></td></tr>
+            </tbody>
+          </table>
+        </div>
       </div>
     </div>
 
@@ -2343,6 +2402,7 @@ function showPage(name,btn){
   if(name==='recommendations')loadRecommendations();
   if(name==='transfers')loadTransfers();
   if(name==='distribution'){if(typeof distClear==='function')distClear();}
+  if(name==='zerosales'){loadZeroSales();}
   if(name==='ai'){
     document.getElementById('ai-empty').style.display='block';
     document.getElementById('ai-result').style.display='none';
@@ -3339,6 +3399,114 @@ init();
 loadSyncStatus();
 
 // ===== DISTRIBUTION =====
+// ===== ZERO SALES =====
+var _zsData = [];
+var _zsFilter = 'all';
+
+async function loadZeroSales(){
+  var branch = currentBranch;
+  if(currentRole === 'admin'){
+    var sel = document.getElementById('zs-branch');
+    if(sel) branch = sel.value;
+  }
+  var url = '/api/zero-sales?days=30';
+  if(branch) url += '&branch=' + encodeURIComponent(branch);
+
+  document.getElementById('zs-tbody').innerHTML = '<tr><td colspan="9"><div class="empty-state">Загрузка...</div></td></tr>';
+
+  var r = await fetch(url);
+  if(!r.ok){ toast('Ошибка загрузки', true); return; }
+  _zsData = await r.json();
+
+  // Stats
+  var total = _zsData.length;
+  var broken = _zsData.filter(i=>i.is_broken_grid).length;
+  var needsSchlopka = _zsData.filter(i=>i.needs_schlopka).length;
+  var totalStock = _zsData.reduce((s,i)=>s+(i.branch_stock||0),0);
+
+  document.getElementById('zs-stats').innerHTML =
+    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">'+total+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Артикулов</div></div>'+
+    '<div style="background:rgba(255,23,68,.08);border:1px solid rgba(255,23,68,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">'+broken+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Битая сетка</div></div>'+
+    '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--amber)">'+needsSchlopka+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Нужна схлопка</div></div>'+
+    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--text)">'+totalStock+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Единиц в залежи</div></div>';
+
+  // Show auto-schlopka button for admin if there are candidates
+  var schlopkaBtn = document.getElementById('zs-schlopka-btn');
+  if(schlopkaBtn) schlopkaBtn.style.display = (currentRole==='admin' && needsSchlopka>0) ? 'flex' : 'none';
+
+  // Show/hide branch column
+  var branchCol = document.getElementById('zs-branch-col');
+  if(branchCol) branchCol.style.display = (currentRole==='admin' && !branch) ? '' : 'none';
+
+  renderZeroSales();
+}
+
+function zsFilter(f, btn){
+  _zsFilter = f;
+  document.querySelectorAll('#page-zerosales .period-tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderZeroSales();
+}
+
+function renderZeroSales(){
+  var data = _zsData;
+  if(_zsFilter === 'broken') data = data.filter(i=>i.is_broken_grid);
+  if(_zsFilter === 'schlopka') data = data.filter(i=>i.needs_schlopka);
+
+  if(!data.length){
+    document.getElementById('zs-tbody').innerHTML = '<tr><td colspan="9"><div class="empty-state">Нет данных</div></td></tr>';
+    return;
+  }
+
+  var branch = currentBranch;
+  if(currentRole==='admin'){ var sel=document.getElementById('zs-branch'); if(sel) branch=sel.value; }
+  var showBranch = currentRole==='admin' && !branch;
+
+  document.getElementById('zs-tbody').innerHTML = data.map(item=>{
+    var statusBadges = '';
+    if(item.is_broken_grid) statusBadges += '<span style="background:rgba(255,23,68,.15);color:var(--accent);border:1px solid rgba(255,23,68,.3);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;margin-right:4px">🔴 БИТАЯ СЕТКА</span>';
+    if(item.needs_schlopka) statusBadges += '<span style="background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">⚡ СХЛОПКА</span>';
+    if(!statusBadges) statusBadges = '<span style="color:var(--text3);font-size:11px">● Нет продаж</span>';
+
+    var networkColor = item.network_stock < 50 ? 'var(--amber)' : item.network_stock < 10 ? 'var(--accent)' : 'var(--text)';
+
+    return '<tr>'+
+      '<td style="font-weight:700;text-transform:uppercase;font-size:12px">'+item.article+'</td>'+
+      '<td style="font-size:11px;color:var(--text2);max-width:200px"><span title="'+item.name+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.name+'</span></td>'+
+      '<td>'+abcBadge(item.abc)+'</td>'+
+      '<td style="font-size:11px;color:var(--text3)">'+item.season+'</td>'+
+      (showBranch ? '<td style="font-size:11px;color:var(--text2)">'+item.branch+'</td>' : '')+
+      '<td style="text-align:center;font-weight:700;color:var(--accent)">'+item.branch_stock+'</td>'+
+      '<td style="text-align:center"><span style="'+(item.is_broken_grid?'color:var(--accent);font-weight:700':'')+'">'+(item.branch_sizes||0)+'</span></td>'+
+      '<td style="text-align:center;font-weight:700;color:'+networkColor+'">'+item.network_stock+'</td>'+
+      '<td>'+statusBadges+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+async function createAutoSchlopka(){
+  var candidates = _zsData.filter(i=>i.needs_schlopka);
+  if(!candidates.length){ toast('Нет кандидатов для схлопки', true); return; }
+
+  var arts = [...new Set(candidates.map(i=>i.article))];
+  if(!confirm('Создать авто-схлопку для '+arts.length+' артикулов (сеть < 50 шт) → флагманы?')) return;
+
+  var btn = document.getElementById('zs-schlopka-btn');
+  btn.disabled = true; btn.textContent = '⏳ Создаю...';
+
+  var r = await fetch('/api/zero-sales/auto-schlopka', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({articles: arts, days: 30})
+  });
+  var d = await r.json();
+  btn.disabled = false; btn.textContent = '⚡ Авто-схлопка на флагманы';
+
+  if(!r.ok){ toast(d.error||'Ошибка', true); return; }
+  toast('✅ Схлопка создана: '+d.items+' позиций → '+d.session_name);
+  showPage('schlopka', null);
+}
+
 var _distFile = null;
 function distHandleDrop(e){
   e.preventDefault();

@@ -2476,6 +2476,206 @@ def run_distribution():
         import traceback
         return jsonify({'error':str(e),'tb':traceback.format_exc()}),500
 
+
+# ===== ZERO SALES =====
+
+@app.route('/api/zero-sales')
+@login_required
+def zero_sales():
+    """
+    Артикулы без продаж за 30 дней.
+    Для каждого филиала показывает:
+    - Остаток в филиале
+    - Суммарный остаток по сети
+    - Флаг битой сетки (< 3 размеров в филиале)
+    - Флаг авто-схлопки (суммарный остаток < 50)
+    """
+    role = session.get('role')
+    branch = session.get('branch') or request.args.get('branch', '')
+    days = int(request.args.get('days', 30))
+
+    conn = get_db(); cur = conn.cursor()
+
+    # Артикулы которые есть в филиале но не продавались N дней
+    if role == 'user' and branch:
+        cur.execute("""
+            SELECT
+                bs.article,
+                MIN(c.name) as name,
+                MIN(c.abc) as abc,
+                MIN(c.season) as season,
+                MIN(c.category) as category,
+                SUM(bs.qty) as branch_stock,
+                COUNT(DISTINCT bs.size) as branch_sizes,
+                SUM(c.wms_stock) as wms_stock
+            FROM branch_stock bs
+            JOIN catalog c ON c.article = bs.article
+            WHERE bs.branch = %s AND bs.qty > 0
+            AND bs.article NOT IN (
+                SELECT DISTINCT article FROM sales
+                WHERE branch = %s
+                AND sale_date >= CURRENT_DATE - %s
+            )
+            AND bs.article NOT IN (
+                SELECT DISTINCT article || 'A' FROM sales
+                WHERE branch = %s
+                AND sale_date >= CURRENT_DATE - %s
+            )
+            GROUP BY bs.article
+            ORDER BY MIN(c.abc), SUM(bs.qty) DESC
+            LIMIT 200
+        """, (branch, branch, days, branch, days))
+    else:
+        # Admin: все филиалы агрегировано
+        cur.execute("""
+            SELECT
+                bs.article,
+                MIN(c.name) as name,
+                MIN(c.abc) as abc,
+                MIN(c.season) as season,
+                MIN(c.category) as category,
+                bs.branch,
+                SUM(bs.qty) as branch_stock,
+                COUNT(DISTINCT bs.size) as branch_sizes
+            FROM branch_stock bs
+            JOIN catalog c ON c.article = bs.article
+            WHERE bs.qty > 0
+            AND bs.article NOT IN (
+                SELECT DISTINCT article FROM sales
+                WHERE sale_date >= CURRENT_DATE - %s
+            )
+            AND bs.article NOT IN (
+                SELECT DISTINCT article || 'A' FROM sales
+                WHERE sale_date >= CURRENT_DATE - %s
+            )
+            GROUP BY bs.article, bs.branch
+            ORDER BY MIN(c.abc), SUM(bs.qty) DESC
+            LIMIT 500
+        """, (days, days))
+
+    rows = cur.fetchall()
+
+    # Суммарный остаток по всей сети для каждого артикула
+    art_list = list(set(r['article'] for r in rows))
+    network_stock = {}
+    network_sizes = {}
+    if art_list:
+        cur.execute("""
+            SELECT article, SUM(qty) as total, COUNT(DISTINCT size) as sizes
+            FROM branch_stock WHERE article = ANY(%s)
+            GROUP BY article
+        """, (art_list,))
+        for r in cur.fetchall():
+            network_stock[r['article']] = int(r['total'] or 0)
+            network_sizes[r['article']] = int(r['sizes'] or 0)
+
+    cur.close(); conn.close()
+
+    result = []
+    seen = set()
+
+    for r in rows:
+        art = r['article']
+        total_network = network_stock.get(art, 0)
+        total_sizes = network_sizes.get(art, 0)
+        branch_sizes_count = int(r['branch_sizes'] or 0)
+
+        is_broken_grid = branch_sizes_count < 3
+        needs_schlopka = total_network < 50 and total_network > 0
+
+        item = {
+            'article': art,
+            'name': r['name'] or '',
+            'abc': r['abc'] or 'C',
+            'season': r['season'] or '',
+            'category': r['category'] or '',
+            'branch_stock': int(r['branch_stock'] or 0),
+            'branch_sizes': branch_sizes_count,
+            'network_stock': total_network,
+            'network_sizes': total_sizes,
+            'is_broken_grid': is_broken_grid,
+            'needs_schlopka': needs_schlopka,
+            'days_no_sale': days,
+        }
+        if role != 'user':
+            item['branch'] = r.get('branch', '')
+
+        key = (art, r.get('branch', ''))
+        if key not in seen:
+            seen.add(key)
+            result.append(item)
+
+    return jsonify(result)
+
+
+@app.route('/api/zero-sales/auto-schlopka', methods=['POST'])
+@admin_required
+def auto_schlopka():
+    """
+    Автоматически создаёт схлопку для артикулов с network_stock < 50.
+    Собирает товары со всех филиалов и направляет на флагманы.
+    """
+    data = request.get_json() or {}
+    articles = data.get('articles', [])
+    days = int(data.get('days', 30))
+
+    if not articles:
+        return jsonify({'error': 'Нет артикулов'}), 400
+
+    conn = get_db(); cur = conn.cursor()
+
+    # Получаем остатки по филиалам для этих артикулов
+    cur.execute("""
+        SELECT bs.article, bs.branch, bs.size, bs.qty,
+               MIN(c.name) as name, MIN(c.category) as category
+        FROM branch_stock bs
+        JOIN catalog c ON c.article = bs.article
+        WHERE bs.article = ANY(%s) AND bs.qty > 0
+        AND bs.branch NOT IN %s
+        GROUP BY bs.article, bs.branch, bs.size, bs.qty
+        ORDER BY bs.article, bs.branch
+    """, (articles, tuple(FLAGMANS)))
+
+    rows = cur.fetchall()
+    if not rows:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Нет остатков в не-флагманских филиалах'}), 400
+
+    # Создаём сессию схлопки
+    session_name = f'Авто-схлопка {datetime.now().strftime("%d.%m.%Y %H:%M")}'
+    fname = f'auto_schlopka_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    cur.execute(
+        'INSERT INTO schlopka_sessions (name,filename,created_by) VALUES (%s,%s,%s) RETURNING id',
+        (session_name, fname, session.get('username'))
+    )
+    sid = cur.fetchone()['id']
+
+    # Определяем куда направлять (приоритет флагманов)
+    flagman_priority = ['TASHKENT CITY MALL', 'ALAYSKIY', 'ATLAS CHIMGAN', 'Shota Rustavely']
+
+    items_inserted = 0
+    for r in rows:
+        # Определяем целевой флагман (у кого меньше всего этого артикула)
+        to_branch = flagman_priority[0]  # по умолчанию Сити Молл
+
+        name = r['name'] or r['category'] or ''
+        note = to_branch  # куда везти
+
+        cur.execute(
+            'INSERT INTO schlopka_items (session_id,article,name,size,branch,qty,note) VALUES (%s,%s,%s,%s,%s,%s,%s)',
+            (sid, r['article'], name, r['size'], r['branch'], r['qty'], note)
+        )
+        items_inserted += 1
+
+    conn.commit(); cur.close(); conn.close()
+
+    return jsonify({
+        'ok': True,
+        'session_id': sid,
+        'session_name': session_name,
+        'items': items_inserted
+    })
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
