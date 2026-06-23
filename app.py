@@ -11,7 +11,7 @@ from threading import Thread
 import time
 
 app = Flask(__name__)
-app.secret_key = 'dozakaz-secret-key-2026'
+app.secret_key = os.environ.get('SECRET_KEY', 'dozakaz-secret-key-2026-fallback')
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
@@ -170,6 +170,10 @@ def init_db():
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article, branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_article ON sales(article)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_branch ON sales(article, branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_date ON sales(article, sale_date)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch)')
     conn.commit()
     cur.close()
@@ -685,7 +689,7 @@ def get_catalog():
     # Get sales stats for all articles (7d, 30d, velocity)
     sales_stats = {}
     try:
-        cur2 = conn2 = get_db(); cur2 = conn2.cursor()
+        conn2 = get_db(); cur2 = conn2.cursor()
         art_list_for_sales = [art_row['article'] for art_row in articles]
         if art_list_for_sales:
             # Articles in sales are stored without 'A' suffix
@@ -1013,11 +1017,11 @@ def upload_sales():
             cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
             branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
             ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
             except: qty = 1
-            try: price = float(str(row[price_col])) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
             except: price = 0
-            try: amount = float(str(row[amount_col])) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
             except: amount = 0
             sale_date = None
             m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
@@ -1642,38 +1646,54 @@ def upload_schlopka():
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         items = []
         for sheet_name in wb.sheetnames:
-            # Sheet name = from_branch
             from_branch = sheet_name.strip()
             ws = wb[sheet_name]
             rows = list(ws.iter_rows(values_only=True))
             # Find header row with 'Артикул'
             header_idx = None
-            for i, row in enumerate(rows[:5]):
+            header_row = None
+            for i, row in enumerate(rows[:6]):
                 rv = [str(c).strip() if c else '' for c in row]
                 if 'Артикул' in rv:
                     header_idx = i
+                    header_row = rv
                     break
             if header_idx is None:
                 continue
-            # Parse data rows
+            # Detect columns from header
+            art_col = name_col = cat_col = season_col = dest_col = None
+            for j, v in enumerate(header_row):
+                if v == 'Артикул': art_col = j
+                if 'Характеристика' in v or ('Номенклатура' in v and ',' in v): name_col = j
+                if 'Вид' in v and cat_col is None: cat_col = j
+                if 'Сезон' in v and season_col is None: season_col = j
+            # Last non-standard column = destination (куда)
+            for j in range(len(header_row)-1, -1, -1):
+                v = header_row[j]
+                if v and v != 'Артикул' and 'Вид' not in v and 'Характеристика' not in v and 'Номенклатура' not in v and 'Сезон' not in v:
+                    dest_col = j
+                    break
+            if art_col is None or dest_col is None:
+                continue
             for row in rows[header_idx+1:]:
-                if not row or not row[0]: continue
-                art = str(row[0]).strip()
+                if not row or not row[art_col]: continue
+                art = str(row[art_col]).strip()
                 if not art or art in ('None','nan',''): continue
-                name_full = str(row[1]).strip() if row[1] else ''
-                to_branch = str(row[2]).strip() if len(row) > 2 and row[2] else ''
-                if not to_branch or to_branch in ('None','nan',''): continue
-                # Extract size from name
+                name_full = str(row[name_col]).strip() if name_col is not None and row[name_col] else ''
+                category = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
+                to_dest = str(row[dest_col]).strip() if row[dest_col] else ''
+                if not to_dest or to_dest in ('None','nan',''): continue
+                # Extract size from name (last part after ', ')
                 size = ''
                 if ', ' in name_full:
                     parts = name_full.rsplit(', ', 1)
-                    name_full = parts[0].strip()
                     size = parts[1].strip()
-                # Clean article prefix from name
+                    name_full = parts[0].strip()
+                # Clean article prefix
                 art_base = art.rstrip('A')
                 if name_full.startswith(art_base):
                     name_full = name_full[len(art_base):].strip()
-                items.append((art, name_full, size, from_branch, to_branch))
+                items.append((art, name_full or category, size, from_branch, to_dest))
 
         if not items:
             return jsonify({'error': 'Нет данных в файле'}), 400
@@ -2001,6 +2021,13 @@ def clear_discount():
 def dead_stock():
     '''Items on WMS with no sales in last 90 days'''
     conn = get_db(); cur = conn.cursor()
+    now = datetime.now()
+    month = now.month
+    if month in (3,4,5): season_code = 'Q1'
+    elif month in (6,7,8): season_code = 'Q2'
+    elif month in (9,10,11): season_code = 'Q3'
+    else: season_code = 'Q4'
+
     cur.execute('''
         SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
                MIN(c.season) as season, MIN(c.category) as category,
@@ -2016,13 +2043,12 @@ def dead_stock():
             FROM sales GROUP BY article
         ) s ON s.article = c.article OR s.article = c.article || 'A' OR s.article || 'A' = c.article
         WHERE c.wms_stock > 0
-        AND (c.season ILIKE %s OR c.season ILIKE %s OR c.season = '' OR c.season IS NULL)
         GROUP BY c.article
         HAVING SUM(c.wms_stock) > 0
         AND COALESCE(SUM(s.qty_90), 0) = 0
         ORDER BY SUM(c.wms_stock) DESC
         LIMIT 100
-    ''', (f'%{season_code}%', '%SMU%'))
+    ''')
     rows = cur.fetchall()
     cur.close(); conn.close()
     return jsonify([dict(r) for r in rows])
