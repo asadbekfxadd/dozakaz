@@ -699,7 +699,7 @@ def get_catalog():
                         SUM(CASE WHEN sale_date >= CURRENT_DATE - 30 THEN qty ELSE 0 END) as sold_30d,
                         SUM(CASE WHEN sale_date >= CURRENT_DATE - 90 THEN qty ELSE 0 END) as sold_90d
                     FROM sales
-                    WHERE article = ANY(%s) AND branch = %s
+                    WHERE article = ANY(%s) AND branch ILIKE %s
                     GROUP BY article
                 ''', (art_list_no_a, branch_filter))
             else:
@@ -724,7 +724,9 @@ def get_catalog():
                 sales_stats[art_with_a] = stats
                 sales_stats[r['article']] = stats
         cur2.close(); conn2.close()
-    except: pass
+    except Exception as e:
+        import traceback
+        print(f"[SALES STATS ERROR] {e}\n{traceback.format_exc()}")
 
     cur.close(); conn.close()
 
