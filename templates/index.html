@@ -809,7 +809,7 @@ td.muted{color:var(--text2)}
           <select id="cat-abc" onchange="loadCatalog()"><option value="">Все категории</option><option value="A">A — Топ товары</option><option value="B">B — Средние</option><option value="C">C — Остальные</option></select>
           <select id="cat-stock" onchange="loadCatalog()"><option value="">Любой остаток WMS</option><option value="yes">Есть на складе</option><option value="no">Нет на складе</option></select>
           <select id="cat-season" onchange="loadCatalog()"><option value="">Все сезоны</option></select>
-          <select id="cat-discount" onchange="loadCatalog()">
+          <select id="cat-discount" onchange="loadCatalog()" class="outlet-only">
             <option value="">Без скидки</option>
             <option value="yes">🔥 Скидка 70%</option>
           </select>
@@ -1409,6 +1409,7 @@ var salesPeriod='all';
 document.getElementById('topbar-date').textContent=new Date().toLocaleDateString('ru-RU',{weekday:'long',year:'numeric',month:'long',day:'numeric'});
 document.getElementById('r-date').value=new Date().toISOString().slice(0,10);
 
+const OUTLET_STORES = ['MAGIC CITY','MALIKA','Family park','M. BARAKA','Scopus Mall','UZBEGIM ANDIJAN'];
 const BRANCH_MAP={'magic':'MAGIC CITY','novza':'NOVZA','atlas':'ATLAS CHIMGAN','Family Park':'Family park','alayskiy':'ALAYSKIY','tashcityMall':'TASHKENT CITY MALL','Hitown':'HIGH TOWN PLAZA','Malika':'MALIKA','ekopark':'ECO PARK','Shoto-Rust':'Shota Rustavely','Shoto-Rust-2':'Shota Rustavely','Gallary-1':'Yunusabad gallery','Gallary-2':'Yunusabad gallery'};
 const ONEC_MAP={'MAGIC CITY':'MAGIC CITY','NOVZA':'NOVZA','ATLAS CHIMGAN':'ATLAS CHIMGAN','Family park':'Family park','ALAYSKIY':'ALAYSKIY','TASHKENT CITY MALL':'TASHKENT CITY MALL','HIGH TOWN PLAZA':'HIGH TOWN PLAZA','MALIKA':'MALIKA','ECO PARK':'ECO PARK','Shota Rustavely':'Shota Rustavely','Scopus Mall':'Scopus Mall','UZBEGIM ANDIJAN':'UZBEGIM ANDIJAN','M. BARAKA':'M. BARAKA','Yunusabad gallery':'Yunusabad gallery'};
 
@@ -1559,6 +1560,12 @@ function showApp(d){
     }
   }
   loadOrders();loadStats();
+  // Show discount filter only for outlet stores and admin
+  var discountSel = document.getElementById('cat-discount');
+  if(discountSel){
+    var isOutlet = OUTLET_STORES.includes(d.branch) || d.role==='admin' || d.role==='regional';
+    discountSel.style.display = isOutlet ? '' : 'none';
+  }
 }
 
 async function doLogout(){await fetch('/api/logout',{method:'POST'});location.reload();}
@@ -1851,7 +1858,7 @@ async function loadCatalog(){
         var urgent=currentRole==='user'&&(item.abc==='A'||item.abc==='B')&&branchTotal===0;
         return urgent?'<div style="background:rgba(255,23,68,.1);border:1px solid rgba(255,23,68,.3);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--accent);font-weight:700;margin-bottom:6px;display:inline-block">⚡ НУЖНО ЗАКАЗАТЬ</div><br>':'';
       })()
-      +(item.discount>0?'<div style="display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:800;margin-bottom:6px;letter-spacing:.5px;box-shadow:0 2px 8px rgba(245,158,11,.4)">🔥 СКИДКА '+item.discount+'%</div><br>':'')
+      +(item.discount>0&&(currentRole==='admin'||OUTLET_STORES.includes(currentBranch))?'<div style="display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:800;margin-bottom:6px;letter-spacing:.5px;box-shadow:0 2px 8px rgba(245,158,11,.4)">🔥 СКИДКА '+item.discount+'%</div><br>':'')
       +'<div class="catalog-article">'+item.article+' '+abcBadge(item.abc)+(item.season?'<span style="background:var(--bg3);color:var(--text2);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">'+item.season+'</span>':'')+'</div>'
       +'<div class="catalog-name">'+item.name+(item.category?'<span style="color:var(--text3);font-size:11px;margin-left:6px">'+item.category+'</span>':'')+'</div>'
       +'</div>'+(cartQty>0?'<span style="background:var(--accent);color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">'+cartQty+' в корзине</span>':'')+'</div>'
