@@ -1867,7 +1867,9 @@ async function loadCatalog(){
         var v7=item.sold_7d||0; var v30=item.sold_30d||0; var vel=item.velocity||0;
         var velColor=vel>=3?'var(--green)':vel>=1?'var(--amber)':'var(--text3)';
         var velLabel=vel>=3?'🔥 Быстро':vel>=1?'📈 Умеренно':'💤 Медленно';
-        var salesBlock='<div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">'
+        var salesLabel=(currentRole==='user'||currentRole==='regional')?'Мой магазин':'Все сети';
+        var salesBlock='<div style="display:flex;gap:6px;margin-bottom:8px;flex-wrap:wrap;align-items:center">'
+          +'<span style="font-size:9px;color:var(--text3);text-transform:uppercase;letter-spacing:.5px">'+salesLabel+':</span>'
           +'<span style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text2)">7д: <strong style="color:var(--text)">'+v7+'шт</strong></span>'
           +'<span style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:10px;color:var(--text2)">30д: <strong style="color:var(--text)">'+v30+'шт</strong></span>'
           +(vel>0?'<span style="background:var(--bg3);border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:10px;color:'+velColor+'"><strong>'+vel.toFixed(1)+'шт/д</strong> '+velLabel+'</span>':'')

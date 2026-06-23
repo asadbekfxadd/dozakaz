@@ -690,15 +690,28 @@ def get_catalog():
         if art_list_for_sales:
             # Articles in sales are stored without 'A' suffix
             art_list_no_a = [a.rstrip('A') for a in art_list_for_sales]
-            cur2.execute('''
-                SELECT article,
-                    SUM(CASE WHEN sale_date >= CURRENT_DATE - 7 THEN qty ELSE 0 END) as sold_7d,
-                    SUM(CASE WHEN sale_date >= CURRENT_DATE - 30 THEN qty ELSE 0 END) as sold_30d,
-                    SUM(CASE WHEN sale_date >= CURRENT_DATE - 90 THEN qty ELSE 0 END) as sold_90d
-                FROM sales
-                WHERE article = ANY(%s)
-                GROUP BY article
-            ''', (art_list_no_a,))
+            # Filter by branch if user role
+            branch_filter = branch if branch else None
+            if branch_filter:
+                cur2.execute('''
+                    SELECT article,
+                        SUM(CASE WHEN sale_date >= CURRENT_DATE - 7 THEN qty ELSE 0 END) as sold_7d,
+                        SUM(CASE WHEN sale_date >= CURRENT_DATE - 30 THEN qty ELSE 0 END) as sold_30d,
+                        SUM(CASE WHEN sale_date >= CURRENT_DATE - 90 THEN qty ELSE 0 END) as sold_90d
+                    FROM sales
+                    WHERE article = ANY(%s) AND branch = %s
+                    GROUP BY article
+                ''', (art_list_no_a, branch_filter))
+            else:
+                cur2.execute('''
+                    SELECT article,
+                        SUM(CASE WHEN sale_date >= CURRENT_DATE - 7 THEN qty ELSE 0 END) as sold_7d,
+                        SUM(CASE WHEN sale_date >= CURRENT_DATE - 30 THEN qty ELSE 0 END) as sold_30d,
+                        SUM(CASE WHEN sale_date >= CURRENT_DATE - 90 THEN qty ELSE 0 END) as sold_90d
+                    FROM sales
+                    WHERE article = ANY(%s)
+                    GROUP BY article
+                ''', (art_list_no_a,))
             for r in cur2.fetchall():
                 art_with_a = r['article'] + 'A'
                 velocity = round(r['sold_30d'] / 30, 2) if r['sold_30d'] else 0
@@ -709,7 +722,7 @@ def get_catalog():
                     'velocity': velocity
                 }
                 sales_stats[art_with_a] = stats
-                sales_stats[r['article']] = stats  # also store without A
+                sales_stats[r['article']] = stats
         cur2.close(); conn2.close()
     except: pass
 
