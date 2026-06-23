@@ -711,6 +711,10 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2l3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14 2 9.27l6.91-1.01L12 2z"/></svg>
         Рекомендации
       </button>
+      <button class="nav-item admin-only" onclick="showPage('powerbi',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h2v5H7zM11 6h2v7h-2zM15 10h2v3h-2z"/></svg>
+        Power BI
+      </button>
       <button class="nav-item admin-only" onclick="showPage('distribution',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
         Распределение
@@ -1251,6 +1255,37 @@ td.muted{color:var(--text2)}
             </table>
           </div>
         </div>
+      </div>
+    </div>
+
+    <!-- POWER BI PAGE -->
+    <div id="page-powerbi" class="page">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Power BI Аналитика</div>
+          <div class="topbar-sub">Интерактивный отчёт LI-NING Uzbekistan</div>
+        </div>
+        <div style="display:flex;gap:8px">
+          <button class="btn-secondary" onclick="loadPowerBI()">↻ Обновить</button>
+          <a href="https://app.powerbi.com/groups/me/apps/9f8ee641-5763-44a2-a684-69199c8a9d40/reports/0e916fd9-34dc-4a5c-bb81-4addd6ca95a7" target="_blank" class="btn-secondary" style="display:inline-flex;align-items:center;gap:6px">↗ Открыть в Power BI</a>
+        </div>
+      </div>
+      <div class="content" style="padding:0;height:calc(100vh - 80px)">
+        <div id="pbi-loading" style="display:flex;align-items:center;justify-content:center;height:100%;flex-direction:column;gap:16px">
+          <div style="font-size:40px">📊</div>
+          <div style="font-size:16px;font-weight:700;color:var(--text)">Загрузка Power BI отчёта...</div>
+          <div style="font-size:12px;color:var(--text3)">Получаем токен доступа</div>
+        </div>
+        <div id="pbi-error" style="display:none;padding:40px;text-align:center">
+          <div style="font-size:40px;margin-bottom:16px">⚠️</div>
+          <div id="pbi-error-msg" style="color:var(--accent);font-size:14px;margin-bottom:16px"></div>
+          <div style="font-size:12px;color:var(--text3);margin-bottom:20px">Убедитесь что PBI_CLIENT_SECRET добавлен в Railway Variables</div>
+          <a href="https://app.powerbi.com/groups/me/apps/9f8ee641-5763-44a2-a684-69199c8a9d40/reports/0e916fd9-34dc-4a5c-bb81-4addd6ca95a7" target="_blank" class="btn-primary">Открыть напрямую в Power BI ↗</a>
+        </div>
+        <iframe id="pbi-iframe"
+          style="display:none;width:100%;height:100%;border:none;border-radius:0"
+          allowfullscreen>
+        </iframe>
       </div>
     </div>
 
@@ -2473,6 +2508,7 @@ function showPage(name,btn){
   if(name==='distribution'){if(typeof distClear==='function')distClear();}
   if(name==='zerosales'){loadZeroSales();}
   if(name==='warehouse-report'){loadWarehouseReport();}
+  if(name==='powerbi'){loadPowerBI();}
   if(name==='ai'){
     document.getElementById('ai-empty').style.display='block';
     document.getElementById('ai-result').style.display='none';
@@ -3695,6 +3731,41 @@ async function createAutoSchlopka(){
   var summary = d.by_flagman ? Object.entries(d.by_flagman).map(([b,q])=>b.split(' ')[0]+': '+q).join(', ') : '';
   toast('✅ Схлопка: '+d.articles+' арт, '+d.items+' поз → '+summary);
   showPage('schlopka', null);
+}
+
+// ===== POWER BI =====
+async function loadPowerBI(){
+  document.getElementById('pbi-loading').style.display='flex';
+  document.getElementById('pbi-error').style.display='none';
+  document.getElementById('pbi-iframe').style.display='none';
+
+  try {
+    var r = await fetch('/api/powerbi/token');
+    var d = await r.json();
+
+    if(!r.ok || d.error){
+      // Fallback: show iframe with direct URL (works if user is logged into Power BI)
+      document.getElementById('pbi-loading').style.display='none';
+      var iframe = document.getElementById('pbi-iframe');
+      iframe.src = 'https://app.powerbi.com/reportEmbed?reportId=0e916fd9-34dc-4a5c-bb81-4addd6ca95a7&appId=9f8ee641-5763-44a2-a684-69199c8a9d40&autoAuth=true&ctid=7365ebbc-66ba-4712-8260-23fe81d5c482';
+      iframe.style.display='block';
+      return;
+    }
+
+    // Embed with token
+    var iframe = document.getElementById('pbi-iframe');
+    var embedUrl = d.embed_url + '&config=eyJjbHVzdGVyVXJsIjoiaHR0cHM6Ly9XQUJJLVdFU1QtRVVST1BFLUUtUFJJTUFSWS1yZWRpcmVjdC5hbmFseXNpcy53aW5kb3dzLm5ldC8ifQ==';
+    iframe.src = embedUrl;
+    iframe.style.display='block';
+    document.getElementById('pbi-loading').style.display='none';
+
+  } catch(e) {
+    // Direct embed fallback
+    document.getElementById('pbi-loading').style.display='none';
+    var iframe = document.getElementById('pbi-iframe');
+    iframe.src = 'https://app.powerbi.com/reportEmbed?reportId=0e916fd9-34dc-4a5c-bb81-4addd6ca95a7&appId=9f8ee641-5763-44a2-a684-69199c8a9d40&autoAuth=true&ctid=7365ebbc-66ba-4712-8260-23fe81d5c482';
+    iframe.style.display='block';
+  }
 }
 
 var _distFile = null;
