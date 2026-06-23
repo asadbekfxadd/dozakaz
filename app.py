@@ -2404,3 +2404,5 @@ def run_distribution():
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+ndk.dir=C\:\\Users\\Lenovo\\AppData\\Local\\Android\\Sdk\\ndk-bundle
+ndk.dir=C\:\\Users\\Lenovo\\AppData\\Local\\Android\\Sdk\\ndk\\30.0.14904198
