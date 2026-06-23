@@ -688,6 +688,8 @@ def get_catalog():
         cur2 = conn2 = get_db(); cur2 = conn2.cursor()
         art_list_for_sales = [art_row['article'] for art_row in articles]
         if art_list_for_sales:
+            # Articles in sales are stored without 'A' suffix
+            art_list_no_a = [a.rstrip('A') for a in art_list_for_sales]
             cur2.execute('''
                 SELECT article,
                     SUM(CASE WHEN sale_date >= CURRENT_DATE - 7 THEN qty ELSE 0 END) as sold_7d,
@@ -696,15 +698,18 @@ def get_catalog():
                 FROM sales
                 WHERE article = ANY(%s)
                 GROUP BY article
-            ''', (art_list_for_sales,))
+            ''', (art_list_no_a,))
             for r in cur2.fetchall():
+                art_with_a = r['article'] + 'A'
                 velocity = round(r['sold_30d'] / 30, 2) if r['sold_30d'] else 0
-                sales_stats[r['article']] = {
+                stats = {
                     'sold_7d': r['sold_7d'] or 0,
                     'sold_30d': r['sold_30d'] or 0,
                     'sold_90d': r['sold_90d'] or 0,
                     'velocity': velocity
                 }
+                sales_stats[art_with_a] = stats
+                sales_stats[r['article']] = stats  # also store without A
         cur2.close(); conn2.close()
     except: pass
 
