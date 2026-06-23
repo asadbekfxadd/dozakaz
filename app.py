@@ -37,6 +37,7 @@ USERS = {
     'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
     'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
     'SKLAD': {'password': 'sklad2026', 'role': 'warehouse', 'branch': 'WMS', 'branches': None},
+    'DMITRIY': {'password': 'Dm!LN2026$', 'role': 'admin', 'branch': None, 'branches': None},
 }
 
 BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
