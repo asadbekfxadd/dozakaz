@@ -172,6 +172,7 @@ def init_db():
     )''')
     cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_for_pickup BOOLEAN DEFAULT FALSE')
     cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_at TIMESTAMP')
+    cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS file_data BYTEA")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE catalog ADD COLUMN IF NOT EXISTS discount INTEGER DEFAULT 0")
@@ -412,8 +413,10 @@ def create_order():
         original_name = f.filename
         filename = f'{datetime.now().strftime("%Y%m%d_%H%M%S")}_{secure_filename(f.filename)}'
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        f.save(file_path)
-        upload_to_yadisk(file_path, original_name)
+        file_data = f.read()
+        try:
+            with open(file_path, 'wb') as out: out.write(file_data)
+        except: pass
     if not filename and items:
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         branch_slug = branch.replace(' ','_').replace('.','')
@@ -421,14 +424,16 @@ def create_order():
         filename = f'{ts}_{secure_filename(original_name)}'
         excel_buf = generate_order_excel(branch, items)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
-        with open(file_path, 'wb') as out:
-            out.write(excel_buf.read())
-        # Upload to Yandex Disk for permanent storage
-        upload_to_yadisk(file_path, original_name)
+        file_data = excel_buf.read()
+        try:
+            with open(file_path, 'wb') as out: out.write(file_data)
+        except: pass
     conn = get_db(); cur = conn.cursor()
+    import psycopg2.extras
     cur.execute(
-        'INSERT INTO orders (branch,responsible,date,priority,note,filename,original_name) VALUES (%s,%s,%s,%s,%s,%s,%s) RETURNING id',
-        (branch, responsible, date, priority, note, filename, original_name)
+        'INSERT INTO orders (branch,responsible,date,priority,note,filename,original_name,file_data) VALUES (%s,%s,%s,%s,%s,%s,%s,%s) RETURNING id',
+        (branch, responsible, date, priority, note, filename, original_name,
+         psycopg2.Binary(file_data) if file_data else None)
     )
     order_id = cur.fetchone()['id']
     for item in items:
@@ -494,31 +499,23 @@ def download(oid):
     cur.close(); conn.close()
     if not row or not row['filename']:
         return 'Not found', 404
+
+    # 1. Try DB storage (most reliable)
+    if row.get('file_data'):
+        return send_file(
+            io.BytesIO(bytes(row['file_data'])),
+            mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+            as_attachment=True,
+            download_name=row['original_name'] or row['filename']
+        )
+
+    # 2. Try local file
     local_path = os.path.join(app.config['UPLOAD_FOLDER'], row['filename'])
-    # Try local first
     if os.path.exists(local_path):
         return send_from_directory(app.config['UPLOAD_FOLDER'], row['filename'],
                                    as_attachment=True, download_name=row['original_name'])
-    # Try Yandex Disk
-    try:
-        yadisk_path = f'/li-ning-orders/{row["original_name"]}'
-        url = ('https://cloud-api.yandex.net/v1/disk/resources/download?path='
-               + urllib.parse.quote(yadisk_path, safe=''))
-        req = urllib.request.Request(url, headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            href = _json.loads(r.read()).get('href', '')
-        if href:
-            req2 = urllib.request.Request(href)
-            with urllib.request.urlopen(req2, timeout=30) as r2:
-                data = r2.read()
-            # Save locally for next time
-            with open(local_path, 'wb') as f:
-                f.write(data)
-            return send_from_directory(app.config['UPLOAD_FOLDER'], row['filename'],
-                                       as_attachment=True, download_name=row['original_name'])
-    except Exception as e:
-        print(f'[DOWNLOAD] Yandex Disk error: {e}')
-    return 'Файл не найден. Используйте кнопку Excel для скачивания.', 404
+
+    return 'Файл не найден. Используйте кнопку 📥 Excel.', 404
 
 @app.route('/api/stats')
 @login_required
@@ -1987,8 +1984,13 @@ def debug_counts():
     cur.execute('SELECT COUNT(DISTINCT article) as c FROM catalog'); arts = cur.fetchone()['c']
     cur.execute('SELECT COUNT(*) as c FROM sales'); sales = cur.fetchone()['c']
     cur.execute('SELECT COUNT(*) as c FROM orders'); orders = cur.fetchone()['c']
+    try:
+        cur.execute('SELECT COUNT(*) as c FROM orders WHERE file_data IS NOT NULL'); with_file = cur.fetchone()['c']
+        cur.execute('SELECT COUNT(*) as c FROM orders WHERE file_data IS NULL AND filename IS NOT NULL'); no_file = cur.fetchone()['c']
+    except: with_file = 0; no_file = 0
     cur.close(); conn.close()
-    return jsonify({'catalog_rows': cat, 'unique_articles': arts, 'sales_rows': sales, 'orders': orders})
+    return jsonify({'catalog_rows': cat, 'unique_articles': arts, 'sales_rows': sales,
+                    'orders': orders, 'orders_with_file_db': with_file, 'orders_file_missing': no_file})
 
 @app.route('/api/sync/status')
 @admin_required
