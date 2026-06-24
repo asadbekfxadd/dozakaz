@@ -3290,6 +3290,130 @@ def warehouse_report_excel():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True, download_name=fname)
 
+
+# ===== DISCOUNT RECOMMENDATIONS =====
+
+@app.route('/api/discount-recommendations')
+@admin_required
+def discount_recommendations():
+    """
+    Артикулы которые рекомендуется перевести на скидку 70%:
+    - Меньше 3 размеров в сети
+    - Нет аналогов в той же категории с полной сеткой (4+ размеров)
+    - Ещё не на скидке
+    """
+    conn = get_db(); cur = conn.cursor()
+
+    # Все артикулы с размерами и остатками
+    cur.execute("""
+        SELECT
+            c.article,
+            MIN(c.name) as name,
+            MIN(c.abc) as abc,
+            MIN(c.season) as season,
+            MIN(c.category) as category,
+            COUNT(DISTINCT c.size) as size_count,
+            SUM(c.wms_stock) as total_wms,
+            COALESCE(SUM(bs.qty), 0) as network_stock,
+            MAX(c.discount) as discount,
+            array_agg(c.size ORDER BY c.size) as sizes,
+            array_agg(c.wms_stock ORDER BY c.size) as wms_stocks
+        FROM catalog c
+        LEFT JOIN branch_stock bs ON bs.article = c.article
+        WHERE c.discount = 0
+        GROUP BY c.article
+        HAVING COUNT(DISTINCT c.size) < 3
+        AND (SUM(c.wms_stock) > 0 OR COALESCE(SUM(bs.qty), 0) > 0)
+        ORDER BY MIN(c.abc), COUNT(DISTINCT c.size) ASC
+        LIMIT 300
+    """)
+    candidates = cur.fetchall()
+
+    # Категории где есть артикулы с полной сеткой (4+ размеров)
+    cur.execute("""
+        SELECT DISTINCT MIN(category) as category
+        FROM catalog
+        WHERE discount = 0
+        GROUP BY article
+        HAVING COUNT(DISTINCT size) >= 4
+    """)
+    full_grid_categories = {r['category'] for r in cur.fetchall()}
+
+    # Продажи за 90 дней для кандидатов
+    art_list = [r['article'] for r in candidates]
+    sales_map = {}
+    if art_list:
+        art_list_no_a = [a.rstrip('A') for a in art_list]
+        cur.execute("""
+            SELECT article, SUM(qty) as sold_90d
+            FROM sales
+            WHERE (article = ANY(%s) OR article = ANY(%s))
+            AND sale_date >= CURRENT_DATE - 90
+            GROUP BY article
+        """, (art_list, art_list_no_a))
+        for r in cur.fetchall():
+            art = r['article'] if r['article'].endswith('A') else r['article'] + 'A'
+            sales_map[art] = int(r['sold_90d'] or 0)
+            sales_map[r['article']] = int(r['sold_90d'] or 0)
+
+    cur.close(); conn.close()
+
+    result = []
+    for r in candidates:
+        art = r['article']
+        cat = r['category'] or ''
+        size_count = int(r['size_count'] or 0)
+        total_wms = int(r['total_wms'] or 0)
+        network_stock = int(r['network_stock'] or 0)
+        sold_90d = sales_map.get(art, 0)
+
+        # Has analogs with full grid in same category
+        has_analogs = cat in full_grid_categories
+
+        sizes = r['sizes'] or []
+        stocks = r['wms_stocks'] or []
+        sizes_detail = [{'size': sizes[i], 'wms': int(stocks[i] or 0)}
+                       for i in range(len(sizes)) if i < len(stocks)]
+
+        result.append({
+            'article': art,
+            'name': r['name'] or '',
+            'abc': r['abc'] or 'C',
+            'season': r['season'] or '',
+            'category': cat,
+            'size_count': size_count,
+            'total_wms': total_wms,
+            'network_stock': network_stock,
+            'sold_90d': sold_90d,
+            'has_analogs': has_analogs,
+            'sizes': sizes_detail,
+            'reason': f'Только {size_count} размер(а) в сети' + (', есть аналоги с полной сеткой' if has_analogs else ''),
+        })
+
+    # Sort: with analogs first (higher priority for discount)
+    result.sort(key=lambda x: (not x['has_analogs'], x['size_count'], -x['network_stock']))
+
+    return jsonify(result)
+
+
+@app.route('/api/discount-recommendations/apply', methods=['POST'])
+@admin_required
+def apply_discount_recommendation():
+    """Apply 70% discount to recommended articles"""
+    data = request.get_json() or {}
+    articles = data.get('articles', [])
+    if not articles:
+        return jsonify({'error': 'Нет артикулов'}), 400
+
+    conn = get_db(); cur = conn.cursor()
+    updated = 0
+    for art in articles:
+        cur.execute("UPDATE catalog SET discount=70 WHERE article=%s OR article=%s",
+                   (art, art.rstrip('A')))
+        updated += cur.rowcount
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True, 'updated': updated})
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

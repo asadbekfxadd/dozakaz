@@ -715,6 +715,10 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><rect x="2" y="3" width="20" height="14" rx="2"/><path d="M8 21h8M12 17v4"/><path d="M7 8h2v5H7zM11 6h2v7h-2zM15 10h2v3h-2z"/></svg>
         Power BI
       </button>
+      <button class="nav-item admin-only" onclick="showPage('discount-recs',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>
+        Рек. к скидке
+      </button>
       <button class="nav-item admin-only" onclick="showPage('distribution',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2L2 7l10 5 10-5-10-5z"/><path d="M2 17l10 5 10-5"/><path d="M2 12l10 5 10-5"/></svg>
         Распределение
@@ -1307,6 +1311,57 @@ td.muted{color:var(--text2)}
             </div>
             <div id="pbi-sync-status" style="margin-top:12px;font-size:12px;color:var(--text3)"></div>
           </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- DISCOUNT RECOMMENDATIONS PAGE -->
+    <div id="page-discount-recs" class="page">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Рекомендации к скидке 70%</div>
+          <div class="topbar-sub">Артикулы с неполной сеткой — кандидаты на скидку</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center">
+          <button class="btn-secondary" onclick="loadDiscountRecs()">↻ Обновить</button>
+          <button id="dr-apply-btn" class="btn-primary" style="display:none;background:linear-gradient(135deg,#f59e0b,#ef4444)" onclick="applySelectedDiscounts()">
+            🔥 Применить скидку 70% выбранным
+          </button>
+        </div>
+      </div>
+      <div class="content">
+        <!-- Stats -->
+        <div id="dr-stats" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+
+        <!-- Filters -->
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="period-tab active" id="dr-filter-all" onclick="drFilter('all',this)">Все</button>
+          <button class="period-tab" id="dr-filter-analogs" onclick="drFilter('analogs',this)">⚡ Есть аналоги</button>
+          <button class="period-tab" id="dr-filter-solo" onclick="drFilter('solo',this)">🔴 Одинокие</button>
+        </div>
+
+        <div class="orders-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th style="width:30px"><input type="checkbox" id="dr-check-all" onchange="drCheckAll(this)"></th>
+                <th>Артикул</th>
+                <th>Название</th>
+                <th>ABC</th>
+                <th>Сезон</th>
+                <th>Категория</th>
+                <th>Размеров</th>
+                <th>WMS</th>
+                <th>В сети</th>
+                <th>Продано 90д</th>
+                <th>Аналоги</th>
+                <th>Причина</th>
+              </tr>
+            </thead>
+            <tbody id="dr-tbody">
+              <tr><td colspan="12"><div class="empty-state">Нажмите обновить</div></td></tr>
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
@@ -2530,6 +2585,7 @@ function showPage(name,btn){
   if(name==='distribution'){if(typeof distClear==='function')distClear();}
   if(name==='zerosales'){loadZeroSales();}
   if(name==='warehouse-report'){loadWarehouseReport();}
+  if(name==='discount-recs'){loadDiscountRecs();}
   if(name==='powerbi'){}
   if(name==='ai'){
     document.getElementById('ai-empty').style.display='block';
@@ -3813,6 +3869,104 @@ async function exportPowerBI(){
   }
   btn.disabled = false;
   btn.textContent = '📥 Скачать отчёт Excel';
+}
+
+// ===== DISCOUNT RECOMMENDATIONS =====
+var _drData = [];
+var _drFilter = 'all';
+var _drSelected = new Set();
+
+async function loadDiscountRecs(){
+  document.getElementById('dr-tbody').innerHTML = '<tr><td colspan="12"><div class="empty-state">Загрузка...</div></td></tr>';
+  var r = await fetch('/api/discount-recommendations');
+  if(!r.ok){ toast('Ошибка загрузки', true); return; }
+  _drData = await r.json();
+  _drSelected.clear();
+
+  var total = _drData.length;
+  var withAnalogs = _drData.filter(i=>i.has_analogs).length;
+  var solo = _drData.filter(i=>!i.has_analogs).length;
+
+  document.getElementById('dr-stats').innerHTML =
+    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--text)">'+total+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Всего кандидатов</div></div>'+
+    '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--amber)">'+withAnalogs+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Есть аналоги</div></div>'+
+    '<div style="background:rgba(255,23,68,.08);border:1px solid rgba(255,23,68,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--accent)">'+solo+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Одинокие</div></div>';
+
+  renderDiscountRecs();
+}
+
+function drFilter(f, btn){
+  _drFilter = f;
+  document.querySelectorAll('#page-discount-recs .period-tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderDiscountRecs();
+}
+
+function renderDiscountRecs(){
+  var data = _drData;
+  if(_drFilter === 'analogs') data = data.filter(i=>i.has_analogs);
+  if(_drFilter === 'solo') data = data.filter(i=>!i.has_analogs);
+
+  if(!data.length){
+    document.getElementById('dr-tbody').innerHTML = '<tr><td colspan="12"><div class="empty-state">Нет кандидатов 🎉</div></td></tr>';
+    return;
+  }
+
+  document.getElementById('dr-tbody').innerHTML = data.map(item=>{
+    var checked = _drSelected.has(item.article);
+    var analogBadge = item.has_analogs
+      ? '<span style="background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">⚡ Есть</span>'
+      : '<span style="background:rgba(255,23,68,.1);color:var(--accent);border:1px solid rgba(255,23,68,.2);border-radius:4px;padding:2px 7px;font-size:10px">Нет</span>';
+    var sizeColor = item.size_count <= 1 ? 'var(--accent)' : 'var(--amber)';
+    return '<tr style="'+(checked?'background:rgba(245,158,11,.06)':'')+'">'+
+      '<td><input type="checkbox" '+(checked?'checked':'')+' onchange="drToggle(\\\''+item.article+'\\\',this)"></td>'+
+      '<td style="font-weight:700;font-size:12px;text-transform:uppercase">'+item.article+'</td>'+
+      '<td style="font-size:11px;color:var(--text2);max-width:160px"><span title="'+item.name+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.name+'</span></td>'+
+      '<td>'+abcBadge(item.abc)+'</td>'+
+      '<td style="font-size:10px;color:var(--text3)">'+item.season+'</td>'+
+      '<td style="font-size:11px;color:var(--text2)">'+item.category+'</td>'+
+      '<td style="text-align:center;font-weight:800;color:'+sizeColor+'">'+item.size_count+'</td>'+
+      '<td style="text-align:center;color:var(--text2)">'+item.total_wms+'</td>'+
+      '<td style="text-align:center;color:var(--text2)">'+item.network_stock+'</td>'+
+      '<td style="text-align:center;color:var(--text3)">'+item.sold_90d+'</td>'+
+      '<td>'+analogBadge+'</td>'+
+      '<td style="font-size:10px;color:var(--text3)">'+item.reason+'</td>'+
+      '</tr>';
+  }).join('');
+}
+
+function drToggle(art, cb){
+  if(cb.checked) _drSelected.add(art);
+  else _drSelected.delete(art);
+  var applyBtn = document.getElementById('dr-apply-btn');
+  if(applyBtn) applyBtn.style.display = _drSelected.size > 0 ? 'flex' : 'none';
+  if(applyBtn) applyBtn.textContent = '🔥 Применить скидку 70% ('+_drSelected.size+')';
+}
+
+function drCheckAll(cb){
+  var data = _drData;
+  if(_drFilter === 'analogs') data = data.filter(i=>i.has_analogs);
+  if(_drFilter === 'solo') data = data.filter(i=>!i.has_analogs);
+  if(cb.checked) data.forEach(i=>_drSelected.add(i.article));
+  else _drSelected.clear();
+  var applyBtn = document.getElementById('dr-apply-btn');
+  if(applyBtn){ applyBtn.style.display = _drSelected.size > 0 ? 'flex' : 'none'; applyBtn.textContent = '🔥 Применить скидку 70% ('+_drSelected.size+')';}
+  renderDiscountRecs();
+}
+
+async function applySelectedDiscounts(){
+  if(!_drSelected.size){ toast('Выберите артикулы', true); return; }
+  if(!confirm('Поставить скидку 70% для '+_drSelected.size+' артикулов?')) return;
+  var r = await fetch('/api/discount-recommendations/apply', {
+    method: 'POST',
+    headers: {'Content-Type': 'application/json'},
+    body: JSON.stringify({articles: [..._drSelected]})
+  });
+  var d = await r.json();
+  if(!r.ok){ toast(d.error||'Ошибка', true); return; }
+  toast('✅ Скидка 70% применена для '+_drSelected.size+' артикулов');
+  _drSelected.clear();
+  loadDiscountRecs();
 }
 
 var _distFile = null;
