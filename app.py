@@ -2579,6 +2579,7 @@ def zero_sales():
             )
             AND ci.discount = 0
             GROUP BY bs.article, bs.branch
+            HAVING SUM(bs.qty) < 50
             ORDER BY MIN(ci.abc), SUM(bs.qty) DESC
             LIMIT 200
         """, (branch, branch, days, branch, days))
@@ -2613,6 +2614,7 @@ def zero_sales():
             )
             AND ci.discount = 0
             GROUP BY bs.article, bs.branch
+            HAVING SUM(bs.qty) < 50
             ORDER BY MIN(ci.abc), SUM(bs.qty) DESC
             LIMIT 500
         """, (days, days))
