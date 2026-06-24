@@ -2328,6 +2328,10 @@ def run_distribution():
                 art_rows[art] = []
             art_rows[art].append({'nom': nom_full, 'qty': qty})
 
+        # Get discounted articles
+        cur.execute("SELECT DISTINCT article FROM catalog WHERE discount > 0")
+        discount_arts = {r['article'] for r in cur.fetchall()}
+
         results = []; total_qty_in = 0; total_alloc = 0
 
         for art, rows in art_rows.items():
@@ -2376,17 +2380,26 @@ def run_distribution():
 
                 is_popular = size_hint in POPULAR_SIZES
 
-                # Round-robin distribution: deal 1 card at a time to each store
+                # Soccer: City Mall gets 50% first
                 store_counts = {si: 0 for si in eligible}
                 remaining = qty
+
+                if is_soccer and eligible:
+                    city_si = next((si for si in eligible if (stores[si] or '').strip() == 'TASHKENT CITY MALL'), None)
+                    if city_si is not None:
+                        city_share = remaining // 2
+                        store_counts[city_si] = city_share
+                        remaining -= city_share
+
+                # Round-robin for remaining
                 round_num = 0
+                other_eligible = [si for si in eligible if store_counts.get(si, 0) == 0] if is_soccer else eligible
 
                 while remaining > 0:
                     gave_any = False
-                    for si in eligible:
+                    for si in (other_eligible if is_soccer else eligible):
                         if remaining <= 0:
                             break
-                        # Popular sizes: give 2 on first pass, 1 on subsequent
                         give = 2 if (is_popular and round_num == 0) else 1
                         give = min(give, remaining)
                         store_counts[si] += give
