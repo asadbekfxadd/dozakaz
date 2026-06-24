@@ -2538,19 +2538,22 @@ def zero_sales():
         cur.execute("""
             SELECT
                 bs.article,
-                MIN(c.name) as name,
-                MIN(c.abc) as abc,
-                MIN(c.season) as season,
-                MIN(c.category) as category,
+                MIN(ci.name) as name,
+                MIN(ci.abc) as abc,
+                MIN(ci.season) as season,
+                MIN(ci.category) as category,
                 bs.branch,
                 SUM(bs.qty) as branch_stock,
                 COUNT(DISTINCT bs.size) as branch_sizes,
-                SUM(c.wms_stock) as wms_stock,
+                COALESCE((SELECT SUM(wms_stock) FROM catalog WHERE article=bs.article), 0) as wms_stock,
                 array_agg(DISTINCT bs.size ORDER BY bs.size) as branch_size_list,
-                array_agg(c.size ORDER BY c.size) as all_wms_sizes,
-                array_agg(c.wms_stock ORDER BY c.size) as all_wms_stocks
+                array_agg(c2.size ORDER BY c2.size) as all_wms_sizes,
+                array_agg(c2.wms_stock ORDER BY c2.size) as all_wms_stocks
             FROM branch_stock bs
-            JOIN catalog c ON c.article = bs.article
+            JOIN (SELECT DISTINCT article, MIN(name) as name, MIN(abc) as abc,
+                         MIN(season) as season, MIN(category) as category, MAX(discount) as discount
+                  FROM catalog GROUP BY article) ci ON ci.article = bs.article
+            LEFT JOIN catalog c2 ON c2.article = bs.article
             WHERE bs.branch = %s AND bs.qty > 0
             AND bs.article NOT IN (
                 SELECT DISTINCT article FROM sales
@@ -2562,9 +2565,9 @@ def zero_sales():
                 WHERE branch = %s
                 AND sale_date >= CURRENT_DATE - %s
             )
-            AND c.discount = 0
+            AND ci.discount = 0
             GROUP BY bs.article, bs.branch
-            ORDER BY MIN(c.abc), SUM(bs.qty) DESC
+            ORDER BY MIN(ci.abc), SUM(bs.qty) DESC
             LIMIT 200
         """, (branch, branch, days, branch, days))
     else:
@@ -2572,19 +2575,22 @@ def zero_sales():
         cur.execute("""
             SELECT
                 bs.article,
-                MIN(c.name) as name,
-                MIN(c.abc) as abc,
-                MIN(c.season) as season,
-                MIN(c.category) as category,
+                MIN(ci.name) as name,
+                MIN(ci.abc) as abc,
+                MIN(ci.season) as season,
+                MIN(ci.category) as category,
                 bs.branch,
                 SUM(bs.qty) as branch_stock,
                 COUNT(DISTINCT bs.size) as branch_sizes,
-                SUM(c.wms_stock) as wms_stock,
+                COALESCE((SELECT SUM(wms_stock) FROM catalog WHERE article=bs.article), 0) as wms_stock,
                 array_agg(DISTINCT bs.size ORDER BY bs.size) as branch_size_list,
-                array_agg(c.size ORDER BY c.size) as all_wms_sizes,
-                array_agg(c.wms_stock ORDER BY c.size) as all_wms_stocks
+                array_agg(c2.size ORDER BY c2.size) as all_wms_sizes,
+                array_agg(c2.wms_stock ORDER BY c2.size) as all_wms_stocks
             FROM branch_stock bs
-            JOIN catalog c ON c.article = bs.article
+            JOIN (SELECT DISTINCT article, MIN(name) as name, MIN(abc) as abc,
+                         MIN(season) as season, MIN(category) as category, MAX(discount) as discount
+                  FROM catalog GROUP BY article) ci ON ci.article = bs.article
+            LEFT JOIN catalog c2 ON c2.article = bs.article
             WHERE bs.qty > 0
             AND bs.article NOT IN (
                 SELECT DISTINCT article FROM sales
@@ -2594,9 +2600,9 @@ def zero_sales():
                 SELECT DISTINCT article || 'A' FROM sales
                 WHERE sale_date >= CURRENT_DATE - %s
             )
-            AND c.discount = 0
+            AND ci.discount = 0
             GROUP BY bs.article, bs.branch
-            ORDER BY MIN(c.abc), SUM(bs.qty) DESC
+            ORDER BY MIN(ci.abc), SUM(bs.qty) DESC
             LIMIT 500
         """, (days, days))
 
