@@ -3128,6 +3128,149 @@ def powerbi_sync():
         import traceback
         return jsonify({'error': str(e), 'tb': traceback.format_exc()}), 500
 
+
+@app.route('/api/warehouse/report/excel')
+@login_required
+def warehouse_report_excel():
+    """Export warehouse report to Excel"""
+    if session.get('role') not in ('admin', 'warehouse'):
+        return jsonify({'error': 'Нет доступа'}), 403
+
+    conn = get_db(); cur = conn.cursor()
+
+    # Singles A/B
+    cur.execute("""
+        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               MIN(c.season) as season, MIN(c.category) as category,
+               array_agg(c.size ORDER BY c.size) as sizes,
+               array_agg(c.wms_stock ORDER BY c.size) as wms_stocks
+        FROM catalog c WHERE c.discount = 0
+        GROUP BY c.article
+        HAVING SUM(CASE WHEN c.wms_stock = 1 THEN 1 ELSE 0 END) > 0
+        AND MIN(c.abc) IN ('A', 'B')
+        ORDER BY MIN(c.abc), c.article LIMIT 300
+    """)
+    singles = cur.fetchall()
+
+    # Low WMS < 10
+    cur.execute("""
+        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               MIN(c.season) as season, MIN(c.category) as category,
+               c.size, c.wms_stock
+        FROM catalog c
+        WHERE c.wms_stock > 0 AND c.wms_stock < 10 AND c.discount = 0
+        GROUP BY c.article, c.name, c.abc, c.season, c.category, c.size, c.wms_stock
+        ORDER BY c.wms_stock ASC, MIN(c.abc), c.article LIMIT 300
+    """)
+    low_wms = cur.fetchall()
+
+    # Low network < 10
+    cur.execute("""
+        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               MIN(c.season) as season, MIN(c.category) as category,
+               SUM(c.wms_stock) as total_wms,
+               array_agg(c.size ORDER BY c.size) as sizes,
+               array_agg(c.wms_stock ORDER BY c.size) as wms_stocks
+        FROM catalog c LEFT JOIN branch_stock bs ON bs.article = c.article
+        WHERE c.discount = 0
+        GROUP BY c.article
+        HAVING SUM(c.wms_stock) + COALESCE(SUM(bs.qty), 0) < 10
+        AND SUM(c.wms_stock) + COALESCE(SUM(bs.qty), 0) > 0
+        ORDER BY MIN(c.abc), SUM(c.wms_stock) ASC LIMIT 200
+    """)
+    low_network = cur.fetchall()
+    cur.close(); conn.close()
+
+    from openpyxl.utils import get_column_letter as gcl
+    wb = openpyxl.Workbook()
+
+    hdr_fill = PatternFill('solid', fgColor='1A1A2E')
+    amber_fill = PatternFill('solid', fgColor='FFF3E0')
+    red_fill = PatternFill('solid', fgColor='FFEBEE')
+    green_fill = PatternFill('solid', fgColor='E8F5E9')
+    thin = Side(style='thin', color='DDDDDD')
+    brd = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ctr = Alignment(horizontal='center', vertical='center')
+    lft = Alignment(horizontal='left', vertical='center')
+
+    def hdr_cell(ws, row, col, val):
+        c = ws.cell(row=row, column=col, value=val)
+        c.fill = hdr_fill; c.font = Font(bold=True, color='FFFFFF', size=10)
+        c.alignment = ctr; c.border = brd
+        return c
+
+    # Sheet 1: Singles
+    ws1 = wb.active; ws1.title = '⚠️ Единички A-B'
+    ws1.row_dimensions[1].height = 30
+    for ci, h in enumerate(['Артикул','Название','ABC','Сезон','Категория','Размер','WMS'], 1):
+        hdr_cell(ws1, 1, ci, h)
+
+    row_idx = 2
+    for r in singles:
+        sizes = r['sizes'] or []
+        stocks = r['wms_stocks'] or []
+        single_sizes = [(sizes[i], int(stocks[i] or 0)) for i in range(len(sizes)) if i < len(stocks) and int(stocks[i] or 0) == 1]
+        for sz, wms in single_sizes:
+            vals = [r['article'], r['name'], r['abc'], r['season'], r['category'], sz, wms]
+            for ci, v in enumerate(vals, 1):
+                cell = ws1.cell(row=row_idx, column=ci, value=v)
+                cell.border = brd; cell.alignment = ctr if ci >= 3 else lft
+                cell.font = Font(size=9)
+                if ci == 7: cell.fill = amber_fill; cell.font = Font(size=9, bold=True, color='E65100')
+            row_idx += 1
+
+    for ci, w in enumerate([14,36,6,10,12,8,8], 1):
+        ws1.column_dimensions[gcl(ci)].width = w
+    ws1.freeze_panes = 'A2'
+
+    # Sheet 2: Low WMS
+    ws2 = wb.create_sheet('📦 Мало на WMS')
+    ws2.row_dimensions[1].height = 30
+    for ci, h in enumerate(['Артикул','Название','ABC','Сезон','Категория','Размер','WMS остаток'], 1):
+        hdr_cell(ws2, 1, ci, h)
+
+    for ri, r in enumerate(low_wms, 2):
+        vals = [r['article'], r['name'], r['abc'], r['season'], r['category'], r['size'], int(r['wms_stock'] or 0)]
+        for ci, v in enumerate(vals, 1):
+            cell = ws2.cell(row=ri, column=ci, value=v)
+            cell.border = brd; cell.alignment = ctr if ci >= 3 else lft; cell.font = Font(size=9)
+            if ci == 7:
+                wms = int(r['wms_stock'] or 0)
+                cell.fill = red_fill if wms <= 3 else amber_fill
+                cell.font = Font(size=9, bold=True, color='B71C1C' if wms <= 3 else 'E65100')
+
+    for ci, w in enumerate([14,36,6,10,12,8,10], 1):
+        ws2.column_dimensions[gcl(ci)].width = w
+    ws2.freeze_panes = 'A2'
+
+    # Sheet 3: Low Network
+    ws3 = wb.create_sheet('🌐 Мало в сети')
+    ws3.row_dimensions[1].height = 30
+    for ci, h in enumerate(['Артикул','Название','ABC','Сезон','Категория','WMS всего','Размеры (WMS)'], 1):
+        hdr_cell(ws3, 1, ci, h)
+
+    for ri, r in enumerate(low_network, 2):
+        sizes = r['sizes'] or []
+        stocks = r['wms_stocks'] or []
+        sizes_str = ', '.join(f"{sizes[i]}:{int(stocks[i] or 0)}" for i in range(len(sizes)) if i < len(stocks))
+        vals = [r['article'], r['name'], r['abc'], r['season'], r['category'], int(r['total_wms'] or 0), sizes_str]
+        for ci, v in enumerate(vals, 1):
+            cell = ws3.cell(row=ri, column=ci, value=v)
+            cell.border = brd; cell.alignment = ctr if ci >= 3 else lft; cell.font = Font(size=9)
+            if ci == 6:
+                cell.fill = red_fill if int(r['total_wms'] or 0) <= 3 else amber_fill
+                cell.font = Font(size=9, bold=True)
+
+    for ci, w in enumerate([14,36,6,10,12,10,40], 1):
+        ws3.column_dimensions[gcl(ci)].width = w
+    ws3.freeze_panes = 'A2'
+
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    fname = f'Warehouse_Report_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    return send_file(output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True, download_name=fname)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
