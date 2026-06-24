@@ -2560,13 +2560,12 @@ def zero_sales():
                 COUNT(DISTINCT bs.size) as branch_sizes,
                 COALESCE((SELECT SUM(wms_stock) FROM catalog WHERE article=bs.article), 0) as wms_stock,
                 array_agg(DISTINCT bs.size ORDER BY bs.size) as branch_size_list,
-                array_agg(c2.size ORDER BY c2.size) as all_wms_sizes,
-                array_agg(c2.wms_stock ORDER BY c2.size) as all_wms_stocks
+                (SELECT array_agg(size ORDER BY size) FROM catalog WHERE article=bs.article) as all_wms_sizes,
+                (SELECT array_agg(wms_stock ORDER BY size) FROM catalog WHERE article=bs.article) as all_wms_stocks
             FROM branch_stock bs
             JOIN (SELECT DISTINCT article, MIN(name) as name, MIN(abc) as abc,
                          MIN(season) as season, MIN(category) as category, MAX(discount) as discount
                   FROM catalog GROUP BY article) ci ON ci.article = bs.article
-            LEFT JOIN catalog c2 ON c2.article = bs.article
             WHERE bs.branch = %s AND bs.qty > 0
             AND bs.article NOT IN (
                 SELECT DISTINCT article FROM sales
@@ -2597,13 +2596,12 @@ def zero_sales():
                 COUNT(DISTINCT bs.size) as branch_sizes,
                 COALESCE((SELECT SUM(wms_stock) FROM catalog WHERE article=bs.article), 0) as wms_stock,
                 array_agg(DISTINCT bs.size ORDER BY bs.size) as branch_size_list,
-                array_agg(c2.size ORDER BY c2.size) as all_wms_sizes,
-                array_agg(c2.wms_stock ORDER BY c2.size) as all_wms_stocks
+                (SELECT array_agg(size ORDER BY size) FROM catalog WHERE article=bs.article) as all_wms_sizes,
+                (SELECT array_agg(wms_stock ORDER BY size) FROM catalog WHERE article=bs.article) as all_wms_stocks
             FROM branch_stock bs
             JOIN (SELECT DISTINCT article, MIN(name) as name, MIN(abc) as abc,
                          MIN(season) as season, MIN(category) as category, MAX(discount) as discount
                   FROM catalog GROUP BY article) ci ON ci.article = bs.article
-            LEFT JOIN catalog c2 ON c2.article = bs.article
             WHERE bs.qty > 0
             AND bs.article NOT IN (
                 SELECT DISTINCT article FROM sales
