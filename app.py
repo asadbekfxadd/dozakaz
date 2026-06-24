@@ -3414,6 +3414,95 @@ def apply_discount_recommendation():
     conn.commit(); cur.close(); conn.close()
     return jsonify({'ok': True, 'updated': updated})
 
+
+@app.route('/api/discount-recommendations/excel')
+@admin_required
+def discount_recommendations_excel():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("""
+        SELECT c.article, MIN(c.name) as name, MIN(c.abc) as abc,
+               MIN(c.season) as season, MIN(c.category) as category,
+               COUNT(DISTINCT c.size) as size_count,
+               SUM(c.wms_stock) as total_wms,
+               COALESCE(SUM(bs.qty), 0) as network_stock
+        FROM catalog c LEFT JOIN branch_stock bs ON bs.article = c.article
+        WHERE c.discount = 0
+        GROUP BY c.article
+        HAVING COUNT(DISTINCT c.size) < 3
+        AND (SUM(c.wms_stock) > 0 OR COALESCE(SUM(bs.qty), 0) > 0)
+        ORDER BY MIN(c.abc), COUNT(DISTINCT c.size) ASC
+        LIMIT 300
+    """)
+    rows = cur.fetchall()
+
+    cur.execute("""
+        SELECT DISTINCT MIN(category) as category FROM catalog
+        WHERE discount = 0 GROUP BY article HAVING COUNT(DISTINCT size) >= 4
+    """)
+    full_grid_cats = {r['category'] for r in cur.fetchall()}
+
+    art_list = [r['article'] for r in rows]
+    sales_map = {}
+    if art_list:
+        art_list_no_a = [a.rstrip('A') for a in art_list]
+        cur.execute("""
+            SELECT article, SUM(qty) as sold_90d FROM sales
+            WHERE (article = ANY(%s) OR article = ANY(%s))
+            AND sale_date >= CURRENT_DATE - 90 GROUP BY article
+        """, (art_list, art_list_no_a))
+        for r in cur.fetchall():
+            k = r['article'] if r['article'].endswith('A') else r['article']+'A'
+            sales_map[k] = int(r['sold_90d'] or 0)
+            sales_map[r['article']] = int(r['sold_90d'] or 0)
+    cur.close(); conn.close()
+
+    from openpyxl.utils import get_column_letter as gcl
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = 'Рек. к скидке 70%'
+    hdr_fill = PatternFill('solid', fgColor='1A1A2E')
+    amber_fill = PatternFill('solid', fgColor='FFF3E0')
+    red_fill = PatternFill('solid', fgColor='FFEBEE')
+    thin = Side(style='thin', color='DDDDDD')
+    brd = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ctr = Alignment(horizontal='center', vertical='center')
+    lft = Alignment(horizontal='left', vertical='center')
+
+    headers = ['Артикул','Название','ABC','Сезон','Категория','Размеров','WMS','В сети','Продано 90д','Есть аналоги','Рекомендация']
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.fill = hdr_fill; cell.font = Font(bold=True, color='FFFFFF', size=10)
+        cell.alignment = ctr; cell.border = brd
+    ws.row_dimensions[1].height = 28
+
+    for ri, r in enumerate(rows, 2):
+        art = r['article']
+        has_analogs = (r['category'] or '') in full_grid_cats
+        sold = sales_map.get(art, 0)
+        reason = f"Только {r['size_count']} размер(а)" + (', есть аналоги' if has_analogs else '')
+        vals = [art, r['name'], r['abc'], r['season'], r['category'],
+                int(r['size_count']), int(r['total_wms'] or 0),
+                int(r['network_stock'] or 0), sold,
+                'Да' if has_analogs else 'Нет', reason]
+        for ci, v in enumerate(vals, 1):
+            cell = ws.cell(row=ri, column=ci, value=v)
+            cell.border = brd; cell.font = Font(size=9)
+            cell.alignment = lft if ci <= 2 else ctr
+            if ci == 6:
+                cell.fill = red_fill if int(r['size_count']) <= 1 else amber_fill
+                cell.font = Font(size=9, bold=True, color='B71C1C' if int(r['size_count']) <= 1 else 'E65100')
+            if ci == 10 and has_analogs:
+                cell.fill = amber_fill
+                cell.font = Font(size=9, bold=True, color='E65100')
+
+    widths = [14,36,6,10,14,8,8,8,10,12,40]
+    for i, w in enumerate(widths, 1): ws.column_dimensions[gcl(i)].width = w
+    ws.freeze_panes = 'A2'
+
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    fname = f'Discount_Recommendations_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    return send_file(output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True, download_name=fname)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)

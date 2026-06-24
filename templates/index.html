@@ -1324,6 +1324,7 @@ td.muted{color:var(--text2)}
         </div>
         <div style="display:flex;gap:8px;align-items:center">
           <button class="btn-secondary" onclick="loadDiscountRecs()">↻ Обновить</button>
+          <button class="btn-secondary" onclick="window.location.href='/api/discount-recommendations/excel'" style="background:var(--green);color:#fff;border-color:var(--green)">📥 Excel</button>
           <button id="dr-apply-btn" class="btn-primary" style="display:none;background:linear-gradient(135deg,#f59e0b,#ef4444)" onclick="applySelectedDiscounts()">
             🔥 Применить скидку 70% выбранным
           </button>
