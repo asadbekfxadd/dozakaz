@@ -288,7 +288,7 @@ def get_orders():
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
     conn = get_db(); cur = conn.cursor()
-    q = 'SELECT * FROM orders WHERE 1=1'
+    q = 'SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE 1=1'
     params = []
     if session['role'] == 'user':
         q += ' AND branch=%s'; params.append(session['branch'])
@@ -405,6 +405,7 @@ def create_order():
     items = json.loads(items_json)
     filename = None
     original_name = None
+    file_data = None
     f = request.files.get('file')
     if f and f.filename:
         ext = os.path.splitext(f.filename)[1].lower()
@@ -449,7 +450,7 @@ def create_order():
                 WHERE article=%s AND size=%s
             ''', (qty, art, size))
     conn.commit()
-    cur.execute('SELECT * FROM orders WHERE id=%s', (order_id,))
+    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (order_id,))
     row = cur.fetchone()
     cur.close(); conn.close()
     return jsonify(dict(row)), 201
@@ -466,7 +467,7 @@ def update_status(oid):
     conn = get_db(); cur = conn.cursor()
     cur.execute('UPDATE orders SET status=%s WHERE id=%s', (status, oid))
     conn.commit()
-    cur.execute('SELECT * FROM orders WHERE id=%s', (oid,))
+    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
     cur.close(); conn.close()
     return jsonify(dict(row))
@@ -475,7 +476,7 @@ def update_status(oid):
 @login_required
 def download_order_excel(oid):
     conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT * FROM orders WHERE id=%s', (oid,))
+    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
     if not row:
         cur.close(); conn.close()
@@ -494,7 +495,7 @@ def download_order_excel(oid):
 def download(oid):
     import urllib.request, urllib.parse, json as _json
     conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT * FROM orders WHERE id=%s', (oid,))
+    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at,file_data FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
     cur.close(); conn.close()
     if not row or not row['filename']:
