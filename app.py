@@ -39,11 +39,16 @@ def send_tg(chat_id, text):
         print(f'[TG] Error sending to {chat_id}: {e}')
         return None
 
-def notify_role(role, text):
+def notify_role(role, text, branch=None):
     """Send notification to all subscribers with given role"""
     conn = get_db(); cur = conn.cursor()
     try:
-        cur.execute('SELECT chat_id FROM tg_subscribers WHERE role=%s AND active=TRUE', (role,))
+        if role == 'branch' and branch:
+            cur.execute('SELECT chat_id FROM tg_subscribers WHERE role=%s AND active=TRUE', (f'branch:{branch}',))
+        elif role == 'all_branches':
+            cur.execute("SELECT chat_id FROM tg_subscribers WHERE role LIKE 'branch:%' AND active=TRUE")
+        else:
+            cur.execute('SELECT chat_id FROM tg_subscribers WHERE role=%s AND active=TRUE', (role,))
         for row in cur.fetchall():
             send_tg(row['chat_id'], text)
     except Exception as e:
