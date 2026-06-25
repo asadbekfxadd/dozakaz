@@ -752,6 +752,7 @@ td.muted{color:var(--text2)}
         <div style="display:flex;gap:8px;align-items:center">
           <span id="sync-status" class="admin-only" style="font-size:11px;color:var(--text3)"></span>
           <button class="btn-secondary admin-only" onclick="syncNow()" style="padding:8px 14px">&#8635; Синхронизировать</button>
+          <button class="btn-secondary admin-only" onclick="setupTgWebhook()" style="padding:8px 14px">🤖 TG Бот</button>
           <button class="btn-primary" onclick="showPage('form',null)">+ Новая заявка</button>
         </div>
       </div>
@@ -1727,6 +1728,17 @@ async function runDistribution(){
     toast(e.message,true);
   }
   btn.disabled=false; btn.textContent='📥 Рассчитать и скачать';
+}
+
+async function setupTgWebhook(){
+  var base = window.location.origin;
+  var r = await fetch('/api/tg/setup-webhook', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({base_url: base})
+  });
+  var d = await r.json();
+  if(d.ok) toast('✅ Telegram webhook настроен! Бот: @li_ning_notify_bot');
+  else toast('Ошибка: ' + JSON.stringify(d), true);
 }
 
 async function init(){

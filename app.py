@@ -18,6 +18,44 @@ app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 ALLOWED = {'.xlsx', '.xls', '.csv'}
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
+# Telegram Bot config
+TG_BOT_TOKEN = os.environ.get('TG_BOT_TOKEN', '8893357777:AAEk4kCB8n9Lp1HJlSpig-OgBgrac9EXvMs')
+_tg_subscribers = {}  # chat_id -> role (loaded from DB)
+
+def send_tg(chat_id, text):
+    """Send Telegram message"""
+    import urllib.request, urllib.parse, json as _json
+    try:
+        url = f'https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage'
+        data = urllib.parse.urlencode({
+            'chat_id': chat_id,
+            'text': text,
+            'parse_mode': 'HTML'
+        }).encode()
+        req = urllib.request.Request(url, data=data, method='POST')
+        with urllib.request.urlopen(req, timeout=10) as r:
+            return _json.loads(r.read())
+    except Exception as e:
+        print(f'[TG] Error sending to {chat_id}: {e}')
+        return None
+
+def notify_role(role, text):
+    """Send notification to all subscribers with given role"""
+    conn = get_db(); cur = conn.cursor()
+    try:
+        cur.execute('SELECT chat_id FROM tg_subscribers WHERE role=%s AND active=TRUE', (role,))
+        for row in cur.fetchall():
+            send_tg(row['chat_id'], text)
+    except Exception as e:
+        print(f'[TG NOTIFY] Error: {e}')
+    finally:
+        cur.close(); conn.close()
+
+def notify_roles(roles, text):
+    """Send to multiple roles"""
+    for role in roles:
+        notify_role(role, text)
+
 # Power BI config
 PBI_TENANT_ID = os.environ.get('PBI_TENANT_ID', '7365ebbc-66ba-4712-8260-23fe81d5c482')
 PBI_CLIENT_ID = os.environ.get('PBI_CLIENT_ID', '9d271a44-ec56-4859-9015-0824bac220e5')
@@ -172,6 +210,15 @@ def init_db():
     )''')
     cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_for_pickup BOOLEAN DEFAULT FALSE')
     cur.execute('ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS ready_at TIMESTAMP')
+    cur.execute("""CREATE TABLE IF NOT EXISTS tg_subscribers (
+        id SERIAL PRIMARY KEY,
+        chat_id BIGINT UNIQUE NOT NULL,
+        username TEXT,
+        full_name TEXT,
+        role TEXT DEFAULT 'manager',
+        active BOOLEAN DEFAULT TRUE,
+        created_at TIMESTAMP DEFAULT NOW()
+    )""")
     cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS file_data BYTEA")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
@@ -453,6 +500,11 @@ def create_order():
     cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (order_id,))
     row = cur.fetchone()
     cur.close(); conn.close()
+    # Send TG notification
+    try:
+        prio_icon = '⚡' if priority == 'Срочно' else '📋'
+        notify_roles(['admin'], f'{prio_icon} <b>Новая заявка</b>\n🏪 {branch}\n👤 {responsible}\n📅 {date}' + (f'\n💬 {note}' if note else '') + (f'\n🚨 СРОЧНО' if priority=='Срочно' else ''))
+    except: pass
     return jsonify(dict(row)), 201
 
 @app.route('/api/orders/<int:oid>/status', methods=['PATCH'])
@@ -3505,6 +3557,129 @@ def discount_recommendations_excel():
     return send_file(output,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True, download_name=fname)
+
+
+# ===== TELEGRAM BOT =====
+
+@app.route('/api/tg/webhook', methods=['POST'])
+def tg_webhook():
+    """Handle Telegram bot updates"""
+    import json as _json
+    data = request.get_json() or {}
+    
+    # Handle callback queries (button presses)
+    if 'callback_query' in data:
+        cq = data['callback_query']
+        chat_id = cq['message']['chat']['id']
+        username = cq['from'].get('username', '')
+        full_name = (cq['from'].get('first_name','') + ' ' + cq['from'].get('last_name','')).strip()
+        role = cq['data']  # 'admin', 'warehouse', 'manager'
+        
+        ROLE_NAMES = {'admin': '👔 Администратор', 'warehouse': '📦 Склад', 'manager': '🏪 Менеджер'}
+        
+        conn = get_db(); cur = conn.cursor()
+        cur.execute("""
+            INSERT INTO tg_subscribers (chat_id, username, full_name, role, active)
+            VALUES (%s,%s,%s,%s,TRUE)
+            ON CONFLICT (chat_id) DO UPDATE SET role=%s, username=%s, full_name=%s, active=TRUE
+        """, (chat_id, username, full_name, role, role, username, full_name))
+        conn.commit(); cur.close(); conn.close()
+        
+        # Answer callback
+        import urllib.request, urllib.parse
+        urllib.request.urlopen(urllib.request.Request(
+            f'https://api.telegram.org/bot{TG_BOT_TOKEN}/answerCallbackQuery',
+            data=urllib.parse.urlencode({'callback_query_id': cq['id'], 'text': f'Роль сохранена: {ROLE_NAMES.get(role, role)}'}).encode(),
+            method='POST'
+        ), timeout=5)
+        
+        send_tg(chat_id, f'✅ Ваша роль: <b>{ROLE_NAMES.get(role, role)}</b>\n\nВы будете получать уведомления:\n' + {
+            'admin': '• Новые заявки на дозаказ\n• Схлопка готова к отгрузке\n• Важные события',
+            'warehouse': '• Схлопка готова к отгрузке\n• Новые схлопки загружены',
+            'manager': '• Статус ваших заявок\n• Подтверждения перемещений'
+        }.get(role, ''))
+        return 'ok'
+    
+    # Handle messages
+    msg = data.get('message', {})
+    if not msg:
+        return 'ok'
+    
+    chat_id = msg['chat']['id']
+    text = msg.get('text', '')
+    username = msg.get('from', {}).get('username', '')
+    full_name = (msg.get('from',{}).get('first_name','') + ' ' + msg.get('from',{}).get('last_name','')).strip()
+    
+    if text in ('/start', '/role', '/роль'):
+        # Send role selection keyboard
+        import json as _json2, urllib.request, urllib.parse
+        keyboard = _json2.dumps({
+            'inline_keyboard': [
+                [{'text': '👔 Администратор', 'callback_data': 'admin'}],
+                [{'text': '📦 Склад', 'callback_data': 'warehouse'}],
+                [{'text': '🏪 Менеджер магазина', 'callback_data': 'manager'}]
+            ]
+        })
+        data2 = urllib.parse.urlencode({
+            'chat_id': chat_id,
+            'text': '🔔 <b>LI-NING уведомления</b>\n\nВыберите вашу роль чтобы получать нужные уведомления:',
+            'parse_mode': 'HTML',
+            'reply_markup': keyboard
+        }).encode()
+        urllib.request.urlopen(urllib.request.Request(
+            f'https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage',
+            data=data2, method='POST'
+        ), timeout=10)
+    
+    elif text == '/stop':
+        conn = get_db(); cur = conn.cursor()
+        cur.execute('UPDATE tg_subscribers SET active=FALSE WHERE chat_id=%s', (chat_id,))
+        conn.commit(); cur.close(); conn.close()
+        send_tg(chat_id, '🔕 Уведомления отключены. Напишите /start чтобы включить снова.')
+    
+    elif text == '/status':
+        conn = get_db(); cur = conn.cursor()
+        cur.execute('SELECT role, active FROM tg_subscribers WHERE chat_id=%s', (chat_id,))
+        row = cur.fetchone()
+        cur.close(); conn.close()
+        if row:
+            ROLE_NAMES = {'admin': 'Администратор', 'warehouse': 'Склад', 'manager': 'Менеджер'}
+            status = '✅ Активны' if row['active'] else '🔕 Отключены'
+            send_tg(chat_id, f'📊 Ваш статус:\nРоль: <b>{ROLE_NAMES.get(row["role"], row["role"])}</b>\nУведомления: {status}')
+        else:
+            send_tg(chat_id, 'Вы не зарегистрированы. Напишите /start')
+    
+    return 'ok'
+
+
+@app.route('/api/tg/setup-webhook', methods=['POST'])
+@admin_required
+def setup_tg_webhook():
+    """Set Telegram webhook URL"""
+    import urllib.request, urllib.parse, json as _json
+    base_url = request.json.get('base_url', request.host_url.rstrip('/'))
+    webhook_url = f'{base_url}/api/tg/webhook'
+    data = urllib.parse.urlencode({
+        'url': webhook_url,
+        'allowed_updates': _json.dumps(['message', 'callback_query'])
+    }).encode()
+    req = urllib.request.Request(
+        f'https://api.telegram.org/bot{TG_BOT_TOKEN}/setWebhook',
+        data=data, method='POST'
+    )
+    with urllib.request.urlopen(req, timeout=10) as r:
+        result = _json.loads(r.read())
+    return jsonify({'ok': True, 'webhook_url': webhook_url, 'result': result})
+
+
+@app.route('/api/tg/subscribers')
+@admin_required  
+def tg_subscribers_list():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT id,chat_id,username,full_name,role,active,created_at FROM tg_subscribers ORDER BY created_at DESC')
+    rows = [dict(r) for r in cur.fetchall()]
+    cur.close(); conn.close()
+    return jsonify(rows)
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
