@@ -764,7 +764,7 @@ td.muted{color:var(--text2)}
           <div class="stat-card c-green"><div class="stat-num" id="s-done">—</div><div class="stat-label">Выполнены</div></div>
         </div>
         <div class="filters admin-only">
-          <select id="f-branch" onchange="loadOrders()"><option value="">Все филиалы</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option></select>
+          <select id="f-branch" onchange="loadOrders()"><option value="">Все филиалы</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option></select>
           <select id="f-status" onchange="loadOrders()"><option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Выполнена</option></select>
           <input type="text" id="f-responsible" placeholder="🔍 Сотрудник..." oninput="loadOrders()">
           <input type="date" id="f-date-from" onchange="loadOrders()">
@@ -866,7 +866,7 @@ td.muted{color:var(--text2)}
         </div>
         <div class="filters" style="margin-bottom:20px">
           <select id="sales-cat" onchange="loadTopSales()"><option value="">Все категории</option><option value="Обувь">Обувь</option><option value="Одежда">Одежда</option><option value="Аксессуары">Аксессуары</option></select>
-          <select id="sales-branch" onchange="loadTopSales()"><option value="">Все филиалы</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option></select>
+          <select id="sales-branch" onchange="loadTopSales()"><option value="">Все филиалы</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option></select>
         </div>
         <div class="sales-stats-grid">
           <div class="stat-card c-red"><div class="stat-num" id="ss-qty">—</div><div class="stat-label">Продано единиц</div></div>
@@ -1048,7 +1048,7 @@ td.muted{color:var(--text2)}
             <option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option>
             <option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option>
             <option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option>
-            <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option>
+            <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option>
           </select>
           <input type="text" id="rec-search" placeholder="🔍 Артикул..." oninput="filterRecs()" style="min-width:160px">
           <select id="rec-season" onchange="filterRecs()">
@@ -1162,7 +1162,7 @@ td.muted{color:var(--text2)}
             <option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option>
             <option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option>
             <option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option>
-            <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option>
+            <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option>
           </select>
           <button class="btn-secondary" onclick="loadZeroSales()">↻ Обновить</button>
           <button id="zs-schlopka-btn" class="btn-primary" style="display:none;background:var(--amber)" onclick="createAutoSchlopka()">
@@ -1486,7 +1486,7 @@ td.muted{color:var(--text2)}
           <div class="form-section">Информация о заявке</div>
           <div class="form-row">
             <div class="form-group"><label>Филиал<span class="required">*</span></label>
-              <select id="r-branch"><option value="">— выбрать —</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option></select>
+              <select id="r-branch"><option value="">— выбрать —</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option></select>
             </div>
             <div class="form-group"><label>Ответственный<span class="required">*</span></label><input type="text" id="r-responsible" placeholder="Ваше имя"></div>
           </div>
@@ -1558,7 +1558,7 @@ td.muted{color:var(--text2)}
     <div id="cart-branch-wrap" style="display:none;margin-bottom:10px">
       <div class="form-group">
         <label>Филиал</label>
-        <select id="cart-branch-sel"><option value="">— выбрать филиал —</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option></select>
+        <select id="cart-branch-sel"><option value="">— выбрать филиал —</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option></select>
       </div>
     </div>
     <div class="form-row" style="margin-bottom:10px">
@@ -2723,7 +2723,7 @@ async function loadTransfers(){
   // Populate from-branch select (all branches except own)
   var fromSel = document.getElementById('tf-from');
   if(fromSel){
-    var branches = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA','M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall','Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery'];
+    var branches = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA','M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall','Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR'];
     fromSel.innerHTML = branches.filter(b=>b!==currentBranch).map(b=>'<option value="'+b+'">'+b+'</option>').join('');
   }
 
