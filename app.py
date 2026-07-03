@@ -2668,6 +2668,7 @@ def zero_sales():
                 AND sale_date >= CURRENT_DATE - %s
             )
             AND ci.discount = 0
+            AND ci.category != 'Аксессуары'
             GROUP BY bs.article, bs.branch
             HAVING SUM(bs.qty) < 50
             ORDER BY MIN(ci.abc), SUM(bs.qty) DESC
@@ -2703,6 +2704,7 @@ def zero_sales():
                 WHERE sale_date >= CURRENT_DATE - %s
             )
             AND ci.discount = 0
+            AND ci.category != 'Аксессуары'
             GROUP BY bs.article, bs.branch
             HAVING SUM(bs.qty) < 50
             ORDER BY MIN(ci.abc), SUM(bs.qty) DESC
