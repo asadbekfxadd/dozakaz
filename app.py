@@ -227,6 +227,7 @@ def init_db():
         created_at TIMESTAMP DEFAULT NOW()
     )""")
     cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS file_data BYTEA")
+    cur.execute("ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS file_data BYTEA")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE catalog ADD COLUMN IF NOT EXISTS discount INTEGER DEFAULT 0")
@@ -2821,6 +2822,10 @@ def auto_schlopka():
         cur.close(); conn.close()
         return jsonify({'error': 'Все артикулы на скидке 70% — они только для аутлетов'}), 400
 
+    # Filter out kids (Y...) and accessories
+    articles = [a for a in articles
+                if not (a.startswith('Y') or a.startswith('y'))]
+
     cur.execute("""
         SELECT bs.article, bs.branch, bs.size, bs.qty,
                MIN(c.name) as name, MIN(c.category) as category
@@ -2828,6 +2833,7 @@ def auto_schlopka():
         JOIN catalog c ON c.article = bs.article
         WHERE bs.article = ANY(%s) AND bs.qty > 0
         AND c.discount = 0
+        AND c.category NOT IN ('Аксессуары')
         GROUP BY bs.article, bs.branch, bs.size, bs.qty
         ORDER BY bs.article, bs.size
     """, (articles,))
@@ -2948,8 +2954,13 @@ def auto_schlopka():
     )
     sid = cur.fetchone()['id']
 
-    # Группируем по from_branch (лист схлопки = откуда)
-    from collections import Counter
+    # Group by from_branch
+    from collections import defaultdict as _dd, Counter
+    by_donor = _dd(list)
+    for item in schlopka_items:
+        art, name, size, from_branch, to_flagman, qty = item
+        by_donor[from_branch].append(item)
+
     items_inserted = 0
     for art, name, size, from_branch, to_flagman, qty in schlopka_items:
         cur.execute(
@@ -2958,19 +2969,92 @@ def auto_schlopka():
         )
         items_inserted += 1
 
+    # Generate Excel with one sheet per donor branch
+    from openpyxl.utils import get_column_letter as gcl2
+    wb_out = openpyxl.Workbook()
+    wb_out.remove(wb_out.active)  # remove default sheet
+
+    hdr_fill = PatternFill('solid', fgColor='1A1A2E')
+    red_fill  = PatternFill('solid', fgColor='FFEBEE')
+    grn_fill  = PatternFill('solid', fgColor='E8F5E9')
+    thin = Side(style='thin', color='DDDDDD')
+    brd  = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ctr  = Alignment(horizontal='center', vertical='center')
+    lft  = Alignment(horizontal='left', vertical='center')
+
+    for donor, items in sorted(by_donor.items()):
+        ws = wb_out.create_sheet(title=donor[:31])  # sheet name max 31 chars
+        headers = ['Артикул', 'Название', 'Размер', 'Кол-во', 'Куда (флагман)']
+        for ci, h in enumerate(headers, 1):
+            cell = ws.cell(row=1, column=ci, value=h)
+            cell.fill = hdr_fill
+            cell.font = Font(bold=True, color='FFFFFF', size=10)
+            cell.alignment = ctr; cell.border = brd
+        ws.row_dimensions[1].height = 28
+
+        for ri, (art, name, size, from_b, to_flagman, qty) in enumerate(items, 2):
+            vals = [art, name, size, qty, to_flagman]
+            for ci, v in enumerate(vals, 1):
+                cell = ws.cell(row=ri, column=ci, value=v)
+                cell.border = brd; cell.font = Font(size=9)
+                cell.alignment = lft if ci == 2 else ctr
+                if ci == 4: cell.fill = grn_fill; cell.font = Font(size=9, bold=True, color='1B5E20')
+                if ci == 5: cell.fill = PatternFill('solid', fgColor='E3F2FD')
+
+        # Totals row
+        last = len(items) + 2
+        ws.cell(row=last, column=1, value='ИТОГО').font = Font(bold=True, size=10)
+        total_qty = sum(i[5] for i in items)
+        ws.cell(row=last, column=4, value=total_qty).font = Font(bold=True, size=10)
+        ws.cell(row=last, column=4).alignment = ctr
+
+        # Column widths
+        for ci, w in enumerate([14, 36, 8, 8, 20], 1):
+            ws.column_dimensions[gcl2(ci)].width = w
+        ws.freeze_panes = 'A2'
+
+    # Summary sheet
+    ws_sum = wb_out.create_sheet(title='Сводка', index=0)
+    sum_hdrs = ['Филиал-донор', 'Кол-во позиций', 'Кол-во штук', 'Флагманы получают']
+    for ci, h in enumerate(sum_hdrs, 1):
+        cell = ws_sum.cell(row=1, column=ci, value=h)
+        cell.fill = hdr_fill; cell.font = Font(bold=True, color='FFFFFF', size=10)
+        cell.alignment = ctr; cell.border = brd
+    ws_sum.row_dimensions[1].height = 28
+
+    for ri, (donor, items) in enumerate(sorted(by_donor.items()), 2):
+        flagmans_set = list(dict.fromkeys(i[4] for i in items))
+        vals = [donor, len(items), sum(i[5] for i in items), ', '.join(flagmans_set)]
+        for ci, v in enumerate(vals, 1):
+            cell = ws_sum.cell(row=ri, column=ci, value=v)
+            cell.border = brd; cell.font = Font(size=9)
+            cell.alignment = lft if ci in (1,4) else ctr
+
+    for ci, w in enumerate([24, 14, 12, 40], 1):
+        ws_sum.column_dimensions[gcl2(ci)].width = w
+
+    excel_buf = io.BytesIO()
+    wb_out.save(excel_buf)
+    excel_buf.seek(0)
+    excel_data = excel_buf.read()
+
+    # Save Excel to DB
+    cur.execute('UPDATE schlopka_sessions SET file_data=%s WHERE id=%s',
+                (psycopg2.Binary(excel_data), sid))
+
     conn.commit()
 
-    # Summary per flagman
     flagman_totals = Counter(item[4] for item in schlopka_items)
-
     cur.close(); conn.close()
+
     return jsonify({
         'ok': True,
         'session_id': sid,
         'session_name': session_name,
         'items': items_inserted,
         'by_flagman': dict(flagman_totals),
-        'articles': len(set(i[0] for i in schlopka_items))
+        'articles': len(set(i[0] for i in schlopka_items)),
+        'excel_url': f'/api/zero-sales/auto-schlopka/{sid}/excel'
     })
 
 
@@ -3748,6 +3832,25 @@ def tg_subscribers_list():
     rows = [dict(r) for r in cur.fetchall()]
     cur.close(); conn.close()
     return jsonify(rows)
+
+
+@app.route('/api/zero-sales/auto-schlopka/<int:sid>/excel')
+@admin_required
+def auto_schlopka_excel(sid):
+    """Download auto-schlopka Excel file"""
+    conn = get_db(); cur = conn.cursor()
+    cur.execute('SELECT name, file_data FROM schlopka_sessions WHERE id=%s', (sid,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    if not row or not row['file_data']:
+        return jsonify({'error': 'Файл не найден'}), 404
+    fname = f'Схлопка_{row["name"].replace(" ","_").replace(":","")}.xlsx'
+    return send_file(
+        io.BytesIO(bytes(row['file_data'])),
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True,
+        download_name=fname
+    )
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
