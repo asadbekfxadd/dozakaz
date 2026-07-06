@@ -1556,8 +1556,15 @@ def cross_recommendations():
         if not sizes and total_wms == 0:
             continue
 
-        # Топ филиалы где продаётся
-        top_branches = [b for b in (art_row['top_branches'] or []) if b != branch][:3]
+        # Топ филиалы где продаётся — normalize ECO PARK
+        raw_branches = art_row['top_branches'] or []
+        top_branches = []
+        for b in raw_branches:
+            if b != branch:
+                # Normalize ECO PARK with cyrillic C
+                b_norm = b.replace('\u0421', 'C').replace('\u0415', 'E')
+                top_branches.append(b_norm)
+        top_branches = list(dict.fromkeys(top_branches))[:5]  # dedupe, show up to 5
 
         result.append({
             'article': art,
