@@ -2867,7 +2867,7 @@ def auto_schlopka():
         art_names[r['article']] = r['name'] or r['category'] or ''
 
     # Исключаем из доноров Самарканд и Андижан
-    NO_TAKE_BRANCHES = {'UZBEGIM ANDIJAN', 'Samarkand', 'SAMARKAND', 'М.БАРАКА САМАРКАНД'}
+    NO_TAKE_BRANCHES = {'UZBEGIM ANDIJAN', 'Samarkand', 'SAMARKAND', 'М.БАРАКА САМАРКАНД', 'M. BARAKA', 'Family park'}
 
     schlopka_items = []  # (article, name, size, from_branch, to_flagman, qty)
 
