@@ -1206,10 +1206,16 @@ td.muted{color:var(--text2)}
         <!-- Stats -->
         <div id="zs-stats" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
         <!-- Filters -->
-        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <button class="period-tab active" id="zs-filter-all" onclick="zsFilter('all',this)">Все</button>
           <button class="period-tab" id="zs-filter-broken" onclick="zsFilter('broken',this)">🔴 Битая сетка</button>
           <button class="period-tab" id="zs-filter-schlopka" onclick="zsFilter('schlopka',this)">⚡ Нужна схлопка (&lt;50шт)</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="period-tab active" id="zs-cat-all" onclick="zsCatFilter('all',this)">Все категории</button>
+          <button class="period-tab" id="zs-cat-clothes" onclick="zsCatFilter('Одежда',this)">👕 Одежда</button>
+          <button class="period-tab" id="zs-cat-shoes" onclick="zsCatFilter('Обувь',this)">👟 Обувь</button>
+          <button class="period-tab" id="zs-cat-acc" onclick="zsCatFilter('Аксессуары',this)">🎒 Аксессуары</button>
         </div>
         <!-- Table -->
         <div class="orders-wrap">
@@ -3775,6 +3781,7 @@ async function uploadPBISales(inp, replace){
 // ===== ZERO SALES =====
 var _zsData = [];
 var _zsFilter = 'all';
+var _zsCatFilter = 'all';
 
 async function loadZeroSales(){
   var branch = currentBranch;
@@ -3820,6 +3827,13 @@ async function loadZeroSales(){
   renderZeroSales();
 }
 
+function zsCatFilter(cat, btn){
+  _zsCatFilter = cat;
+  document.querySelectorAll('#page-zerosales .period-tab[id^="zs-cat"]').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderZeroSales();
+}
+
 function zsFilter(f, btn){
   _zsFilter = f;
   document.querySelectorAll('#page-zerosales .period-tab').forEach(b=>b.classList.remove('active'));
@@ -3831,6 +3845,7 @@ function renderZeroSales(){
   var data = _zsData;
   if(_zsFilter === 'broken') data = data.filter(i=>i.is_broken_grid);
   if(_zsFilter === 'schlopka') data = data.filter(i=>i.needs_schlopka);
+  if(_zsCatFilter !== 'all') data = data.filter(i=>i.category === _zsCatFilter);
 
   if(!data.length){
     document.getElementById('zs-tbody').innerHTML = '<tr><td colspan="9"><div class="empty-state">Нет данных</div></td></tr>';
