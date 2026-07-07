@@ -704,7 +704,7 @@ def upload_catalog():
             wms = 0
             if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
                 try:
-                    wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace(' ','')
+                    wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace(' ','')
                     wms = int(float(wms_str))
                 except: pass
             catalog_items.append((art, name, size, wms, season, category))
@@ -713,7 +713,7 @@ def upload_catalog():
                 if qty and str(qty) not in ('None','nan',''):
                     try:
                         # Handle "1,000" format (1C comma as thousands separator)
-                        qty_str = str(qty).replace(',', '').replace(' ', '').replace(' ', '')
+                        qty_str = str(qty).replace(',', '').replace(' ', '').replace(' ', '')
                         q = int(float(qty_str))
                         if q > 0: branch_items.append((art, size, branch, q))
                     except: pass
@@ -1139,11 +1139,11 @@ def upload_sales():
             cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
             branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
             ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
             except: qty = 1
-            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
             except: price = 0
-            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
             except: amount = 0
             sale_date = None
             m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
@@ -3316,11 +3316,11 @@ def powerbi_sync():
             cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
             branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
             ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
             except: qty = 1
-            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
             except: price = 0
-            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
             except: amount = 0
             sale_date = None
             m = _re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
@@ -3861,7 +3861,106 @@ def auto_schlopka_excel(sid):
         download_name=fname
     )
 
+
+@app.route('/api/zero-sales/excel')
+@login_required
+def zero_sales_excel():
+    role = session.get('role')
+    branch = session.get('branch') or request.args.get('branch', '')
+    days = int(request.args.get('days', 30))
+    category = request.args.get('category', '')
+
+    conn = get_db(); cur = conn.cursor()
+
+    if branch:
+        cur.execute("""
+            SELECT bs.article, MIN(ci.name) as name, MIN(ci.abc) as abc,
+                   MIN(ci.season) as season, MIN(ci.category) as category,
+                   bs.branch, SUM(bs.qty) as branch_stock,
+                   COUNT(DISTINCT bs.size) as branch_sizes,
+                   COALESCE((SELECT SUM(wms_stock) FROM catalog WHERE article=bs.article),0) as wms_stock
+            FROM branch_stock bs
+            JOIN (SELECT DISTINCT article, MIN(name) as name, MIN(abc) as abc,
+                         MIN(season) as season, MIN(category) as category, MAX(discount) as discount
+                  FROM catalog GROUP BY article) ci ON ci.article = bs.article
+            WHERE bs.branch = %s AND bs.qty > 0
+            AND bs.article NOT IN (SELECT DISTINCT article FROM sales WHERE branch=%s AND sale_date >= CURRENT_DATE - %s)
+            AND bs.article NOT IN (SELECT DISTINCT article||'A' FROM sales WHERE branch=%s AND sale_date >= CURRENT_DATE - %s)
+            AND ci.discount = 0 AND ci.category != 'Аксессуары'
+            GROUP BY bs.article, bs.branch
+            HAVING SUM(bs.qty) < 50
+            ORDER BY MIN(ci.abc), SUM(bs.qty) DESC
+        """, (branch, branch, days, branch, days))
+    else:
+        cur.execute("""
+            SELECT bs.article, MIN(ci.name) as name, MIN(ci.abc) as abc,
+                   MIN(ci.season) as season, MIN(ci.category) as category,
+                   bs.branch, SUM(bs.qty) as branch_stock,
+                   COUNT(DISTINCT bs.size) as branch_sizes,
+                   COALESCE((SELECT SUM(wms_stock) FROM catalog WHERE article=bs.article),0) as wms_stock
+            FROM branch_stock bs
+            JOIN (SELECT DISTINCT article, MIN(name) as name, MIN(abc) as abc,
+                         MIN(season) as season, MIN(category) as category, MAX(discount) as discount
+                  FROM catalog GROUP BY article) ci ON ci.article = bs.article
+            WHERE bs.qty > 0
+            AND bs.article NOT IN (SELECT DISTINCT article FROM sales WHERE sale_date >= CURRENT_DATE - %s)
+            AND bs.article NOT IN (SELECT DISTINCT article||'A' FROM sales WHERE sale_date >= CURRENT_DATE - %s)
+            AND ci.discount = 0 AND ci.category != 'Аксессуары'
+            GROUP BY bs.article, bs.branch
+            HAVING SUM(bs.qty) < 50
+            ORDER BY MIN(ci.abc), SUM(bs.qty) DESC
+        """, (days, days))
+
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+
+    if category:
+        rows = [r for r in rows if (r['category'] or '') == category]
+
+    from openpyxl.utils import get_column_letter as gcl
+    wb = openpyxl.Workbook(); ws = wb.active
+    ws.title = 'Zero Sales'
+    hdr_fill = PatternFill('solid', fgColor='1A1A2E')
+    red_fill = PatternFill('solid', fgColor='FFEBEE')
+    amb_fill = PatternFill('solid', fgColor='FFF3E0')
+    thin = Side(style='thin', color='DDDDDD')
+    brd = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ctr = Alignment(horizontal='center', vertical='center')
+    lft = Alignment(horizontal='left', vertical='center')
+
+    headers = ['Артикул','Название','ABC','Сезон','Категория','Филиал','Остаток','Размеров','WMS','Статус']
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.fill = hdr_fill; cell.font = Font(bold=True, color='FFFFFF', size=10)
+        cell.alignment = ctr; cell.border = brd
+    ws.row_dimensions[1].height = 28
+
+    for ri, r in enumerate(rows, 2):
+        broken = int(r['branch_sizes'] or 0) < 3
+        needs = int(r['branch_stock'] or 0) < 50
+        status = []
+        if broken: status.append('Битая сетка')
+        if needs: status.append('Нужна схлопка')
+        vals = [r['article'], r['name'], r['abc'], r['season'], r['category'],
+                r['branch'], int(r['branch_stock'] or 0), int(r['branch_sizes'] or 0),
+                int(r['wms_stock'] or 0), ', '.join(status) or 'Нет продаж']
+        for ci, v in enumerate(vals, 1):
+            cell = ws.cell(row=ri, column=ci, value=v)
+            cell.border = brd; cell.font = Font(size=9)
+            cell.alignment = lft if ci in (2,6) else ctr
+            if ci == 7 and broken: cell.fill = red_fill
+            if ci == 10 and 'схлопка' in str(v): cell.fill = amb_fill
+
+    widths = [14,36,6,10,10,20,9,9,8,20]
+    for i, w in enumerate(widths, 1): ws.column_dimensions[gcl(i)].width = w
+    ws.freeze_panes = 'A2'
+
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    fname = f'ZeroSales_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    return send_file(output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True, download_name=fname)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
-
