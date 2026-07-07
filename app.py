@@ -704,7 +704,7 @@ def upload_catalog():
             wms = 0
             if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
                 try:
-                    wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace(' ','')
+                    wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace(' ','')
                     wms = int(float(wms_str))
                 except: pass
             catalog_items.append((art, name, size, wms, season, category))
@@ -713,7 +713,7 @@ def upload_catalog():
                 if qty and str(qty) not in ('None','nan',''):
                     try:
                         # Handle "1,000" format (1C comma as thousands separator)
-                        qty_str = str(qty).replace(',', '').replace(' ', '').replace(' ', '')
+                        qty_str = str(qty).replace(',', '').replace(' ', '').replace(' ', '')
                         q = int(float(qty_str))
                         if q > 0: branch_items.append((art, size, branch, q))
                     except: pass
@@ -1139,11 +1139,11 @@ def upload_sales():
             cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
             branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
             ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
             except: qty = 1
-            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
             except: price = 0
-            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
             except: amount = 0
             sale_date = None
             m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
@@ -2822,9 +2822,18 @@ def auto_schlopka():
         cur.close(); conn.close()
         return jsonify({'error': 'Все артикулы на скидке 70% — они только для аутлетов'}), 400
 
-    # Filter out kids (Y...) and accessories
+    # Filter out kids (Y...) articles
     articles = [a for a in articles
                 if not (a.startswith('Y') or a.startswith('y'))]
+
+    # Filter out accessories by category from DB
+    cur.execute("SELECT DISTINCT article FROM catalog WHERE article = ANY(%s) AND category = 'Аксессуары'", (articles,))
+    acc_arts = {r['article'] for r in cur.fetchall()}
+    articles = [a for a in articles if a not in acc_arts]
+
+    if not articles:
+        cur.close(); conn.close()
+        return jsonify({'error': 'Нет подходящих артикулов (все детские или аксессуары)'}), 400
 
     cur.execute("""
         SELECT bs.article, bs.branch, bs.size, bs.qty,
@@ -3307,11 +3316,11 @@ def powerbi_sync():
             cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
             branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
             ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
             except: qty = 1
-            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
             except: price = 0
-            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
             except: amount = 0
             sale_date = None
             m = _re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
@@ -3855,3 +3864,4 @@ def auto_schlopka_excel(sid):
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
+
