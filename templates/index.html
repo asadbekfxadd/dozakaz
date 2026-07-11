@@ -42,6 +42,15 @@
 [data-theme="light"] .login-tagline{color:#9ca3af}
 [data-theme="light"] .login-group label{color:#6b7280}
 body{background:var(--bg);color:var(--text);font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,sans-serif;font-size:14px;min-height:100vh;-webkit-font-smoothing:antialiased}
+body,.sidebar,.topbar,.content,.page,input,select,textarea,.kanban-card,.cart-panel,
+.form-card,table,th,td,.nav-item,.btn-primary,.btn-secondary{
+  transition:background-color .35s ease,border-color .35s ease,color .35s ease,box-shadow .35s ease;
+}
+.page{animation:pageIn .25s ease both}
+@keyframes pageIn{from{opacity:0;transform:translateY(6px)}to{opacity:1;transform:translateY(0)}}
+@media (prefers-reduced-motion: reduce){
+  *,*::before,*::after{animation-duration:.001ms !important;transition-duration:.001ms !important}
+}
 a{color:var(--accent);text-decoration:none}
 
 /* SIDEBAR */
@@ -99,6 +108,23 @@ nav{padding:10px 8px;flex:1}
   animation:blink 1.5s infinite;
 }
 .sidebar-footer{padding:10px 8px 16px;border-top:1px solid var(--border)}
+.theme-toggle-btn{
+  width:100%;display:flex;align-items:center;gap:10px;padding:9px 10px;
+  background:var(--bg3);border:1px solid var(--border);border-radius:var(--radius-sm);
+  color:var(--text2);font-size:12px;font-weight:600;font-family:inherit;cursor:pointer;
+  margin-bottom:8px;transition:all .2s;
+}
+.theme-toggle-btn:hover{border-color:var(--border2);color:var(--text);background:var(--bg4)}
+.theme-toggle-icon{
+  display:inline-block;font-size:14px;transition:transform .4s cubic-bezier(.4,0,.2,1);
+}
+.theme-toggle-btn:hover .theme-toggle-icon{transform:rotate(20deg) scale(1.1)}
+.theme-toggle-btn.spinning .theme-toggle-icon{animation:themeSpin .4s ease}
+@keyframes themeSpin{
+  0%{transform:rotate(0) scale(1)}
+  50%{transform:rotate(180deg) scale(.7)}
+  100%{transform:rotate(360deg) scale(1)}
+}
 .user-chip{
   background:var(--bg3);border:1px solid var(--border2);
   border-radius:var(--radius-sm);padding:10px 12px;margin-bottom:6px;
@@ -222,7 +248,8 @@ td.muted{color:var(--text2)}
   box-shadow:var(--shadow-accent);
 }
 .btn-primary:hover{opacity:.9;transform:translateY(-1px);box-shadow:0 6px 24px rgba(255,23,68,.4)}
-.btn-primary:active{transform:translateY(0)}
+.btn-primary:active{transform:translateY(0) scale(.97)}
+button:not(.nav-item):not(.theme-toggle-btn):active{transform:scale(.97)}
 .btn-secondary{
   background:var(--bg3);color:var(--text2);
   border:1px solid var(--border);padding:11px 18px;
@@ -275,7 +302,8 @@ td.muted{color:var(--text2)}
 /* TOAST */
 .toast{position:fixed;bottom:24px;right:24px;background:var(--bg2);border:1px solid var(--green);color:var(--green);padding:13px 22px;border-radius:var(--radius);font-size:13px;display:none;align-items:center;gap:8px;z-index:100;box-shadow:var(--shadow);font-weight:600}
 .toast.error{border-color:var(--accent);color:var(--accent)}
-.toast.show{display:flex}
+.toast.show{display:flex;animation:toastIn .3s cubic-bezier(.34,1.56,.64,1)}
+@keyframes toastIn{from{opacity:0;transform:translateY(12px) scale(.95)}to{opacity:1;transform:translateY(0) scale(1)}}
 .empty-state{padding:56px;text-align:center;color:var(--text3)}
 .dot{width:6px;height:6px;border-radius:50%;display:inline-block;margin-right:6px;flex-shrink:0}
 .dot-new{background:var(--accent)}.dot-work{background:var(--amber)}.dot-done{background:var(--green)}
@@ -695,7 +723,11 @@ td.muted{color:var(--text2)}
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>
         Конверсия
       </button>
-      <button class="nav-item" onclick="showPage('warehouse-report',this)">
+      <button class="nav-item admin-only" onclick="showPage('reorder',this)">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 3h2l.4 2M7 13h10l4-8H5.4M7 13L5.4 5M7 13l-2.293 2.293c-.63.63-.184 1.707.707 1.707H17m0 0a2 2 0 100 4 2 2 0 000-4zm-8 2a2 2 0 11-4 0 2 2 0 014 0z"/></svg>
+        Авто-дозаказ
+      </button>
+      <button class="nav-item admin-only" onclick="showPage('warehouse-report',this)">
         <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 9l9-7 9 7v11a2 2 0 01-2 2H5a2 2 0 01-2-2z"/><polyline points="9 22 9 12 15 12 15 22"/></svg>
         Отчёт склада
       </button>
@@ -733,6 +765,10 @@ td.muted{color:var(--text2)}
       </button>
     </nav>
     <div class="sidebar-footer">
+      <button class="theme-toggle-btn" onclick="toggleTheme()" title="Сменить тему">
+        <span class="theme-toggle-icon" id="theme-icon">☀️</span>
+        <span id="theme-label">Дневной режим</span>
+      </button>
       <div class="user-chip">
         <div class="user-chip-avatar" id="ui-avatar">A</div>
         <div><div class="user-chip-name" id="ui-name">—</div><div class="user-chip-role" id="ui-role">admin</div></div>
@@ -1084,6 +1120,60 @@ td.muted{color:var(--text2)}
       </div>
     </div>
 
+    <!-- REORDER PAGE -->
+    <div id="page-reorder" class="page">
+      <div class="topbar">
+        <div>
+          <div class="topbar-title">Авто-дозаказ</div>
+          <div class="topbar-sub" id="reorder-sub">Умные рекомендации на основе медианы продаж</div>
+        </div>
+        <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+          <select id="reorder-cat" onchange="loadReorder()" style="min-width:150px">
+            <option value="">Все категории</option>
+            <option value="Одежда">👕 Одежда</option>
+            <option value="Обувь">👟 Обувь</option>
+          </select>
+          <button class="btn-secondary" onclick="loadReorder()">↻ Обновить</button>
+          <button class="btn-secondary" onclick="downloadReorderExcel()" style="background:var(--green);color:#fff;border-color:var(--green)">📥 Excel</button>
+        </div>
+      </div>
+      <div class="content">
+        <!-- Stats -->
+        <div id="reorder-stats" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
+
+        <!-- Urgency filters -->
+        <div style="display:flex;gap:8px;margin-bottom:16px">
+          <button class="period-tab active" id="ro-all" onclick="roFilter('all',this)">Все</button>
+          <button class="period-tab" id="ro-critical" onclick="roFilter('critical',this)">🔴 Критично (&lt;0.5 нед)</button>
+          <button class="period-tab" id="ro-low" onclick="roFilter('low',this)">🟡 Низкий (&lt;1 нед)</button>
+          <button class="period-tab" id="ro-medium" onclick="roFilter('medium',this)">🟠 Средний (&lt;2 нед)</button>
+        </div>
+
+        <div class="orders-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th>Артикул</th>
+                <th>Название</th>
+                <th>ABC</th>
+                <th>Категория</th>
+                <th>Продаж/день</th>
+                <th>Норма/неделю</th>
+                <th>WMS</th>
+                <th>В сети</th>
+                <th>Недель запаса</th>
+                <th>Дозаказать</th>
+                <th>Срочность</th>
+              </tr>
+            </thead>
+            <tbody id="reorder-tbody">
+              <tr><td colspan="11"><div class="empty-state">Нажмите обновить</div></td></tr>
+            </tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
     <!-- WAREHOUSE REPORT -->
     <div id="page-warehouse-report" class="page">
       <div class="topbar">
@@ -1165,6 +1255,7 @@ td.muted{color:var(--text2)}
             <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option>
           </select>
           <button class="btn-secondary" onclick="loadZeroSales()">↻ Обновить</button>
+          <button class="btn-secondary" onclick="exportZeroSalesExcel()" style="background:var(--green);color:#fff;border-color:var(--green)">📥 Excel</button>
           <button id="zs-schlopka-btn" class="btn-primary" style="display:none;background:var(--amber)" onclick="createAutoSchlopka()">
             ⚡ Авто-схлопка на флагманы
           </button>
@@ -1174,10 +1265,16 @@ td.muted{color:var(--text2)}
         <!-- Stats -->
         <div id="zs-stats" style="display:flex;gap:10px;margin-bottom:20px;flex-wrap:wrap"></div>
         <!-- Filters -->
-        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+        <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <button class="period-tab active" id="zs-filter-all" onclick="zsFilter('all',this)">Все</button>
           <button class="period-tab" id="zs-filter-broken" onclick="zsFilter('broken',this)">🔴 Битая сетка</button>
           <button class="period-tab" id="zs-filter-schlopka" onclick="zsFilter('schlopka',this)">⚡ Нужна схлопка (&lt;50шт)</button>
+        </div>
+        <div style="display:flex;gap:8px;margin-bottom:16px;flex-wrap:wrap">
+          <button class="period-tab active" id="zs-cat-all" onclick="zsCatFilter('all',this)">Все категории</button>
+          <button class="period-tab" id="zs-cat-clothes" onclick="zsCatFilter('Одежда',this)">👕 Одежда</button>
+          <button class="period-tab" id="zs-cat-shoes" onclick="zsCatFilter('Обувь',this)">👟 Обувь</button>
+          <button class="period-tab" id="zs-cat-acc" onclick="zsCatFilter('Аксессуары',this)">🎒 Аксессуары</button>
         </div>
         <!-- Table -->
         <div class="orders-wrap">
@@ -1658,6 +1755,12 @@ const ONEC_MAP={'MAGIC CITY':'MAGIC CITY','NOVZA':'NOVZA','ATLAS CHIMGAN':'ATLAS
 function toggleTheme(){
   var isLight = document.documentElement.getAttribute('data-theme')==='light';
   var newTheme = isLight ? 'dark' : 'light';
+  var btn = document.querySelector('.theme-toggle-btn');
+  if(btn){
+    btn.classList.remove('spinning');
+    void btn.offsetWidth; // reflow to restart animation
+    btn.classList.add('spinning');
+  }
   applyTheme(newTheme);
   localStorage.setItem('lining-theme', newTheme);
 }
@@ -1743,7 +1846,10 @@ async function setupTgWebhook(){
 
 async function init(){
   // Apply saved theme (dark by default)
-  var saved = localStorage.getItem('lining-theme')||'dark';
+  var saved = localStorage.getItem('lining-theme');
+  if(!saved){
+    saved = (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches) ? 'light' : 'dark';
+  }
   applyTheme(saved);
   var r=await fetch('/api/me');var d=await r.json();
   if(d.logged_in){currentRole=d.role;currentBranch=d.branch;showApp(d);}
@@ -2598,6 +2704,7 @@ function showPage(name,btn){
   if(name==='distribution'){if(typeof distClear==='function')distClear();}
   if(name==='zerosales'){loadZeroSales();}
   if(name==='warehouse-report'){loadWarehouseReport();}
+  if(name==='reorder'){loadReorder();}
   if(name==='discount-recs'){loadDiscountRecs();}
   if(name==='powerbi'){}
   if(name==='ai'){
@@ -3600,6 +3707,77 @@ loadSyncStatus();
 var _wrData = null;
 var _wrTab = 'singles';
 
+// ===== REORDER =====
+var _reorderData = [];
+var _roFilter = 'all';
+
+async function loadReorder(){
+  var cat = document.getElementById('reorder-cat')?.value || '';
+  document.getElementById('reorder-tbody').innerHTML = '<tr><td colspan="11"><div class="empty-state">Загрузка...</div></td></tr>';
+  var r = await fetch('/api/reorder/recommendations?category='+encodeURIComponent(cat));
+  if(!r.ok){ toast('Ошибка загрузки', true); return; }
+  var d = await r.json();
+  _reorderData = d.items || [];
+
+  var sub = document.getElementById('reorder-sub');
+  if(sub) sub.textContent = 'Сформировано: ' + (d.generated_at||'') + ' · ' + d.total + ' артикулов требуют пополнения';
+
+  // Stats
+  var critical = d.critical || 0;
+  var total = d.total || 0;
+  var totalQty = _reorderData.reduce((s,i)=>s+(i.reorder_qty||0), 0);
+
+  document.getElementById('reorder-stats').innerHTML =
+    '<div style="background:rgba(255,23,68,.08);border:1px solid rgba(255,23,68,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">'+critical+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">🔴 Критично</div></div>'+
+    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--text)">'+total+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Артикулов</div></div>'+
+    '<div style="background:rgba(16,185,129,.08);border:1px solid rgba(16,185,129,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--green)">'+totalQty+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Штук к дозаказу</div></div>';
+
+  renderReorder();
+}
+
+function roFilter(f, btn){
+  _roFilter = f;
+  document.querySelectorAll('#page-reorder .period-tab').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderReorder();
+}
+
+function renderReorder(){
+  var data = _reorderData;
+  if(_roFilter !== 'all') data = data.filter(i=>i.urgency === _roFilter);
+
+  if(!data.length){
+    document.getElementById('reorder-tbody').innerHTML = '<tr><td colspan="11"><div class="empty-state">Нет данных по выбранному фильтру 🎉</div></td></tr>';
+    return;
+  }
+
+  document.getElementById('reorder-tbody').innerHTML = data.map(item=>{
+    var urgColor = item.urgency==='critical'?'var(--accent)':item.urgency==='low'?'var(--amber)':'var(--orange,#f97316)';
+    var urgIcon = item.urgency==='critical'?'🔴':item.urgency==='low'?'🟡':'🟠';
+    var urgLabel = item.urgency==='critical'?'Критично':item.urgency==='low'?'Низкий':'Средний';
+    var wksColor = item.weeks_of_stock<0.5?'var(--accent)':item.weeks_of_stock<1?'var(--amber)':'var(--text2)';
+    return '<tr>'+
+      '<td style="font-weight:700;font-size:12px;text-transform:uppercase">'+item.article+'</td>'+
+      '<td style="font-size:11px;color:var(--text2);max-width:180px"><span title="'+item.name+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.name+'</span></td>'+
+      '<td>'+abcBadge(item.abc)+'</td>'+
+      '<td style="font-size:11px;color:var(--text3)">'+item.category+'</td>'+
+      '<td style="text-align:center;font-size:12px;font-weight:600">'+item.med_daily+' шт</td>'+
+      '<td style="text-align:center;font-size:12px;font-weight:700;color:var(--text)">'+item.weekly_norm+' шт</td>'+
+      '<td style="text-align:center;color:var(--text2)">'+item.total_wms+'</td>'+
+      '<td style="text-align:center;color:var(--text2)">'+item.network_stock+'</td>'+
+      '<td style="text-align:center;font-weight:700;color:'+wksColor+'">'+item.weeks_of_stock+'</td>'+
+      '<td style="text-align:center"><span style="background:rgba(16,185,129,.15);border:1px solid rgba(16,185,129,.3);border-radius:6px;padding:3px 10px;font-size:12px;font-weight:800;color:var(--green)">'+item.reorder_qty+' шт</span></td>'+
+      '<td><span style="color:'+urgColor+';font-weight:700;font-size:11px">'+urgIcon+' '+urgLabel+'</span></td>'+
+      '</tr>';
+  }).join('');
+}
+
+function downloadReorderExcel(){
+  var cat = document.getElementById('reorder-cat')?.value || '';
+  toast('Генерирую Excel...');
+  window.location.href = '/api/reorder/excel?category=' + encodeURIComponent(cat);
+}
+
 function downloadWarehouseReport(){
   toast('Генерирую отчёт...');
   window.location.href = '/api/warehouse/report/excel';
@@ -3734,6 +3912,7 @@ async function uploadPBISales(inp, replace){
 // ===== ZERO SALES =====
 var _zsData = [];
 var _zsFilter = 'all';
+var _zsCatFilter = 'all';
 
 async function loadZeroSales(){
   var branch = currentBranch;
@@ -3757,16 +3936,7 @@ async function loadZeroSales(){
     : 'Артикулы без продаж за 30 дней — все филиалы';
 
   // Stats
-  var total = _zsData.length;
-  var broken = _zsData.filter(i=>i.is_broken_grid).length;
-  var needsSchlopka = _zsData.filter(i=>i.needs_schlopka).length;
-  var totalStock = _zsData.reduce((s,i)=>s+(i.branch_stock||0),0);
-
-  document.getElementById('zs-stats').innerHTML =
-    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">'+total+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Артикулов</div></div>'+
-    '<div style="background:rgba(255,23,68,.08);border:1px solid rgba(255,23,68,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">'+broken+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Битая сетка</div></div>'+
-    '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--amber)">'+needsSchlopka+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Нужна схлопка</div></div>'+
-    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--text)">'+totalStock+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Единиц в залежи</div></div>';
+  // Stats will be updated in renderZeroSales based on current filter
 
   // Show auto-schlopka button for admin if there are candidates
   var schlopkaBtn = document.getElementById('zs-schlopka-btn');
@@ -3779,6 +3949,13 @@ async function loadZeroSales(){
   renderZeroSales();
 }
 
+function zsCatFilter(cat, btn){
+  _zsCatFilter = cat;
+  document.querySelectorAll('#page-zerosales .period-tab[id^="zs-cat"]').forEach(b=>b.classList.remove('active'));
+  if(btn) btn.classList.add('active');
+  renderZeroSales();
+}
+
 function zsFilter(f, btn){
   _zsFilter = f;
   document.querySelectorAll('#page-zerosales .period-tab').forEach(b=>b.classList.remove('active'));
@@ -3788,6 +3965,20 @@ function zsFilter(f, btn){
 
 function renderZeroSales(){
   var data = _zsData;
+  if(_zsCatFilter !== 'all') data = data.filter(i=>i.category === _zsCatFilter);
+
+  // Update stats based on current category filter
+  var total = data.length;
+  var broken = data.filter(i=>i.is_broken_grid).length;
+  var needsSchlopka = data.filter(i=>i.needs_schlopka).length;
+  var totalStock = data.reduce((s,i)=>s+(i.branch_stock||0),0);
+  var statsEl = document.getElementById('zs-stats');
+  if(statsEl) statsEl.innerHTML =
+    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--text)">'+total+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Артикулов</div></div>'+
+    '<div style="background:rgba(255,23,68,.08);border:1px solid rgba(255,23,68,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">'+broken+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Битая сетка</div></div>'+
+    '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--amber)">'+needsSchlopka+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Нужна схлопка</div></div>'+
+    '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--text)">'+totalStock+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Единиц в залежи</div></div>';
+
   if(_zsFilter === 'broken') data = data.filter(i=>i.is_broken_grid);
   if(_zsFilter === 'schlopka') data = data.filter(i=>i.needs_schlopka);
 
@@ -3827,6 +4018,16 @@ function renderZeroSales(){
   }).join('');
 }
 
+function exportZeroSalesExcel(){
+  var branch = currentBranch;
+  if(currentRole==='admin'){ var sel=document.getElementById('zs-branch'); if(sel) branch=sel.value; }
+  var url = '/api/zero-sales/excel?days=30';
+  if(branch) url += '&branch=' + encodeURIComponent(branch);
+  if(_zsCatFilter && _zsCatFilter !== 'all') url += '&category=' + encodeURIComponent(_zsCatFilter);
+  toast('Генерирую Excel...');
+  window.location.href = url;
+}
+
 async function createAutoSchlopka(){
   var candidates = _zsData.filter(i=>i.needs_schlopka);
   if(!candidates.length){ toast('Нет кандидатов для схлопки', true); return; }
@@ -3848,6 +4049,12 @@ async function createAutoSchlopka(){
   if(!r.ok){ toast(d.error||'Ошибка', true); return; }
   var summary = d.by_flagman ? Object.entries(d.by_flagman).map(([b,q])=>b.split(' ')[0]+': '+q).join(', ') : '';
   toast('✅ Схлопка: '+d.articles+' арт, '+d.items+' поз → '+summary);
+  if(d.excel_url){
+    var a = document.createElement('a');
+    a.href = d.excel_url;
+    a.download = '';
+    document.body.appendChild(a); a.click(); a.remove();
+  }
   showPage('schlopka', null);
 }
 
