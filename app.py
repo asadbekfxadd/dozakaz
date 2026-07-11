@@ -3961,6 +3961,287 @@ def zero_sales_excel():
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True, download_name=fname)
 
+
+# ===== AUTO REORDER RECOMMENDATIONS =====
+
+@app.route('/api/reorder/recommendations')
+@admin_required
+def reorder_recommendations():
+    """
+    Smart reorder recommendations:
+    - Calculates median daily sales (excluding top 10% outliers)
+    - Weekly norm = median * 7 + 20% buffer
+    - Recommends reorder when WMS < weekly norm
+    """
+    category = request.args.get('category', '')
+    min_velocity = float(request.args.get('min_velocity', 0.1))
+
+    conn = get_db(); cur = conn.cursor()
+
+    # Get daily sales per article+size for last 30 days
+    cur.execute("""
+        SELECT
+            s.article,
+            s.sale_date,
+            SUM(s.qty) as daily_qty
+        FROM sales s
+        WHERE s.sale_date >= CURRENT_DATE - 30
+        AND s.sale_date IS NOT NULL
+        GROUP BY s.article, s.sale_date
+        ORDER BY s.article, s.sale_date
+    """)
+    sales_rows = cur.fetchall()
+
+    # Group by article -> list of daily quantities
+    from collections import defaultdict
+    import statistics
+    art_daily = defaultdict(list)
+    for r in sales_rows:
+        art_key = r['article'] if r['article'].endswith('A') else r['article'] + 'A'
+        art_daily[art_key].append(int(r['daily_qty'] or 0))
+        art_daily[r['article']].append(int(r['daily_qty'] or 0))
+
+    # Get WMS stock per article+size
+    cur.execute("""
+        SELECT c.article, c.size, c.wms_stock, c.name, c.abc, c.season, c.category
+        FROM catalog c
+        WHERE c.wms_stock >= 0
+        AND c.category != 'Аксессуары'
+        AND c.discount = 0
+        ORDER BY c.article, c.size
+    """)
+    catalog_rows = cur.fetchall()
+
+    # Get network stock (branches)
+    cur.execute("""
+        SELECT article, SUM(qty) as network_stock
+        FROM branch_stock
+        GROUP BY article
+    """)
+    network_map = {r['article']: int(r['network_stock'] or 0) for r in cur.fetchall()}
+
+    cur.close(); conn.close()
+
+    def calc_weekly_norm(daily_list):
+        if not daily_list:
+            return 0, 0
+        # Remove top 10% outliers
+        sorted_list = sorted(daily_list)
+        cutoff = max(1, int(len(sorted_list) * 0.9))
+        filtered = sorted_list[:cutoff]
+        if not filtered:
+            return 0, 0
+        # Median of days with sales
+        days_with_sales = [x for x in filtered if x > 0]
+        if not days_with_sales:
+            return 0, 0
+        med = statistics.median(days_with_sales)
+        # Weekly norm with 20% buffer
+        weekly = med * 7 * 1.2
+        return round(med, 2), round(weekly)
+
+    # Group catalog by article
+    art_sizes = defaultdict(list)
+    art_meta = {}
+    for r in catalog_rows:
+        art = r['article']
+        art_sizes[art].append({'size': r['size'], 'wms': int(r['wms_stock'] or 0)})
+        if art not in art_meta:
+            art_meta[art] = {
+                'name': r['name'] or '',
+                'abc': r['abc'] or 'C',
+                'season': r['season'] or '',
+                'category': r['category'] or ''
+            }
+
+    results = []
+    for art, sizes in art_sizes.items():
+        meta = art_meta.get(art, {})
+        if category and meta.get('category') != category:
+            continue
+
+        daily = art_daily.get(art, [])
+        med_daily, weekly_norm = calc_weekly_norm(daily)
+
+        if med_daily < min_velocity:
+            continue  # too slow moving
+
+        total_wms = sum(s['wms'] for s in sizes)
+        network_stock = network_map.get(art, 0)
+        total_available = total_wms + network_stock
+
+        if weekly_norm <= 0:
+            continue
+
+        # How many weeks of stock do we have?
+        weeks_of_stock = round(total_available / weekly_norm, 1) if weekly_norm > 0 else 99
+
+        if weeks_of_stock >= 2:
+            continue  # enough stock for 2+ weeks
+
+        # Calculate reorder quantity (bring up to 4 weeks of stock)
+        target = weekly_norm * 4
+        reorder_qty = max(0, round(target - total_available))
+
+        if reorder_qty <= 0:
+            continue
+
+        urgency = 'critical' if weeks_of_stock < 0.5 else 'low' if weeks_of_stock < 1 else 'medium'
+
+        results.append({
+            'article': art,
+            'name': meta.get('name', ''),
+            'abc': meta.get('abc', 'C'),
+            'season': meta.get('season', ''),
+            'category': meta.get('category', ''),
+            'med_daily': med_daily,
+            'weekly_norm': int(weekly_norm),
+            'total_wms': total_wms,
+            'network_stock': network_stock,
+            'total_available': total_available,
+            'weeks_of_stock': weeks_of_stock,
+            'reorder_qty': reorder_qty,
+            'urgency': urgency,
+            'sizes': sizes
+        })
+
+    # Sort: critical first, then by ABC
+    urgency_order = {'critical': 0, 'low': 1, 'medium': 2}
+    abc_order = {'A': 0, 'B': 1, 'C': 2}
+    results.sort(key=lambda x: (urgency_order.get(x['urgency'], 9), abc_order.get(x['abc'], 9)))
+
+    return jsonify({
+        'items': results,
+        'total': len(results),
+        'critical': sum(1 for r in results if r['urgency'] == 'critical'),
+        'generated_at': datetime.now().strftime('%d.%m.%Y %H:%M')
+    })
+
+
+@app.route('/api/reorder/excel')
+@admin_required
+def reorder_excel():
+    """Export reorder recommendations to Excel"""
+    from flask import url_for
+    import requests as _req
+
+    # Reuse the recommendations logic
+    category = request.args.get('category', '')
+
+    # Call internal endpoint
+    with app.test_client() as c:
+        c.set_cookie('session', request.cookies.get('session', ''))
+        resp = c.get(f'/api/reorder/recommendations?category={category}',
+                    headers={'Cookie': f'session={request.cookies.get("session","")}' })
+
+    conn = get_db(); cur = conn.cursor()
+
+    # Rebuild data directly
+    cur.execute("""
+        SELECT s.article, s.sale_date, SUM(s.qty) as daily_qty
+        FROM sales s WHERE s.sale_date >= CURRENT_DATE - 30 AND s.sale_date IS NOT NULL
+        GROUP BY s.article, s.sale_date
+    """)
+    sales_rows = cur.fetchall()
+
+    from collections import defaultdict
+    import statistics
+    art_daily = defaultdict(list)
+    for r in sales_rows:
+        art_key = r['article'] if r['article'].endswith('A') else r['article'] + 'A'
+        art_daily[art_key].append(int(r['daily_qty'] or 0))
+        art_daily[r['article']].append(int(r['daily_qty'] or 0))
+
+    cur.execute("""
+        SELECT c.article, c.size, c.wms_stock, c.name, c.abc, c.season, c.category
+        FROM catalog c WHERE c.wms_stock >= 0 AND c.category != 'Аксессуары' AND c.discount = 0
+    """)
+    catalog_rows = cur.fetchall()
+
+    cur.execute("SELECT article, SUM(qty) as ns FROM branch_stock GROUP BY article")
+    network_map = {r['article']: int(r['ns'] or 0) for r in cur.fetchall()}
+    cur.close(); conn.close()
+
+    def calc_weekly_norm(daily_list):
+        if not daily_list: return 0, 0
+        sorted_list = sorted(daily_list)
+        cutoff = max(1, int(len(sorted_list) * 0.9))
+        filtered = sorted_list[:cutoff]
+        days_with_sales = [x for x in filtered if x > 0]
+        if not days_with_sales: return 0, 0
+        med = statistics.median(days_with_sales)
+        return round(med, 2), round(med * 7 * 1.2)
+
+    art_sizes = defaultdict(list)
+    art_meta = {}
+    for r in catalog_rows:
+        art = r['article']
+        art_sizes[art].append({'size': r['size'], 'wms': int(r['wms_stock'] or 0)})
+        if art not in art_meta:
+            art_meta[art] = {'name': r['name'] or '', 'abc': r['abc'] or 'C',
+                             'season': r['season'] or '', 'category': r['category'] or ''}
+
+    results = []
+    for art, sizes in art_sizes.items():
+        meta = art_meta.get(art, {})
+        if category and meta.get('category') != category: continue
+        daily = art_daily.get(art, [])
+        med_daily, weekly_norm = calc_weekly_norm(daily)
+        if med_daily < 0.1 or weekly_norm <= 0: continue
+        total_wms = sum(s['wms'] for s in sizes)
+        network_stock = network_map.get(art, 0)
+        total_available = total_wms + network_stock
+        weeks_of_stock = round(total_available / weekly_norm, 1) if weekly_norm > 0 else 99
+        if weeks_of_stock >= 2: continue
+        reorder_qty = max(0, round(weekly_norm * 4 - total_available))
+        if reorder_qty <= 0: continue
+        urgency = '🔴 Критично' if weeks_of_stock < 0.5 else '🟡 Низкий' if weeks_of_stock < 1 else '🟠 Средний'
+        results.append([art, meta.get('name',''), meta.get('abc',''), meta.get('season',''),
+                       meta.get('category',''), round(med_daily,2), int(weekly_norm),
+                       total_wms, network_stock, total_available,
+                       weeks_of_stock, reorder_qty, urgency])
+
+    from openpyxl.utils import get_column_letter as gcl
+    wb = openpyxl.Workbook(); ws = wb.active; ws.title = 'Авто-дозаказ'
+    hdr_fill = PatternFill('solid', fgColor='1A1A2E')
+    red_fill  = PatternFill('solid', fgColor='FFEBEE')
+    amb_fill  = PatternFill('solid', fgColor='FFF3E0')
+    grn_fill  = PatternFill('solid', fgColor='E8F5E9')
+    thin = Side(style='thin', color='DDDDDD')
+    brd = Border(left=thin, right=thin, top=thin, bottom=thin)
+    ctr = Alignment(horizontal='center', vertical='center')
+    lft = Alignment(horizontal='left', vertical='center')
+
+    headers = ['Артикул','Название','ABC','Сезон','Категория',
+               'Продаж/день (медиана)','Норма/неделю','WMS','В сети',
+               'Всего','Недель запаса','ДОЗАКАЗАТЬ','Срочность']
+    for ci, h in enumerate(headers, 1):
+        cell = ws.cell(row=1, column=ci, value=h)
+        cell.fill = hdr_fill; cell.font = Font(bold=True, color='FFFFFF', size=9)
+        cell.alignment = ctr; cell.border = brd
+    ws.row_dimensions[1].height = 32
+
+    for ri, row in enumerate(results, 2):
+        for ci, v in enumerate(row, 1):
+            cell = ws.cell(row=ri, column=ci, value=v)
+            cell.border = brd; cell.font = Font(size=9)
+            cell.alignment = lft if ci <= 2 else ctr
+            if ci == 12:  # reorder qty
+                cell.fill = grn_fill; cell.font = Font(size=9, bold=True, color='1B5E20')
+            if ci == 11:  # weeks
+                wks = float(v or 0)
+                cell.fill = red_fill if wks < 0.5 else amb_fill if wks < 1 else PatternFill('solid', fgColor='F3F4F6')
+
+    widths = [14,36,6,10,10,14,12,8,8,8,10,12,12]
+    for i,w in enumerate(widths,1): ws.column_dimensions[gcl(i)].width = w
+    ws.freeze_panes = 'A2'
+
+    output = io.BytesIO(); wb.save(output); output.seek(0)
+    fname = f'Reorder_{datetime.now().strftime("%Y%m%d_%H%M")}.xlsx'
+    return send_file(output,
+        mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+        as_attachment=True, download_name=fname)
+
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
     app.run(host='0.0.0.0', port=port)
