@@ -3965,7 +3965,7 @@ def zero_sales_excel():
 # ===== AUTO REORDER RECOMMENDATIONS =====
 
 @app.route('/api/reorder/recommendations')
-@admin_required
+@login_required
 def reorder_recommendations():
     """
     Smart reorder recommendations:
@@ -3975,21 +3975,30 @@ def reorder_recommendations():
     """
     category = request.args.get('category', '')
     min_velocity = float(request.args.get('min_velocity', 0.1))
+    branch_filter = session.get('branch') if session.get('role') == 'user' else None
 
     conn = get_db(); cur = conn.cursor()
 
-    # Get daily sales per article+size for last 30 days
-    cur.execute("""
-        SELECT
-            s.article,
-            s.sale_date,
-            SUM(s.qty) as daily_qty
-        FROM sales s
-        WHERE s.sale_date >= CURRENT_DATE - 30
-        AND s.sale_date IS NOT NULL
-        GROUP BY s.article, s.sale_date
-        ORDER BY s.article, s.sale_date
-    """)
+    # Get daily sales per article for last 30 days (filtered by branch for managers)
+    if branch_filter:
+        cur.execute("""
+            SELECT s.article, s.sale_date, SUM(s.qty) as daily_qty
+            FROM sales s
+            WHERE s.sale_date >= CURRENT_DATE - 30
+            AND s.sale_date IS NOT NULL
+            AND s.branch = %s
+            GROUP BY s.article, s.sale_date
+            ORDER BY s.article, s.sale_date
+        """, (branch_filter,))
+    else:
+        cur.execute("""
+            SELECT s.article, s.sale_date, SUM(s.qty) as daily_qty
+            FROM sales s
+            WHERE s.sale_date >= CURRENT_DATE - 30
+            AND s.sale_date IS NOT NULL
+            GROUP BY s.article, s.sale_date
+            ORDER BY s.article, s.sale_date
+        """)
     sales_rows = cur.fetchall()
 
     # Group by article -> list of daily quantities
