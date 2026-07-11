@@ -262,6 +262,15 @@ def init_db():
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article, branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_article ON sales(article)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_branch ON sales(article,branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_branch ON branch_stock(branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_art_branch ON branch_stock(article,branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_discount ON catalog(discount)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_branch ON sales(article, branch)')
@@ -385,7 +394,7 @@ def upload_to_yadisk(file_path, filename):
         req = urllib.request.Request(folder_url, method='PUT',
                                     headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
         try: urllib.request.urlopen(req, timeout=5)
-        except: pass
+        except Exception as _e: print(f"[WARN] {_e}")
         # Get upload URL
         upload_url = ('https://cloud-api.yandex.net/v1/disk/resources/upload?'
                      + urllib.parse.urlencode({'path': f'{folder}/{filename}', 'overwrite': 'true'}))
@@ -472,7 +481,7 @@ def create_order():
         file_data = f.read()
         try:
             with open(file_path, 'wb') as out: out.write(file_data)
-        except: pass
+        except Exception as _e: print(f"[WARN] {_e}")
     if not filename and items:
         ts = datetime.now().strftime('%Y%m%d_%H%M%S')
         branch_slug = branch.replace(' ','_').replace('.','')
@@ -483,7 +492,7 @@ def create_order():
         file_data = excel_buf.read()
         try:
             with open(file_path, 'wb') as out: out.write(file_data)
-        except: pass
+        except Exception as _e: print(f"[WARN] {_e}")
     conn = get_db(); cur = conn.cursor()
     import psycopg2.extras
     cur.execute(
@@ -706,7 +715,7 @@ def upload_catalog():
                 try:
                     wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace(' ','')
                     wms = int(float(wms_str))
-                except: pass
+                except Exception as _e: print(f"[WARN] {_e}")
             catalog_items.append((art, name, size, wms, season, category))
             for branch, col in branch_cols.items():
                 qty = row[col]
@@ -716,7 +725,7 @@ def upload_catalog():
                         qty_str = str(qty).replace(',', '').replace(' ', '').replace(' ', '')
                         q = int(float(qty_str))
                         if q > 0: branch_items.append((art, size, branch, q))
-                    except: pass
+                    except Exception as _e: print(f"[WARN] {_e}")
         cur.executemany('INSERT INTO catalog (article,name,size,wms_stock,season,category) VALUES (%s,%s,%s,%s,%s,%s)', catalog_items)
         cur.executemany('INSERT INTO branch_stock (article,size,branch,qty) VALUES (%s,%s,%s,%s)', branch_items)
         # Restore ABC/sold data
@@ -1149,7 +1158,7 @@ def upload_sales():
             m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
             if m:
                 try: sale_date = f"{m.group(3)}-{m.group(2)}-{m.group(1)}"
-                except: pass
+                except Exception as _e: print(f"[WARN] {_e}")
             cur.execute(
                 'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
                 (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
@@ -2040,7 +2049,7 @@ def sync_catalog_from_yadisk():
                 wms = 0
                 if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
                     try: wms = int(float(str(row[wms_col])))
-                    except: pass
+                    except Exception as _e: print(f"[WARN] {_e}")
                 catalog_items.append((art, name, size, wms, season, category))
                 for branch, col in branch_cols.items():
                     qty = row[col]
@@ -2048,7 +2057,7 @@ def sync_catalog_from_yadisk():
                         try:
                             q = int(float(str(qty)))
                             if q > 0: branch_items.append((art, size, branch, q))
-                        except: pass
+                        except Exception as _e: print(f"[WARN] {_e}")
             cur.executemany('INSERT INTO catalog (article,name,size,wms_stock,season,category) VALUES (%s,%s,%s,%s,%s,%s)', catalog_items)
             cur.executemany('INSERT INTO branch_stock (article,size,branch,qty) VALUES (%s,%s,%s,%s)', branch_items)
             # Restore ABC/sold data
@@ -2074,6 +2083,7 @@ sync_thread = Thread(target=sync_scheduler, daemon=True)
 sync_thread.start()
 
 @app.route('/api/debug/counts')
+@login_required
 def debug_counts():
     conn = get_db(); cur = conn.cursor()
     cur.execute('SELECT COUNT(*) as c FROM catalog'); cat = cur.fetchone()['c']
@@ -3326,7 +3336,7 @@ def powerbi_sync():
             m = _re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
             if m:
                 try: sale_date = f'{m.group(3)}-{m.group(2)}-{m.group(1)}'
-                except: pass
+                except Exception as _e: print(f"[WARN] {_e}")
             cur.execute(
                 'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
                 (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
@@ -3729,7 +3739,7 @@ def tg_webhook():
                 data=urllib.parse.urlencode({'callback_query_id': cb_id, 'text': text}).encode(),
                 method='POST'
             ), timeout=5)
-        except: pass
+        except Exception as _e: print(f"[WARN] {_e}")
 
     def save_sub(chat_id, username, full_name, role):
         c2 = get_db(); cur2 = c2.cursor()
@@ -4250,6 +4260,91 @@ def reorder_excel():
     return send_file(output,
         mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
         as_attachment=True, download_name=fname)
+
+
+@app.route('/api/tg/weekly-report', methods=['POST'])
+@admin_required
+def tg_weekly_report():
+    """Send weekly sales summary to all admin subscribers"""
+    conn = get_db(); cur = conn.cursor()
+    try:
+        # Sales last 7 days
+        cur.execute("""
+            SELECT
+                SUM(qty) as total_qty,
+                SUM(amount) as total_amount,
+                COUNT(DISTINCT branch) as branches,
+                COUNT(DISTINCT article) as articles
+            FROM sales
+            WHERE sale_date >= CURRENT_DATE - 7
+        """)
+        totals = cur.fetchone()
+
+        # Top 5 articles
+        cur.execute("""
+            SELECT article, SUM(qty) as qty
+            FROM sales WHERE sale_date >= CURRENT_DATE - 7
+            GROUP BY article ORDER BY qty DESC LIMIT 5
+        """)
+        top_arts = cur.fetchall()
+
+        # Top branches
+        cur.execute("""
+            SELECT branch, SUM(qty) as qty
+            FROM sales WHERE sale_date >= CURRENT_DATE - 7
+            GROUP BY branch ORDER BY qty DESC LIMIT 5
+        """)
+        top_branches = cur.fetchall()
+
+        # Pending orders
+        cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Новая'")
+        pending = cur.fetchone()['c']
+
+        cur.close(); conn.close()
+
+        from datetime import timedelta
+        week_start = (datetime.now() - timedelta(days=7)).strftime('%d.%m')
+        week_end = datetime.now().strftime('%d.%m.%Y')
+
+        N = chr(10)
+        msg = '📊 <b>Еженедельный отчёт LI-NING</b>' + N
+        msg += '📅 ' + week_start + ' — ' + week_end + N + N
+        msg += '🛍 <b>Продажи за неделю:</b>' + N
+        msg += '• Штук: <b>' + '{:,}'.format(int(totals['total_qty'] or 0)) + '</b>' + N
+        msg += '• Сумма: <b>' + '{:,}'.format(int(totals['total_amount'] or 0)) + ' сум</b>' + N
+        msg += '• Филиалов: ' + str(totals['branches']) + N
+        msg += '• Артикулов: ' + str(totals['articles']) + N + N
+
+        if top_arts:
+            msg += '🏆 <b>Топ артикулы:</b>' + N
+            for i, r in enumerate(top_arts, 1):
+                msg += str(i) + '. ' + str(r['article']) + ' — ' + str(r['qty']) + ' шт' + N
+
+        if top_branches:
+            msg += N + '🏪 <b>Топ филиалы:</b>' + N
+            for i, r in enumerate(top_branches, 1):
+                msg += str(i) + '. ' + str(r['branch']) + ' — ' + str(r['qty']) + ' шт' + N
+
+        if pending > 0:
+            msg += N + '⚠️ Новых заявок ожидает: <b>' + str(pending) + '</b>'
+
+        # Send to all admins
+        conn2 = get_db(); cur2 = conn2.cursor()
+        cur2.execute("SELECT chat_id FROM tg_subscribers WHERE role='admin' AND active=TRUE")
+        admins = cur2.fetchall()
+        cur2.close(); conn2.close()
+
+        sent = 0
+        for row in admins:
+            if send_tg(row['chat_id'], msg):
+                sent += 1
+
+        return jsonify({'ok': True, 'sent': sent, 'message': msg[:100]+'...'})
+
+
+    except Exception as e:
+        import traceback
+        return jsonify({'error': str(e), 'tb': traceback.format_exc()}), 500
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))

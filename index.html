@@ -789,6 +789,7 @@ td.muted{color:var(--text2)}
           <span id="sync-status" class="admin-only" style="font-size:11px;color:var(--text3)"></span>
           <button class="btn-secondary admin-only" onclick="syncNow()" style="padding:8px 14px">&#8635; Синхронизировать</button>
           <button class="btn-secondary admin-only" onclick="setupTgWebhook()" style="padding:8px 14px">🤖 TG Бот</button>
+          <button class="btn-secondary admin-only" onclick="sendWeeklyReport()" style="padding:8px 14px">📊 TG Отчёт</button>
           <button class="btn-primary" onclick="showPage('form',null)">+ Новая заявка</button>
         </div>
       </div>
@@ -1833,6 +1834,13 @@ async function runDistribution(){
   btn.disabled=false; btn.textContent='📥 Рассчитать и скачать';
 }
 
+async function sendWeeklyReport(){
+  var r = await fetch('/api/tg/weekly-report', {method:'POST'});
+  var d = await r.json();
+  if(r.ok) toast('✅ Отчёт отправлен в Telegram: '+d.sent+' получателей');
+  else toast(d.error||'Ошибка', true);
+}
+
 async function setupTgWebhook(){
   var base = window.location.origin;
   var r = await fetch('/api/tg/setup-webhook', {
@@ -2147,6 +2155,10 @@ async function syncABC(){
 }
 
 // CATALOG
+var _catalogCache = {};
+var _catalogCacheTime = {};
+const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
 async function loadCatalog(){
   var search=document.getElementById('cat-search').value.trim();
   var abc=document.getElementById('cat-abc').value;
@@ -3105,6 +3117,25 @@ async function loadSchlopkaSessions(){
 }
 
 var currentSchlopkaBranches = [];
+
+async function markBranchReady(){
+  if(!currentSchlopkaSid){ toast('Нет активной схлопки', true); return; }
+  var btn = document.getElementById('branch-ready-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Отмечаю...'; }
+  var r = await fetch('/api/schlopka/'+currentSchlopkaSid+'/branch-ready', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({branch: currentBranch})
+  });
+  var d = await r.json();
+  if(btn){ btn.disabled=false; btn.textContent='✅ Готово к отгрузке'; }
+  if(r.ok){
+    toast('✅ Филиал отмечен как готовый к отгрузке');
+    openSchlopka(currentSchlopkaSid);
+  } else {
+    toast(d.error||'Ошибка', true);
+  }
+}
 
 async function openSchlopka(sid){
   var r = await fetch('/api/schlopka/'+sid);
