@@ -3964,8 +3964,8 @@ def zero_sales_excel():
 
 # ===== AUTO REORDER RECOMMENDATIONS =====
 
-@app.route('/api/reorder/recommendations')
-@admin_required
+@login_required
+
 def reorder_recommendations():
     """
     Smart reorder recommendations:
