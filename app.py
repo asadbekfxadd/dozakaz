@@ -257,6 +257,32 @@ def init_db():
         note TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS conversion_data (
+        id SERIAL PRIMARY KEY,
+        branch TEXT NOT NULL,
+        date DATE NOT NULL,
+        visitors_raw INTEGER DEFAULT 0,
+        visitors_net INTEGER DEFAULT 0,
+        checks INTEGER DEFAULT 0,
+        revenue BIGINT DEFAULT 0,
+        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+        UNIQUE(branch, date)
+    )''')
+    cur.execute('''CREATE TABLE IF NOT EXISTS conversion_settings (
+        branch TEXT PRIMARY KEY,
+        correction INTEGER DEFAULT 0
+    )''')
+    # Seed корректировки счётчиков (вычет сотрудников) — можно менять в UI
+    cur.execute("SELECT COUNT(*) AS c FROM conversion_settings")
+    if cur.fetchone()['c'] == 0:
+        _corr = {'TASHKENT CITY MALL': 25, 'MAGIC CITY': 20, 'ALAYSKIY': 15, 'ATLAS CHIMGAN': 15,
+                 'NOVZA': 15, 'ECO PARK': 15, 'Family park': 15, 'MALIKA': 10,
+                 'HIGH TOWN PLAZA': 5, 'Shota Rustavely': 5, 'Yunusabad gallery': 0,
+                 'M. BARAKA': 0, 'Scopus Mall': 0, 'UZBEGIM ANDIJAN': 0, 'DETSKIY MIR': 0}
+        for b, c in _corr.items():
+            cur.execute("INSERT INTO conversion_settings (branch, correction) VALUES (%s, %s) ON CONFLICT DO NOTHING", (b, c))
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_conv_date ON conversion_data(date)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_conv_branch ON conversion_data(branch)')
     # Indexes for performance
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
@@ -4345,6 +4371,199 @@ def tg_weekly_report():
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'tb': traceback.format_exc()}), 500
+
+
+# ============================================================
+# КОНВЕРСИЯ: посетители / чеки / выручка / курс ЦБ
+# ============================================================
+
+_usd_rate_cache = {'rate': None, 'ts': 0, 'date': ''}
+
+def get_cbu_usd_rate():
+    """Курс USD от ЦБ Узбекистана (cbu.uz), кэш 6 часов."""
+    import urllib.request, json as _json, time as _time
+    now = _time.time()
+    if _usd_rate_cache['rate'] and now - _usd_rate_cache['ts'] < 6 * 3600:
+        return _usd_rate_cache['rate'], _usd_rate_cache['date']
+    try:
+        req = urllib.request.Request(
+            'https://cbu.uz/ru/arkhiv-kursov-valyut/json/USD/',
+            headers={'User-Agent': 'Mozilla/5.0'})
+        with urllib.request.urlopen(req, timeout=10) as r:
+            data = _json.loads(r.read().decode('utf-8'))
+        rate = float(data[0]['Rate'])
+        _usd_rate_cache.update({'rate': rate, 'ts': now, 'date': data[0].get('Date', '')})
+        return rate, _usd_rate_cache['date']
+    except Exception:
+        # fallback: последний закэшированный или 12000
+        return _usd_rate_cache['rate'] or 12000.0, _usd_rate_cache['date'] or 'fallback'
+
+
+@app.route('/api/usd_rate')
+@login_required
+def api_usd_rate():
+    rate, rate_date = get_cbu_usd_rate()
+    return jsonify({'rate': rate, 'date': rate_date, 'source': 'ЦБ РУз'})
+
+
+@app.route('/api/conversion/settings', methods=['GET'])
+@login_required
+def get_conversion_settings():
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT branch, correction FROM conversion_settings ORDER BY branch")
+    rows = cur.fetchall()
+    cur.close(); conn.close()
+    return jsonify({r['branch']: r['correction'] for r in rows})
+
+
+@app.route('/api/conversion/settings', methods=['POST'])
+@admin_required
+def save_conversion_settings():
+    data = request.get_json() or {}
+    conn = get_db(); cur = conn.cursor()
+    for branch, corr in data.items():
+        try:
+            corr = int(corr)
+        except (ValueError, TypeError):
+            continue
+        cur.execute("""INSERT INTO conversion_settings (branch, correction) VALUES (%s, %s)
+                       ON CONFLICT (branch) DO UPDATE SET correction = EXCLUDED.correction""",
+                    (branch, corr))
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True})
+
+
+@app.route('/api/conversion/save', methods=['POST'])
+@admin_required
+def save_conversion_data():
+    """Сохранение дневных данных. body: {date: 'YYYY-MM-DD', rows: [{branch, visitors_raw, checks, revenue}]}"""
+    data = request.get_json() or {}
+    date = data.get('date', '').strip()
+    rows = data.get('rows', [])
+    if not date or not rows:
+        return jsonify({'error': 'Нужны date и rows'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT branch, correction FROM conversion_settings")
+    corr_map = {r['branch']: r['correction'] for r in cur.fetchall()}
+    saved = 0
+    for r in rows:
+        branch = str(r.get('branch', '')).strip()
+        if not branch:
+            continue
+        vraw = int(r.get('visitors_raw', 0) or 0)
+        checks = int(r.get('checks', 0) or 0)
+        revenue = int(r.get('revenue', 0) or 0)
+        corr = corr_map.get(branch, 0)
+        vnet = max(vraw - corr, 0) if vraw > 0 else 0
+        cur.execute("""INSERT INTO conversion_data (branch, date, visitors_raw, visitors_net, checks, revenue)
+                       VALUES (%s, %s, %s, %s, %s, %s)
+                       ON CONFLICT (branch, date) DO UPDATE SET
+                         visitors_raw = EXCLUDED.visitors_raw,
+                         visitors_net = EXCLUDED.visitors_net,
+                         checks = EXCLUDED.checks,
+                         revenue = EXCLUDED.revenue""",
+                    (branch, date, vraw, vnet, checks, revenue))
+        saved += 1
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True, 'saved': saved, 'date': date})
+
+
+@app.route('/api/conversion/data')
+@login_required
+def get_conversion_data():
+    """Данные за период: ?from=YYYY-MM-DD&to=YYYY-MM-DD. Свод по филиалам + по дням."""
+    dfrom = request.args.get('from', '')
+    dto = request.args.get('to', '')
+    if not dfrom or not dto:
+        return jsonify({'error': 'Нужны from и to'}), 400
+    conn = get_db(); cur = conn.cursor()
+    # Свод по филиалам
+    cur.execute("""SELECT branch,
+                          SUM(visitors_raw) AS visitors_raw, SUM(visitors_net) AS visitors_net,
+                          SUM(checks) AS checks, SUM(revenue) AS revenue,
+                          COUNT(DISTINCT date) AS days
+                   FROM conversion_data WHERE date BETWEEN %s AND %s
+                   GROUP BY branch ORDER BY branch""", (dfrom, dto))
+    summary = []
+    for r in cur.fetchall():
+        vnet = int(r['visitors_net'] or 0); checks = int(r['checks'] or 0); rev = int(r['revenue'] or 0)
+        summary.append({
+            'branch': r['branch'], 'visitors_raw': int(r['visitors_raw'] or 0),
+            'visitors_net': vnet, 'checks': checks, 'revenue': rev, 'days': r['days'],
+            'conversion': round(checks / vnet * 100, 1) if vnet > 0 else 0,
+            'avg_check': round(rev / checks) if checks > 0 else 0
+        })
+    summary.sort(key=lambda x: -x['conversion'])
+    # По дням
+    cur.execute("""SELECT branch, TO_CHAR(date, 'YYYY-MM-DD') AS date,
+                          visitors_raw, visitors_net, checks, revenue
+                   FROM conversion_data WHERE date BETWEEN %s AND %s
+                   ORDER BY date, branch""", (dfrom, dto))
+    daily = []
+    for r in cur.fetchall():
+        vnet = int(r['visitors_net'] or 0); checks = int(r['checks'] or 0)
+        daily.append({
+            'branch': r['branch'], 'date': r['date'],
+            'visitors_raw': int(r['visitors_raw'] or 0), 'visitors_net': vnet,
+            'checks': checks, 'revenue': int(r['revenue'] or 0),
+            'conversion': round(checks / vnet * 100, 1) if vnet > 0 else 0
+        })
+    cur.close(); conn.close()
+    rate, rate_date = get_cbu_usd_rate()
+    return jsonify({'summary': summary, 'daily': daily, 'usd_rate': rate, 'usd_date': rate_date})
+
+
+@app.route('/api/conversion/compare')
+@login_required
+def compare_conversion_periods():
+    """Сравнение двух периодов: ?from1&to1&from2&to2"""
+    f1, t1 = request.args.get('from1', ''), request.args.get('to1', '')
+    f2, t2 = request.args.get('from2', ''), request.args.get('to2', '')
+    if not all([f1, t1, f2, t2]):
+        return jsonify({'error': 'Нужны from1, to1, from2, to2'}), 400
+    conn = get_db(); cur = conn.cursor()
+
+    def period(df, dt):
+        cur.execute("""SELECT branch, SUM(visitors_net) AS v, SUM(checks) AS c, SUM(revenue) AS r
+                       FROM conversion_data WHERE date BETWEEN %s AND %s GROUP BY branch""", (df, dt))
+        out = {}
+        for row in cur.fetchall():
+            v = int(row['v'] or 0); c = int(row['c'] or 0); r = int(row['r'] or 0)
+            out[row['branch']] = {'visitors': v, 'checks': c, 'revenue': r,
+                                  'conversion': round(c / v * 100, 1) if v > 0 else 0}
+        return out
+
+    p1, p2 = period(f1, t1), period(f2, t2)
+    cur.close(); conn.close()
+    rate, _ = get_cbu_usd_rate()
+    branches = sorted(set(list(p1.keys()) + list(p2.keys())))
+    result = []
+    for b in branches:
+        a = p1.get(b, {'visitors': 0, 'checks': 0, 'revenue': 0, 'conversion': 0})
+        z = p2.get(b, {'visitors': 0, 'checks': 0, 'revenue': 0, 'conversion': 0})
+        result.append({
+            'branch': b, 'p1': a, 'p2': z,
+            'conv_delta': round(a['conversion'] - z['conversion'], 1),
+            'p1_usd': round(a['revenue'] / rate, 2), 'p2_usd': round(z['revenue'] / rate, 2),
+            'rev_delta_pct': round((a['revenue'] - z['revenue']) / z['revenue'] * 100, 1) if z['revenue'] > 0 else 0
+        })
+    result.sort(key=lambda x: -x['conv_delta'])
+    return jsonify({'rows': result, 'usd_rate': rate})
+
+
+@app.route('/api/conversion/data', methods=['DELETE'])
+@admin_required
+def delete_conversion_date():
+    """Удалить данные за дату: ?date=YYYY-MM-DD"""
+    date = request.args.get('date', '')
+    if not date:
+        return jsonify({'error': 'Нужна date'}), 400
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("DELETE FROM conversion_data WHERE date = %s", (date,))
+    deleted = cur.rowcount
+    conn.commit(); cur.close(); conn.close()
+    return jsonify({'ok': True, 'deleted': deleted})
+
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
