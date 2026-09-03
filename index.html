@@ -855,14 +855,14 @@ td.muted{color:var(--text2)}
       </div>
       <div class="content">
         <div class="catalog-toolbar">
-          <select id="cat-branch-sel" style="display:none;min-width:180px" onchange="loadCatalog()">
+          <select id="cat-branch-sel" style="display:none;min-width:180px" onchange="catalogPage=1;loadCatalog()">
             <option value="">— все мои филиалы —</option>
           </select>
-          <input type="text" id="cat-search" placeholder="🔍 Артикул или название..." oninput="loadCatalog()" style="min-width:220px">
-          <select id="cat-abc" onchange="loadCatalog()"><option value="">Все категории</option><option value="A">A — Топ товары</option><option value="B">B — Средние</option><option value="C">C — Остальные</option></select>
-          <select id="cat-stock" onchange="loadCatalog()"><option value="">Любой остаток WMS</option><option value="yes">Есть на складе</option><option value="no">Нет на складе</option></select>
-          <select id="cat-season" onchange="loadCatalog()"><option value="">Все сезоны</option></select>
-          <select id="cat-discount" onchange="loadCatalog()" class="outlet-only">
+          <input type="text" id="cat-search" placeholder="🔍 Артикул или название..." oninput="catalogPage=1;loadCatalog()" style="min-width:220px">
+          <select id="cat-abc" onchange="catalogPage=1;loadCatalog()"><option value="">Все категории</option><option value="A">A — Топ товары</option><option value="B">B — Средние</option><option value="C">C — Остальные</option></select>
+          <select id="cat-stock" onchange="catalogPage=1;loadCatalog()"><option value="">Любой остаток WMS</option><option value="yes">Есть на складе</option><option value="no">Нет на складе</option></select>
+          <select id="cat-season" onchange="catalogPage=1;loadCatalog()"><option value="">Все сезоны</option></select>
+          <select id="cat-discount" onchange="catalogPage=1;loadCatalog()" class="outlet-only">
             <option value="">Без скидки</option>
             <option value="yes">🔥 Скидка 70%</option>
           </select>
@@ -2546,7 +2546,9 @@ async function uploadCatalog(inp){
   var r=await fetch('/api/catalog/upload',{method:'POST',body:fd});
   var d=await r.json();
   if(!r.ok){toast(d.error||'Ошибка',true);return;}
-  toast('Загружено '+d.count+' позиций');loadCatalog();inp.value='';
+  toast('Загружено '+d.count+' позиций');
+  document.getElementById('cat-season').innerHTML='<option value="">Все сезоны</option>';
+  catalogPage=1;loadCatalog();inp.value='';
 }
 
 async function uploadABCFile(inp){
