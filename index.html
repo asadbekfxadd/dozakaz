@@ -1429,16 +1429,20 @@ td.muted{color:var(--text2)}
           <div class="topbar-title">Power BI Отчёт</div>
           <div class="topbar-sub">Экспорт аналитики в Excel</div>
         </div>
+        <div style="background:rgba(34,197,94,.12);border:1px solid rgba(34,197,94,.3);color:#22c55e;border-radius:8px;padding:6px 12px;font-size:12px;font-weight:600">
+          🔄 Автосинк ежедневно в 11:00
+        </div>
       </div>
       <div class="content">
         <div style="max-width:480px">
           <div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:14px;padding:32px;text-align:center">
             <div style="font-size:56px;margin-bottom:16px">📊</div>
             <div style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:8px">Power BI Отчёт</div>
-            <div style="font-size:13px;color:var(--text2);margin-bottom:28px;line-height:1.6">
-              Скачайте полный аналитический отчёт LI-NING Uzbekistan в формате Excel.<br>
-              Данные из Power BI — продажи, остатки, конверсия по всем филиалам.
+            <div style="font-size:13px;color:var(--text2);margin-bottom:12px;line-height:1.6">
+              Продажи автоматически подтягиваются из Power BI каждый день в 11:00.<br>
+              Можно также обновить вручную в любой момент.
             </div>
+            <div id="pbi-last-sync" style="font-size:12px;color:var(--text3);margin-bottom:20px">—</div>
             <button class="btn-primary" id="pbi-export-btn" onclick="exportPowerBI()" style="width:100%;padding:14px;font-size:14px;margin-bottom:12px">
               📥 Скачать отчёт Excel
             </button>
@@ -2882,7 +2886,7 @@ function showPage(name,btn){
   if(name==='warehouse-report'){loadWarehouseReport();}
   if(name==='reorder'){loadReorder();}
   if(name==='discount-recs'){loadDiscountRecs();}
-  if(name==='powerbi'){}
+  if(name==='powerbi'){loadPBILastSync();}
   if(name==='ai'){
     document.getElementById('ai-empty').style.display='block';
     document.getElementById('ai-result').style.display='none';
@@ -4235,6 +4239,33 @@ async function createAutoSchlopka(){
 }
 
 // ===== POWER BI =====
+async function loadPBILastSync(){
+  var el = document.getElementById('pbi-last-sync');
+  if(!el) return;
+  el.textContent = '⏳ Проверяю...';
+  try {
+    var r = await fetch('/api/powerbi/last-sync');
+    var d = await r.json();
+    if(!d.time){
+      el.textContent = 'Данные ещё ни разу не обновлялись';
+      el.style.color = 'var(--text3)';
+      return;
+    }
+    var dt = new Date(d.time);
+    var formatted = dt.toLocaleString('ru-RU', {day:'2-digit',month:'2-digit',year:'numeric',hour:'2-digit',minute:'2-digit'});
+    var srcLabel = d.source === 'auto' ? 'автоматически' : 'вручную';
+    if(d.ok){
+      el.innerHTML = '🕐 Последнее обновление: <b>' + formatted + '</b> (' + srcLabel + ', ' + (d.inserted!=null?d.inserted+' строк':'') + ')';
+      el.style.color = 'var(--text2)';
+    } else {
+      el.innerHTML = '⚠️ Последняя попытка (' + formatted + ', ' + srcLabel + ') не удалась: ' + (d.error||'ошибка');
+      el.style.color = 'var(--accent)';
+    }
+  } catch(e) {
+    el.textContent = '';
+  }
+}
+
 async function exportPowerBI(){
   var btn = document.getElementById('pbi-export-btn');
   var status = document.getElementById('pbi-status');
