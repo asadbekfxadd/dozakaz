@@ -2138,45 +2138,78 @@ def sync_now():
 @app.route('/api/catalog/discount-upload', methods=['POST'])
 @admin_required
 def upload_discount():
-    '''Upload list of articles with 70% discount'''
+    '''Upload list of articles with a discount %. File: Артикул + Скидка(%) columns.
+    Falls back to flat 70% if no percent column found (legacy article-only lists).'''
     f = request.files.get('file')
-    data = request.get_json()
+    data = request.get_json(silent=True)
     conn = get_db(); cur = conn.cursor()
-    
+
+    items = []  # list of (article, percent)
+
     if f:
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
         art_col = 0
+        pct_col = None
         for i, row in enumerate(rows[:3]):
             rv = [str(c).strip().lower() if c else '' for c in row]
             if any('артикул' in v or 'article' in v for v in rv):
                 for j, v in enumerate(rv):
                     if 'артикул' in v or 'article' in v:
-                        art_col = j; break
+                        art_col = j
+                    if 'скидк' in v or 'discount' in v or v.strip() == '%':
+                        pct_col = j
                 rows = rows[i+1:]
                 break
-        articles = []
         for row in rows:
-            if row and row[art_col]:
-                art = str(row[art_col]).strip()
-                if art and art not in ('None', 'nan', ''):
-                    articles.append(art)
+            if not row or not row[art_col]:
+                continue
+            art = str(row[art_col]).strip()
+            if not art or art in ('None', 'nan', ''):
+                continue
+            pct = 70  # default when file has no percent column
+            if pct_col is not None and row[pct_col] not in (None, '', 'None', 'nan'):
+                try:
+                    pct_str = str(row[pct_col]).replace('%', '').replace(',', '.').strip()
+                    pct = int(round(float(pct_str)))
+                except Exception as _e:
+                    print(f"[WARN] bad discount value for {art}: {_e}")
+                    continue
+            if pct <= 0 or pct > 95:
+                continue
+            items.append((art, pct))
     elif data:
-        articles = data.get('articles', [])
+        if data.get('items'):
+            for it in data['items']:
+                art = str(it.get('article', '')).strip()
+                try:
+                    pct = int(round(float(it.get('percent', 70))))
+                except Exception:
+                    pct = 70
+                if art and 0 < pct <= 95:
+                    items.append((art, pct))
+        else:
+            default_pct = int(data.get('percent', 70) or 70)
+            for art in data.get('articles', []):
+                art = str(art).strip()
+                if art:
+                    items.append((art, default_pct))
     else:
         return jsonify({'error': 'Нет данных'}), 400
-    
-    # Reset all discounts first
-    cur.execute("UPDATE catalog SET discount=0 WHERE discount=70")
-    # Set 70% for uploaded articles
+
+    if not items:
+        return jsonify({'error': 'Не найдено артикулов со скидкой'}), 400
+
+    # Full replace: clear all existing discounts, then apply the new set
+    cur.execute("UPDATE catalog SET discount=0 WHERE discount>0")
     count = 0
-    for art in articles:
-        cur.execute("UPDATE catalog SET discount=70 WHERE article=%s OR article=%s OR article=%s",
-                   (art, art+'A', art.rstrip('A')))
+    for art, pct in items:
+        cur.execute("UPDATE catalog SET discount=%s WHERE article=%s OR article=%s OR article=%s",
+                   (pct, art, art+'A', art.rstrip('A')))
         count += cur.rowcount
     conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True, 'updated': count, 'articles': len(articles)})
+    return jsonify({'ok': True, 'updated': count, 'articles': len(items)})
 
 @app.route('/api/catalog/discount-clear', methods=['POST'])
 @admin_required
