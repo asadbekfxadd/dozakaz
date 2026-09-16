@@ -96,6 +96,19 @@ def get_pbi_token():
         print(f'[PBI TOKEN] Error: {e}')
         return None
 
+def get_setting(key, default=None):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("SELECT value FROM app_settings WHERE key=%s", (key,))
+    row = cur.fetchone()
+    cur.close(); conn.close()
+    return row['value'] if row else default
+
+def set_setting(key, value):
+    conn = get_db(); cur = conn.cursor()
+    cur.execute("""INSERT INTO app_settings (key, value) VALUES (%s, %s)
+                   ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value""", (key, str(value)))
+    conn.commit(); cur.close(); conn.close()
+
 USERS = {
     'admin': {'password': '123456', 'role': 'admin', 'branch': None, 'branches': None},
     'ANNA_V': {'password': 'region1', 'role': 'regional', 'branch': None, 'branches': ['HIGH TOWN PLAZA','MAGIC CITY','NOVZA','Scopus Mall']},
@@ -283,6 +296,10 @@ def init_db():
             cur.execute("INSERT INTO conversion_settings (branch, correction) VALUES (%s, %s) ON CONFLICT DO NOTHING", (b, c))
     cur.execute('CREATE INDEX IF NOT EXISTS idx_conv_date ON conversion_data(date)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_conv_branch ON conversion_data(branch)')
+    cur.execute('''CREATE TABLE IF NOT EXISTS app_settings (
+        key TEXT PRIMARY KEY,
+        value TEXT
+    )''')
     # Indexes for performance
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
@@ -1191,8 +1208,10 @@ def upload_sales():
             )
             inserted += 1
         conn.commit(); cur.close(); conn.close()
+        _record_sync_result('manual', True, inserted=inserted)
         return jsonify({'ok': True, 'inserted': inserted})
     except Exception as e:
+        _record_sync_result('manual', False, error=str(e))
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/sales/analytics', methods=['GET'])
@@ -2138,45 +2157,78 @@ def sync_now():
 @app.route('/api/catalog/discount-upload', methods=['POST'])
 @admin_required
 def upload_discount():
-    '''Upload list of articles with 70% discount'''
+    '''Upload list of articles with a discount %. File: Артикул + Скидка(%) columns.
+    Falls back to flat 70% if no percent column found (legacy article-only lists).'''
     f = request.files.get('file')
-    data = request.get_json()
+    data = request.get_json(silent=True)
     conn = get_db(); cur = conn.cursor()
-    
+
+    items = []  # list of (article, percent)
+
     if f:
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
         art_col = 0
+        pct_col = None
         for i, row in enumerate(rows[:3]):
             rv = [str(c).strip().lower() if c else '' for c in row]
             if any('артикул' in v or 'article' in v for v in rv):
                 for j, v in enumerate(rv):
                     if 'артикул' in v or 'article' in v:
-                        art_col = j; break
+                        art_col = j
+                    if 'скидк' in v or 'discount' in v or v.strip() == '%':
+                        pct_col = j
                 rows = rows[i+1:]
                 break
-        articles = []
         for row in rows:
-            if row and row[art_col]:
-                art = str(row[art_col]).strip()
-                if art and art not in ('None', 'nan', ''):
-                    articles.append(art)
+            if not row or not row[art_col]:
+                continue
+            art = str(row[art_col]).strip()
+            if not art or art in ('None', 'nan', ''):
+                continue
+            pct = 70  # default when file has no percent column
+            if pct_col is not None and row[pct_col] not in (None, '', 'None', 'nan'):
+                try:
+                    pct_str = str(row[pct_col]).replace('%', '').replace(',', '.').strip()
+                    pct = int(round(float(pct_str)))
+                except Exception as _e:
+                    print(f"[WARN] bad discount value for {art}: {_e}")
+                    continue
+            if pct <= 0 or pct > 95:
+                continue
+            items.append((art, pct))
     elif data:
-        articles = data.get('articles', [])
+        if data.get('items'):
+            for it in data['items']:
+                art = str(it.get('article', '')).strip()
+                try:
+                    pct = int(round(float(it.get('percent', 70))))
+                except Exception:
+                    pct = 70
+                if art and 0 < pct <= 95:
+                    items.append((art, pct))
+        else:
+            default_pct = int(data.get('percent', 70) or 70)
+            for art in data.get('articles', []):
+                art = str(art).strip()
+                if art:
+                    items.append((art, default_pct))
     else:
         return jsonify({'error': 'Нет данных'}), 400
-    
-    # Reset all discounts first
-    cur.execute("UPDATE catalog SET discount=0 WHERE discount=70")
-    # Set 70% for uploaded articles
+
+    if not items:
+        return jsonify({'error': 'Не найдено артикулов со скидкой'}), 400
+
+    # Full replace: clear all existing discounts, then apply the new set
+    cur.execute("UPDATE catalog SET discount=0 WHERE discount>0")
     count = 0
-    for art in articles:
-        cur.execute("UPDATE catalog SET discount=70 WHERE article=%s OR article=%s OR article=%s",
-                   (art, art+'A', art.rstrip('A')))
+    for art, pct in items:
+        cur.execute("UPDATE catalog SET discount=%s WHERE article=%s OR article=%s OR article=%s",
+                   (pct, art, art+'A', art.rstrip('A')))
         count += cur.rowcount
     conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True, 'updated': count, 'articles': len(articles)})
+    return jsonify({'ok': True, 'updated': count, 'articles': len(items)})
 
 @app.route('/api/catalog/discount-clear', methods=['POST'])
 @admin_required
@@ -3305,75 +3357,139 @@ def powerbi_export():
         return jsonify({'error': str(e)}), 500
 
 
+def _do_powerbi_sync(replace=True):
+    """Export from Power BI and import as sales data. Returns dict with result info.
+    Used both by the manual /api/powerbi/sync button and the daily auto-sync job."""
+    import re as _re
+    file_data = _pbi_export_file()
+    wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
+    ws = wb.active
+    rows = list(ws.iter_rows(values_only=True))
+
+    header_idx = None
+    for i, row in enumerate(rows[:10]):
+        row_s = [str(c).strip() if c else '' for c in row]
+        if any('артикул' in v.lower() or 'article' in v.lower() for v in row_s):
+            header_idx = i; break
+    if header_idx is None:
+        raise Exception('Не найден заголовок в файле Power BI')
+
+    h = [str(c).strip() if c else '' for c in rows[header_idx]]
+    season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
+    for j, v in enumerate(h):
+        vl = v.lower()
+        if 'сезон' in vl or 'season' in vl: season_col = j
+        if 'артикул' in vl or 'article' in vl: art_col = j
+        if 'вид' in vl or 'category' in vl or 'type' in vl: cat_col = j
+        if 'магазин' in vl or 'branch' in vl or 'store' in vl: branch_col = j
+        if 'ссылка' in vl or 'ref' in vl or 'чек' in vl: ref_col = j
+        if 'количество' in vl or 'qty' in vl or 'кол' in vl: qty_col = j
+        if 'цена' in vl or 'price' in vl: price_col = j
+        if 'сумма' in vl or 'amount' in vl or 'выручка' in vl: amount_col = j
+
+    conn = get_db(); cur = conn.cursor()
+    if replace:
+        cur.execute('DELETE FROM sales')
+
+    inserted = 0
+    for row in rows[header_idx+1:]:
+        if not row: continue
+        art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
+        if not art or art in ('None','nan',''): continue
+        season = str(row[season_col]).strip() if season_col is not None and row[season_col] else ''
+        cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
+        branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
+        ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
+        try: qty = int(float(str(row[qty_col]).replace(chr(160),'').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+        except: qty = 1
+        try: price = float(str(row[price_col]).replace(chr(160),'').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+        except: price = 0
+        try: amount = float(str(row[amount_col]).replace(chr(160),'').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+        except: amount = 0
+        sale_date = None
+        m = _re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
+        if m:
+            try: sale_date = f'{m.group(3)}-{m.group(2)}-{m.group(1)}'
+            except Exception as _e: print(f"[WARN] {_e}")
+        cur.execute(
+            'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
+            (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
+        )
+        inserted += 1
+
+    conn.commit(); cur.close(); conn.close()
+    return {'ok': True, 'inserted': inserted, 'replaced': replace}
+
+
+def _record_sync_result(source, ok, inserted=None, error=None):
+    """Save the outcome of a Power BI sync (manual or auto) so the UI can show 'last updated'."""
+    import json as _json
+    payload = {
+        'time': datetime.now().isoformat(timespec='seconds'),
+        'source': source,   # 'manual' or 'auto'
+        'ok': ok,
+        'inserted': inserted,
+        'error': error,
+    }
+    try:
+        set_setting('pbi_last_sync', _json.dumps(payload))
+    except Exception as e:
+        print(f"[PBI SYNC] Failed to record status: {e}")
+
+
 @app.route('/api/powerbi/sync', methods=['POST'])
 @admin_required
 def powerbi_sync():
-    """Export from Power BI and immediately import as sales data"""
-    import re as _re
+    """Export from Power BI and immediately import as sales data (manual trigger)"""
     replace = request.json.get('replace', False) if request.is_json else False
     try:
-        file_data = _pbi_export_file()
-        wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
-        ws = wb.active
-        rows = list(ws.iter_rows(values_only=True))
-
-        # Find header row
-        header_idx = None
-        for i, row in enumerate(rows[:10]):
-            row_s = [str(c).strip() if c else '' for c in row]
-            if any('артикул' in v.lower() or 'article' in v.lower() for v in row_s):
-                header_idx = i; break
-        if header_idx is None:
-            return jsonify({'error': 'Не найден заголовок в файле Power BI'}), 400
-
-        h = [str(c).strip() if c else '' for c in rows[header_idx]]
-        season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
-        for j, v in enumerate(h):
-            vl = v.lower()
-            if 'сезон' in vl or 'season' in vl: season_col = j
-            if 'артикул' in vl or 'article' in vl: art_col = j
-            if 'вид' in vl or 'category' in vl or 'type' in vl: cat_col = j
-            if 'магазин' in vl or 'branch' in vl or 'store' in vl: branch_col = j
-            if 'ссылка' in vl or 'ref' in vl or 'чек' in vl: ref_col = j
-            if 'количество' in vl or 'qty' in vl or 'кол' in vl: qty_col = j
-            if 'цена' in vl or 'price' in vl: price_col = j
-            if 'сумма' in vl or 'amount' in vl or 'выручка' in vl: amount_col = j
-
-        conn = get_db(); cur = conn.cursor()
-        if replace:
-            cur.execute('DELETE FROM sales')
-
-        inserted = 0
-        for row in rows[header_idx+1:]:
-            if not row: continue
-            art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
-            if not art or art in ('None','nan',''): continue
-            season = str(row[season_col]).strip() if season_col is not None and row[season_col] else ''
-            cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
-            branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
-            ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
-            except: qty = 1
-            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
-            except: price = 0
-            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
-            except: amount = 0
-            sale_date = None
-            m = _re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
-            if m:
-                try: sale_date = f'{m.group(3)}-{m.group(2)}-{m.group(1)}'
-                except Exception as _e: print(f"[WARN] {_e}")
-            cur.execute(
-                'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
-                (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
-            )
-            inserted += 1
-
-        conn.commit(); cur.close(); conn.close()
-        return jsonify({'ok': True, 'inserted': inserted, 'replaced': replace})
+        result = _do_powerbi_sync(replace=replace)
+        _record_sync_result('manual', True, inserted=result.get('inserted'))
+        return jsonify(result)
     except Exception as e:
         import traceback
+        _record_sync_result('manual', False, error=str(e))
         return jsonify({'error': str(e), 'tb': traceback.format_exc()}), 500
+
+
+@app.route('/api/powerbi/last-sync')
+@login_required
+def powerbi_last_sync():
+    """Return info about the last Power BI sync (manual or automatic) for display in the UI."""
+    import json as _json
+    raw = get_setting('pbi_last_sync')
+    if not raw:
+        return jsonify({'time': None})
+    try:
+        return jsonify(_json.loads(raw))
+    except Exception:
+        return jsonify({'time': None})
+
+
+def _powerbi_daily_job():
+    """Запускается автоматически каждый день в 11:00 (Asia/Tashkent) —
+    подтягивает свежий отчёт Power BI и обновляет таблицу продаж."""
+    try:
+        result = _do_powerbi_sync(replace=True)
+        _record_sync_result('auto', True, inserted=result.get('inserted'))
+        print(f"[PBI AUTO-SYNC] {datetime.now()}: OK — {result}")
+    except Exception as e:
+        _record_sync_result('auto', False, error=str(e))
+        print(f"[PBI AUTO-SYNC] {datetime.now()}: FAILED — {e}")
+
+
+def _start_powerbi_scheduler():
+    try:
+        from apscheduler.schedulers.background import BackgroundScheduler
+        from apscheduler.triggers.cron import CronTrigger
+        sched = BackgroundScheduler(timezone='Asia/Tashkent')
+        sched.add_job(_powerbi_daily_job, CronTrigger(hour=11, minute=0), id='pbi_daily_sync', replace_existing=True)
+        sched.start()
+        print('[PBI SCHEDULER] Started — daily sync at 11:00 Asia/Tashkent')
+    except Exception as e:
+        print(f'[PBI SCHEDULER] Failed to start: {e}')
+
+_start_powerbi_scheduler()
 
 
 @app.route('/api/warehouse/report/excel')

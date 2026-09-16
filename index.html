@@ -585,6 +585,7 @@ td.muted{color:var(--text2)}
 .sales-stats-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:12px;margin-bottom:24px}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:0.3}}
 .badge-blink{animation:blink 1s infinite;background:var(--accent)!important}
+.size-missing{border-color:var(--accent)!important;background:rgba(227,24,55,.1)!important;animation:blink 2s infinite}
 .transfer-new{border-left:3px solid var(--accent);animation:blink 2s infinite}
 .sales-top-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px}
 .top-rank{display:flex;align-items:center;gap:12px;padding:10px 12px;background:var(--bg3);border-radius:var(--radius-sm);margin-bottom:6px}
@@ -789,6 +790,7 @@ td.muted{color:var(--text2)}
           <span id="sync-status" class="admin-only" style="font-size:11px;color:var(--text3)"></span>
           <button class="btn-secondary admin-only" onclick="syncNow()" style="padding:8px 14px">&#8635; Синхронизировать</button>
           <button class="btn-secondary admin-only" onclick="setupTgWebhook()" style="padding:8px 14px">🤖 TG Бот</button>
+          <button class="btn-secondary admin-only" onclick="sendWeeklyReport()" style="padding:8px 14px">📊 TG Отчёт</button>
           <button class="btn-primary" onclick="showPage('form',null)">+ Новая заявка</button>
         </div>
       </div>
@@ -862,6 +864,7 @@ td.muted{color:var(--text2)}
           <select id="cat-abc" onchange="loadCatalog()"><option value="">Все категории</option><option value="A">A — Топ товары</option><option value="B">B — Средние</option><option value="C">C — Остальные</option></select>
           <select id="cat-stock" onchange="loadCatalog()"><option value="">Любой остаток WMS</option><option value="yes">Есть на складе</option><option value="no">Нет на складе</option></select>
           <select id="cat-season" onchange="loadCatalog()"><option value="">Все сезоны</option></select>
+          <button class="btn-secondary" onclick="filterCurrentSeason()" style="padding:8px 14px;font-size:12px">🌿 Q3 (сейчас)</button>
           <select id="cat-discount" onchange="loadCatalog()" class="outlet-only">
             <option value="">Без скидки</option>
             <option value="yes">🔥 Скидка 70%</option>
@@ -1038,98 +1041,38 @@ td.muted{color:var(--text2)}
     <!-- CONVERSION -->
     <div id="page-conversion" class="page">
       <div class="topbar">
-        <div><div class="topbar-title">Конверсия</div><div class="topbar-sub">Посетители → Чеки → Выручка · курс ЦБ: <span id="conv-usd-rate">—</span></div></div>
+        <div><div class="topbar-title">Конверсия</div><div class="topbar-sub">Посетители vs Продажи</div></div>
       </div>
       <div class="content">
-        <div style="display:flex;gap:8px;margin-bottom:20px;flex-wrap:wrap">
-          <button class="period-tab active" id="convtab-upload" onclick="switchConvTab('upload',this)">📥 Загрузка</button>
-          <button class="period-tab" id="convtab-history" onclick="switchConvTab('history',this)">📅 История</button>
-          <button class="period-tab" id="convtab-compare" onclick="switchConvTab('compare',this)">⚖️ Сравнение</button>
-          <button class="period-tab" id="convtab-settings" onclick="switchConvTab('settings',this)">⚙️ Корректировки</button>
-        </div>
-
-        <!-- ЗАГРУЗКА -->
-        <div id="convsec-upload">
-          <div class="form-card" style="padding:16px 20px;margin-bottom:16px;display:flex;gap:14px;align-items:center;flex-wrap:wrap">
-            <span style="font-weight:700;font-size:13px">Дата отчёта:</span>
-            <input type="date" id="conv-date" style="max-width:180px">
-            <small style="color:var(--text3)">данные из файлов сохранятся на эту дату</small>
-          </div>
-          <div class="conv-upload-grid">
-            <div class="form-card" style="padding:20px">
-              <div class="form-section">📷 Макроскоп — посетители</div>
-              <div class="upload-zone" id="mac-zone" onclick="document.getElementById('mac-file').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleConvDrop(event,'mac')">
-                <div class="upload-zone-icon">📊</div><p>Загрузить файл Макроскоп</p><small>.xlsx — входящие посетители</small>
-                <div class="upload-name" id="mac-name"></div>
-              </div>
-              <input type="file" id="mac-file" accept=".xlsx" style="display:none" onchange="onConvFile(this,'mac')">
+        <div class="conv-upload-grid">
+          <div class="form-card" style="padding:20px">
+            <div class="form-section">📷 Макроскоп — посетители</div>
+            <div class="upload-zone" id="mac-zone" onclick="document.getElementById('mac-file').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleConvDrop(event,'mac')">
+              <div class="upload-zone-icon">📊</div><p>Загрузить файл Макроскоп</p><small>.xlsx — входящие посетители</small>
+              <div class="upload-name" id="mac-name"></div>
             </div>
-            <div class="form-card" style="padding:20px">
-              <div class="form-section">🛍️ 1С — продажи</div>
-              <div class="upload-zone" id="onec-zone" onclick="document.getElementById('onec-file').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleConvDrop(event,'onec')">
-                <div class="upload-zone-icon">📋</div><p>Загрузить выгрузку из 1С</p><small>.xlsx — отчёт по продажам</small>
-                <div class="upload-name" id="onec-name"></div>
-              </div>
-              <input type="file" id="onec-file" accept=".xlsx" style="display:none" onchange="onConvFile(this,'onec')">
+            <input type="file" id="mac-file" accept=".xlsx" style="display:none" onchange="onConvFile(this,'mac')">
+          </div>
+          <div class="form-card" style="padding:20px">
+            <div class="form-section">🛍️ 1С — продажи</div>
+            <div class="upload-zone" id="onec-zone" onclick="document.getElementById('onec-file').click()" ondragover="event.preventDefault();this.classList.add('drag')" ondragleave="this.classList.remove('drag')" ondrop="handleConvDrop(event,'onec')">
+              <div class="upload-zone-icon">📋</div><p>Загрузить выгрузку из 1С</p><small>.xlsx — отчёт по продажам</small>
+              <div class="upload-name" id="onec-name"></div>
             </div>
-          </div>
-          <div style="margin-bottom:16px;display:flex;gap:10px;flex-wrap:wrap">
-            <button class="btn-primary" onclick="calcConversion()">Рассчитать</button>
-            <button class="btn-primary" id="conv-save-btn" onclick="saveConversion()" style="display:none;background:var(--green)">💾 Сохранить в базу</button>
-            <button class="btn-secondary" onclick="clearConversion()">✕ Сброс</button>
-          </div>
-          <div id="conv-result" style="display:none">
-            <div class="orders-wrap">
-              <table><thead><tr><th>Филиал</th><th>Счётчик</th><th>Корр.</th><th>Посетители</th><th>Чеков</th><th>Сумма</th><th>Ср. чек</th><th>Конверсия</th></tr></thead>
-              <tbody id="conv-tbody"></tbody></table>
-            </div>
-          </div>
-          <div id="conv-empty" style="padding:40px;text-align:center;color:var(--text3)">Загрузите оба файла и нажмите "Рассчитать"</div>
-        </div>
-
-        <!-- ИСТОРИЯ -->
-        <div id="convsec-history" style="display:none">
-          <div class="form-card" style="padding:16px 20px;margin-bottom:16px;display:flex;gap:12px;align-items:center;flex-wrap:wrap">
-            <span style="font-weight:700;font-size:13px">Период:</span>
-            <input type="date" id="hist-from" style="max-width:170px">
-            <span>—</span>
-            <input type="date" id="hist-to" style="max-width:170px">
-            <button class="btn-primary" onclick="loadConvHistory()">Показать</button>
-            <button class="btn-secondary" onclick="setHistPreset(7)">7 дней</button>
-            <button class="btn-secondary" onclick="setHistPreset(30)">30 дней</button>
-          </div>
-          <div id="hist-summary"></div>
-          <div id="hist-daily" style="margin-top:20px"></div>
-          <div id="hist-empty" style="padding:40px;text-align:center;color:var(--text3)">Выберите период и нажмите "Показать"</div>
-        </div>
-
-        <!-- СРАВНЕНИЕ -->
-        <div id="convsec-compare" style="display:none">
-          <div class="form-card" style="padding:16px 20px;margin-bottom:16px">
-            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:10px">
-              <span style="font-weight:700;font-size:13px;min-width:90px">Период 1:</span>
-              <input type="date" id="cmp-from1" style="max-width:170px"><span>—</span>
-              <input type="date" id="cmp-to1" style="max-width:170px">
-            </div>
-            <div style="display:flex;gap:12px;align-items:center;flex-wrap:wrap;margin-bottom:14px">
-              <span style="font-weight:700;font-size:13px;min-width:90px">Период 2:</span>
-              <input type="date" id="cmp-from2" style="max-width:170px"><span>—</span>
-              <input type="date" id="cmp-to2" style="max-width:170px">
-            </div>
-            <button class="btn-primary" onclick="loadConvCompare()">Сравнить</button>
-          </div>
-          <div id="cmp-result"></div>
-          <div id="cmp-empty" style="padding:40px;text-align:center;color:var(--text3)">Задайте два периода — покажу конверсию и выручку в $ (курс ЦБ)</div>
-        </div>
-
-        <!-- НАСТРОЙКИ -->
-        <div id="convsec-settings" style="display:none">
-          <div class="form-card" style="padding:20px;max-width:560px">
-            <div class="form-section">Корректировка счётчиков (вычет сотрудников, чел/день)</div>
-            <div id="conv-settings-list" style="margin:12px 0"></div>
-            <button class="btn-primary" onclick="saveConvSettings()">💾 Сохранить корректировки</button>
+            <input type="file" id="onec-file" accept=".xlsx" style="display:none" onchange="onConvFile(this,'onec')">
           </div>
         </div>
+        <div style="margin-bottom:16px;display:flex;gap:10px">
+          <button class="btn-primary" onclick="calcConversion()">Рассчитать</button>
+          <button class="btn-secondary" onclick="clearConversion()">✕ Сброс</button>
+        </div>
+        <div id="conv-result" style="display:none">
+          <div class="orders-wrap">
+            <table><thead><tr><th>Филиал</th><th>Посетители</th><th>Чеков</th><th>Сумма</th><th>Конверсия</th></tr></thead>
+            <tbody id="conv-tbody"></tbody></table>
+          </div>
+        </div>
+        <div id="conv-empty" style="padding:40px;text-align:center;color:var(--text3)">Загрузите оба файла и нажмите "Рассчитать"</div>
       </div>
     </div>
 
@@ -1893,6 +1836,13 @@ async function runDistribution(){
   btn.disabled=false; btn.textContent='📥 Рассчитать и скачать';
 }
 
+async function sendWeeklyReport(){
+  var r = await fetch('/api/tg/weekly-report', {method:'POST'});
+  var d = await r.json();
+  if(r.ok) toast('✅ Отчёт отправлен в Telegram: '+d.sent+' получателей');
+  else toast(d.error||'Ошибка', true);
+}
+
 async function setupTgWebhook(){
   var base = window.location.origin;
   var r = await fetch('/api/tg/setup-webhook', {
@@ -2207,6 +2157,64 @@ async function syncABC(){
 }
 
 // CATALOG
+var _catalogCache = {};
+var _catalogCacheTime = {};
+const CATALOG_CACHE_TTL = 5 * 60 * 1000; // 5 minutes
+
+// Текущий сезон
+function getCurrentSeason(){
+  var m=new Date().getMonth()+1;
+  if(m>=3&&m<=5)return'Q1';
+  if(m>=6&&m<=8)return'Q2';
+  if(m>=9&&m<=11)return'Q3';
+  return'Q4';
+}
+
+function filterCurrentSeason(){
+  var cs=getCurrentSeason();
+  var sel=document.getElementById('cat-season');
+  // Find matching option
+  var found=false;
+  for(var i=0;i<sel.options.length;i++){
+    if(sel.options[i].value.includes(cs)){sel.value=sel.options[i].value;found=true;break;}
+  }
+  if(!found&&sel.options.length>1){
+    // Try to find any option with current season
+    for(var i=0;i<sel.options.length;i++){
+      if(sel.options[i].text.includes(cs)){sel.value=sel.options[i].value;found=true;break;}
+    }
+  }
+  catalogPage=1;loadCatalog();
+  toast('🌿 Показываю сезон '+cs);
+}
+
+// Быстрое добавление всех доступных размеров в корзину
+function quickAddToCart(event, item){
+  event.stopPropagation();
+  if(!item||!item.sizes)return;
+  var added=false;
+  item.sizes.forEach(function(s){
+    if(s.wms>0&&s.branch===0){
+      if(!cart[item.article])cart[item.article]={name:item.name,sizes:{}};
+      cart[item.article].sizes[s.size]={qty:1,wms:s.wms};
+      added=true;
+    }
+  });
+  if(!added){
+    // Если нет размеров с branch=0, добавляем все с wms>0
+    item.sizes.forEach(function(s){
+      if(s.wms>0){
+        if(!cart[item.article])cart[item.article]={name:item.name,sizes:{}};
+        if(!cart[item.article].sizes[s.size])
+          cart[item.article].sizes[s.size]={qty:1,wms:s.wms};
+        added=true;
+      }
+    });
+  }
+  if(added){updateCartUI();loadCatalog();toast('⚡ '+item.article+' добавлен в корзину!');}
+  else toast('Нет товара на складе WMS');
+}
+
 async function loadCatalog(){
   var search=document.getElementById('cat-search').value.trim();
   var abc=document.getElementById('cat-abc').value;
@@ -2278,10 +2286,11 @@ async function loadCatalog(){
         return urgent?'<div style="background:rgba(255,23,68,.1);border:1px solid rgba(255,23,68,.3);border-radius:4px;padding:2px 8px;font-size:10px;color:var(--accent);font-weight:700;margin-bottom:6px;display:inline-block">⚡ НУЖНО ЗАКАЗАТЬ</div><br>':'';
       })()
       +(item.discount>0&&(currentRole==='admin'||OUTLET_STORES.includes(currentBranch))?'<div style="display:inline-flex;align-items:center;gap:4px;background:linear-gradient(135deg,#f59e0b,#ef4444);color:#fff;border-radius:6px;padding:3px 10px;font-size:11px;font-weight:800;margin-bottom:6px;letter-spacing:.5px;box-shadow:0 2px 8px rgba(245,158,11,.4)">🔥 СКИДКА '+item.discount+'%</div><br>':'')
-      +'<div class="catalog-article">'+item.article+' '+abcBadge(item.abc)+(item.season?'<span style="background:var(--bg3);color:var(--text2);border-radius:4px;padding:1px 6px;font-size:10px;margin-left:4px">'+item.season+'</span>':'')+'</div>'
+      +(function(){var cs=getCurrentSeason();var iCS=item.season&&item.season.includes(cs);var sb=item.season?'<span style="background:'+(iCS?'rgba(34,197,94,.2);color:#22c55e;border:1px solid rgba(34,197,94,.5)':'var(--bg3);color:var(--text3);border:1px solid var(--border)')+';border-radius:4px;padding:1px 7px;font-size:10px;font-weight:'+(iCS?'700':'400')+';margin-left:4px">'+(iCS?'🌿 ':'')+item.season+'</span>':'';return '<div class="catalog-article">'+item.article+' '+abcBadge(item.abc)+sb+'</div>';})()
       +'<div class="catalog-name">'+item.name+(item.category?'<span style="color:var(--text3);font-size:11px;margin-left:6px">'+item.category+'</span>':'')+'</div>'
       +'</div>'+(cartQty>0?'<span style="background:var(--accent);color:#fff;border-radius:20px;padding:2px 8px;font-size:11px;font-weight:700">'+cartQty+' в корзине</span>':'')+'</div>'
-      +'<div class="catalog-sizes">'+item.sizes.map(s=>'<div class="size-chip '+(s.wms>0?'has-wms':'')+' '+(inCart&&inCart.sizes[s.size]?'in-cart':'')+'"><div class="size-label">'+s.size+'</div><div class="size-wms">WMS: '+s.wms+'</div>'+(s.branch>0?'<div class="size-branch">У вас: '+s.branch+'</div>':'')+'</div>').join('')+'</div>'
+      +(function(){var jItem=JSON.stringify(item).replace(/"/g,'&quot;');var hasMissing=currentRole==='user'&&item.sizes.some(function(s){return s.wms>0&&(s.branch||0)===0;});return hasMissing?'<div onclick="event.stopPropagation();quickAddToCart(event,'+jItem+')" style="background:linear-gradient(135deg,#e31837,#ff4c6a);color:#fff;border-radius:6px;padding:5px 12px;font-size:11px;font-weight:800;margin-bottom:8px;cursor:pointer;text-align:center;animation:blink 1.5s infinite;letter-spacing:.5px;box-shadow:0 2px 12px rgba(227,24,55,.4)">⚡ Добавить отсутствующие размеры</div>':''})()
+      +'<div class="catalog-sizes">'+item.sizes.map(function(s){var missing=s.wms>0&&(s.branch||0)===0&&currentRole==='user';return'<div class="size-chip '+(s.wms>0?'has-wms ':'')+' '+(inCart&&inCart.sizes[s.size]?'in-cart ':'')+' '+(missing?'size-missing ':'')+'" title="'+(missing?'Есть на складе, нет у вас!':'')+'">'+'<div class="size-label">'+s.size+(missing?'<span style="display:block;font-size:8px;color:var(--accent);line-height:1.2;font-weight:700">⚡нет</span>':'')+'</div><div class="size-wms">WMS: '+s.wms+'</div>'+(s.branch>0?'<div class="size-branch">У вас: '+s.branch+'</div>':'')+'</div>';}).join('')+'</div>'
       +(function(){
         var branchTotal=item.sizes.reduce((s,sz)=>s+(sz.branch||0),0);
         var hasWms=item.total_wms>0;
@@ -2617,21 +2626,6 @@ function handleConvDrop(e,type){
   var f=e.dataTransfer.files[0];
   if(f){var inp=document.createElement('input');inp.type='file';var dt=new DataTransfer();dt.items.add(f);inp.files=dt.files;onConvFile(inp,type);}
 }
-var convParsed=null,convSettings={},convUsdRate=12000;
-async function loadConvMeta(){
-  try{
-    var r=await fetch('/api/conversion/settings');if(r.ok)convSettings=await r.json();
-    var r2=await fetch('/api/usd_rate');
-    if(r2.ok){var d=await r2.json();convUsdRate=d.rate;document.getElementById('conv-usd-rate').textContent=d.rate.toLocaleString()+' сум';}
-  }catch(e){}
-}
-function switchConvTab(tab,btn){
-  ['upload','history','compare','settings'].forEach(t=>{
-    document.getElementById('convsec-'+t).style.display=(t===tab)?'block':'none';
-    document.getElementById('convtab-'+t).classList.toggle('active',t===tab);
-  });
-  if(tab==='settings')renderConvSettings();
-}
 function calcConversion(){
   if(!macData||!onecData){toast('Загрузите оба файла',true);return;}
   var macSheet=macData.Sheets['Входящие']||macData.Sheets[macData.SheetNames[0]];
@@ -2658,110 +2652,19 @@ function calcConversion(){
     if(mapped&&sum>0){sales[mapped]=(sales[mapped]||0)+sum;if(check&&check!==prevCheck){checks[mapped]=(checks[mapped]||0)+1;prevCheck=check;}}
   }
   var allBranches=new Set([...Object.keys(visitors),...Object.keys(sales)]);
-  convParsed=Array.from(allBranches).map(b=>{
-    var raw=visitors[b]||0;var corr=(raw>0)?(convSettings[b]||0):0;var net=Math.max(raw-corr,0);
-    var ch=checks[b]||0;var sm=sales[b]||0;
-    return {branch:b,visitors_raw:raw,corr:corr,visitors_net:net,checks:ch,revenue:sm,
-            avg:ch>0?Math.round(sm/ch):0,pct:net>0?(ch/net*100):0};
-  }).sort((a,b)=>b.pct-a.pct);
+  var rows=Array.from(allBranches).map(b=>({branch:b,visitors:visitors[b]||0,checks:checks[b]||0,sales:sales[b]||0,pct:visitors[b]?((checks[b]||0)/visitors[b]*100):0})).sort((a,b)=>b.pct-a.pct);
   document.getElementById('conv-empty').style.display='none';
   document.getElementById('conv-result').style.display='block';
-  document.getElementById('conv-save-btn').style.display='inline-block';
-  document.getElementById('conv-tbody').innerHTML=convParsed.map(r=>{
+  document.getElementById('conv-tbody').innerHTML=rows.map(r=>{
     var cls=r.pct>=20?'good':r.pct>=10?'mid':'bad';
-    return '<tr><td style="font-weight:700;text-transform:uppercase">'+r.branch+'</td><td>'+r.visitors_raw.toLocaleString()+'</td><td style="color:var(--text3)">'+(r.corr?'−'+r.corr:'—')+'</td><td style="font-weight:700">'+r.visitors_net.toLocaleString()+'</td><td>'+r.checks+'</td><td>'+r.revenue.toLocaleString()+' сум</td><td>'+(r.avg?r.avg.toLocaleString():'—')+'</td><td><span class="conv-pct '+cls+'">'+r.pct.toFixed(1)+'%</span></td></tr>';
+    return '<tr><td style="font-weight:700;text-transform:uppercase">'+r.branch+'</td><td>'+r.visitors.toLocaleString()+'</td><td>'+r.checks+'</td><td>'+r.sales.toLocaleString()+' сум</td><td><span class="conv-pct '+cls+'">'+r.pct.toFixed(1)+'%</span></td></tr>';
   }).join('');
 }
-async function saveConversion(){
-  if(!convParsed||!convParsed.length){toast('Сначала нажмите "Рассчитать"',true);return;}
-  var date=document.getElementById('conv-date').value;
-  if(!date){toast('Выберите дату отчёта',true);return;}
-  var rows=convParsed.map(r=>({branch:r.branch,visitors_raw:r.visitors_raw,checks:r.checks,revenue:r.revenue}));
-  var r=await fetch('/api/conversion/save',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({date:date,rows:rows})});
-  var d=await r.json();
-  if(!r.ok){toast(d.error||'Ошибка сохранения',true);return;}
-  toast('Сохранено: '+d.saved+' филиалов на '+d.date);
-}
 function clearConversion(){
-  macData=null;onecData=null;convParsed=null;
+  macData=null;onecData=null;
   document.getElementById('mac-name').innerHTML='';document.getElementById('onec-name').innerHTML='';
   document.getElementById('mac-file').value='';document.getElementById('onec-file').value='';
   document.getElementById('conv-result').style.display='none';document.getElementById('conv-empty').style.display='block';
-  document.getElementById('conv-save-btn').style.display='none';
-}
-function setHistPreset(days){
-  var to=new Date(),from=new Date();from.setDate(from.getDate()-days+1);
-  document.getElementById('hist-from').value=from.toISOString().slice(0,10);
-  document.getElementById('hist-to').value=to.toISOString().slice(0,10);
-  loadConvHistory();
-}
-async function loadConvHistory(){
-  var f=document.getElementById('hist-from').value,t=document.getElementById('hist-to').value;
-  if(!f||!t){toast('Выберите период',true);return;}
-  var r=await fetch('/api/conversion/data?from='+f+'&to='+t);
-  var d=await r.json();
-  if(!r.ok){toast(d.error||'Ошибка',true);return;}
-  document.getElementById('hist-empty').style.display='none';
-  if(!d.summary.length){document.getElementById('hist-summary').innerHTML='<div style="padding:32px;text-align:center;color:var(--text3)">Нет данных за период</div>';document.getElementById('hist-daily').innerHTML='';return;}
-  var totV=d.summary.reduce((s,r)=>s+r.visitors_net,0),totC=d.summary.reduce((s,r)=>s+r.checks,0),totR=d.summary.reduce((s,r)=>s+r.revenue,0);
-  var totPct=totV>0?(totC/totV*100):0;
-  document.getElementById('hist-summary').innerHTML=
-    '<div class="form-card" style="padding:14px 20px;margin-bottom:14px;display:flex;gap:28px;flex-wrap:wrap;font-size:13px">'+
-    '<div>👥 Посетители: <b>'+totV.toLocaleString()+'</b></div>'+
-    '<div>🧾 Чеки: <b>'+totC.toLocaleString()+'</b></div>'+
-    '<div>💰 Выручка: <b>'+totR.toLocaleString()+' сум</b> ≈ <b>$'+(totR/d.usd_rate).toLocaleString(undefined,{maximumFractionDigits:0})+'</b></div>'+
-    '<div>📊 Конверсия сети: <b class="conv-pct '+(totPct>=20?'good':totPct>=10?'mid':'bad')+'">'+totPct.toFixed(1)+'%</b></div></div>'+
-    '<div class="orders-wrap"><table><thead><tr><th>Филиал</th><th>Дней</th><th>Посетители</th><th>Чеков</th><th>Сумма</th><th>$ (ЦБ)</th><th>Ср. чек</th><th>Конверсия</th></tr></thead><tbody>'+
-    d.summary.map(r=>{
-      var cls=r.conversion>=20?'good':r.conversion>=10?'mid':'bad';
-      return '<tr><td style="font-weight:700;text-transform:uppercase">'+r.branch+'</td><td>'+r.days+'</td><td>'+r.visitors_net.toLocaleString()+'</td><td>'+r.checks+'</td><td>'+r.revenue.toLocaleString()+'</td><td>$'+(r.revenue/d.usd_rate).toLocaleString(undefined,{maximumFractionDigits:0})+'</td><td>'+(r.avg_check?r.avg_check.toLocaleString():'—')+'</td><td><span class="conv-pct '+cls+'">'+r.conversion.toFixed(1)+'%</span></td></tr>';
-    }).join('')+'</tbody></table></div>';
-  // По дням: сводная сеть по датам
-  var byDate={};
-  d.daily.forEach(r=>{if(!byDate[r.date])byDate[r.date]={v:0,c:0,r:0};byDate[r.date].v+=r.visitors_net;byDate[r.date].c+=r.checks;byDate[r.date].r+=r.revenue;});
-  var dates=Object.keys(byDate).sort();
-  document.getElementById('hist-daily').innerHTML=dates.length<2?'':
-    '<div class="form-section" style="margin-bottom:10px">По дням (вся сеть)</div>'+
-    '<div class="orders-wrap"><table><thead><tr><th>Дата</th><th>Посетители</th><th>Чеков</th><th>Сумма</th><th>Конверсия</th></tr></thead><tbody>'+
-    dates.map(dt=>{
-      var x=byDate[dt];var pct=x.v>0?(x.c/x.v*100):0;var cls=pct>=20?'good':pct>=10?'mid':'bad';
-      return '<tr><td>'+dt+'</td><td>'+x.v.toLocaleString()+'</td><td>'+x.c+'</td><td>'+x.r.toLocaleString()+'</td><td><span class="conv-pct '+cls+'">'+pct.toFixed(1)+'%</span></td></tr>';
-    }).join('')+'</tbody></table></div>';
-}
-async function loadConvCompare(){
-  var f1=document.getElementById('cmp-from1').value,t1=document.getElementById('cmp-to1').value;
-  var f2=document.getElementById('cmp-from2').value,t2=document.getElementById('cmp-to2').value;
-  if(!f1||!t1||!f2||!t2){toast('Заполните оба периода',true);return;}
-  var r=await fetch('/api/conversion/compare?from1='+f1+'&to1='+t1+'&from2='+f2+'&to2='+t2);
-  var d=await r.json();
-  if(!r.ok){toast(d.error||'Ошибка',true);return;}
-  document.getElementById('cmp-empty').style.display='none';
-  if(!d.rows.length){document.getElementById('cmp-result').innerHTML='<div style="padding:32px;text-align:center;color:var(--text3)">Нет данных</div>';return;}
-  document.getElementById('cmp-result').innerHTML=
-    '<div class="orders-wrap"><table><thead><tr><th>Филиал</th><th>Конв. П1</th><th>Конв. П2</th><th>Δ конв.</th><th>Выручка П1 ($)</th><th>Выручка П2 ($)</th><th>Δ выручка</th></tr></thead><tbody>'+
-    d.rows.map(r=>{
-      var dc=r.conv_delta,dr=r.rev_delta_pct;
-      var dcCls=dc>0?'good':dc<0?'bad':'mid';var drCls=dr>0?'good':dr<0?'bad':'mid';
-      return '<tr><td style="font-weight:700;text-transform:uppercase">'+r.branch+'</td>'+
-        '<td>'+r.p1.conversion.toFixed(1)+'%</td><td>'+r.p2.conversion.toFixed(1)+'%</td>'+
-        '<td><span class="conv-pct '+dcCls+'">'+(dc>0?'+':'')+dc.toFixed(1)+'%</span></td>'+
-        '<td>$'+r.p1_usd.toLocaleString(undefined,{maximumFractionDigits:0})+'</td>'+
-        '<td>$'+r.p2_usd.toLocaleString(undefined,{maximumFractionDigits:0})+'</td>'+
-        '<td><span class="conv-pct '+drCls+'">'+(dr>0?'+':'')+dr.toFixed(1)+'%</span></td></tr>';
-    }).join('')+'</tbody></table></div>';
-}
-function renderConvSettings(){
-  var branches=Object.keys(convSettings).sort();
-  document.getElementById('conv-settings-list').innerHTML=branches.map(b=>
-    '<div style="display:flex;align-items:center;gap:10px;margin-bottom:8px"><div style="flex:1;font-size:13px;font-weight:600;text-transform:uppercase">'+b+'</div><span style="color:var(--text3)">−</span><input type="number" min="0" data-branch="'+b+'" value="'+convSettings[b]+'" style="max-width:90px" class="conv-corr-input"><small style="color:var(--text3)">чел/день</small></div>'
-  ).join('');
-}
-async function saveConvSettings(){
-  var data={};
-  document.querySelectorAll('.conv-corr-input').forEach(i=>{data[i.dataset.branch]=parseInt(i.value)||0;});
-  var r=await fetch('/api/conversion/settings',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(data)});
-  if(!r.ok){var d=await r.json();toast(d.error||'Ошибка',true);return;}
-  convSettings=data;toast('Корректировки сохранены');
 }
 
 async function loadKanban(){
@@ -2863,7 +2766,6 @@ function showPage(name,btn){
   if(name==='dash')loadOrders();
   if(name==='kanban')loadKanban();
   if(name==='analytics')loadAnalytics();
-  if(name==='conversion'){loadConvMeta();var cd=document.getElementById('conv-date');if(cd&&!cd.value){var y=new Date();y.setDate(y.getDate()-1);cd.value=y.toISOString().slice(0,10);}}
   if(name==='catalog'){catalogPage=1;loadCatalog();}
   if(name==='topsales')loadTopSales();
   if(name==='recommendations')loadRecommendations();
@@ -3272,6 +3174,25 @@ async function loadSchlopkaSessions(){
 }
 
 var currentSchlopkaBranches = [];
+
+async function markBranchReady(){
+  if(!currentSchlopkaSid){ toast('Нет активной схлопки', true); return; }
+  var btn = document.getElementById('branch-ready-btn');
+  if(btn){ btn.disabled=true; btn.textContent='⏳ Отмечаю...'; }
+  var r = await fetch('/api/schlopka/'+currentSchlopkaSid+'/branch-ready', {
+    method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({branch: currentBranch})
+  });
+  var d = await r.json();
+  if(btn){ btn.disabled=false; btn.textContent='✅ Готово к отгрузке'; }
+  if(r.ok){
+    toast('✅ Филиал отмечен как готовый к отгрузке');
+    openSchlopka(currentSchlopkaSid);
+  } else {
+    toast(d.error||'Ошибка', true);
+  }
+}
 
 async function openSchlopka(sid){
   var r = await fetch('/api/schlopka/'+sid);
