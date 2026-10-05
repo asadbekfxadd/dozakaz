@@ -128,14 +128,15 @@ USERS = {
     'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
     'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
     'DETSKIY MIR': {'password': 'LI-NING1', 'role': 'user', 'branch': 'DETSKIY MIR', 'branches': None},
+    'CENTRIUM HALL SAMARKAND': {'password': 'LI-NING1', 'role': 'user', 'branch': 'CENTRIUM HALL SAMARKAND', 'branches': None},
     'SKLAD': {'password': 'sklad2026', 'role': 'warehouse', 'branch': 'WMS', 'branches': None},
     'DMITRIY': {'password': 'Dm!LN2026$', 'role': 'admin', 'branch': None, 'branches': None},
 }
 
 BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
             'M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall',
-            'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR']
-BRANCHES_ALIASES = {'EСO PARK':'ECO PARK','ЕCO PARK':'ECO PARK','ECO  PARK':'ECO PARK'}
+            'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR','CENTRIUM HALL SAMARKAND']
+BRANCHES_ALIASES = {'E\u0421O PARK':'ECO PARK','\u0415CO PARK':'ECO PARK','ECO  PARK':'ECO PARK'}
 
 FLAGMANS = ['TASHKENT CITY MALL','ATLAS CHIMGAN','ALAYSKIY','Shota Rustavely']
 
@@ -241,8 +242,6 @@ def init_db():
     )""")
     cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS file_data BYTEA")
     cur.execute("ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS file_data BYTEA")
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE catalog ADD COLUMN IF NOT EXISTS discount INTEGER DEFAULT 0")
     cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_items (
         id SERIAL PRIMARY KEY,
@@ -256,6 +255,8 @@ def init_db():
         status TEXT DEFAULT 'Не собран',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''")
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_session ON schlopka_items(session_id)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_branch ON schlopka_items(session_id, branch)')
@@ -294,6 +295,7 @@ def init_db():
                  'M. BARAKA': 0, 'Scopus Mall': 0, 'UZBEGIM ANDIJAN': 0, 'DETSKIY MIR': 0}
         for b, c in _corr.items():
             cur.execute("INSERT INTO conversion_settings (branch, correction) VALUES (%s, %s) ON CONFLICT DO NOTHING", (b, c))
+    cur.execute("INSERT INTO conversion_settings (branch, correction) VALUES (%s, 0) ON CONFLICT DO NOTHING", ('CENTRIUM HALL SAMARKAND',))
     cur.execute('CREATE INDEX IF NOT EXISTS idx_conv_date ON conversion_data(date)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_conv_branch ON conversion_data(branch)')
     cur.execute('''CREATE TABLE IF NOT EXISTS app_settings (
@@ -311,12 +313,7 @@ def init_db():
     cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_branch ON branch_stock(branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_art_branch ON branch_stock(article,branch)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_discount ON catalog(discount)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_branch ON sales(article, branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_date ON sales(article, sale_date)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch)')
     conn.commit()
@@ -756,7 +753,7 @@ def upload_catalog():
             wms = 0
             if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
                 try:
-                    wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace(' ','')
+                    wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace('\u00a0','')
                     wms = int(float(wms_str))
                 except Exception as _e: print(f"[WARN] {_e}")
             catalog_items.append((art, name, size, wms, season, category))
@@ -765,7 +762,7 @@ def upload_catalog():
                 if qty and str(qty) not in ('None','nan',''):
                     try:
                         # Handle "1,000" format (1C comma as thousands separator)
-                        qty_str = str(qty).replace(',', '').replace(' ', '').replace(' ', '')
+                        qty_str = str(qty).replace(',', '').replace(' ', '').replace('\u00a0', '')
                         q = int(float(qty_str))
                         if q > 0: branch_items.append((art, size, branch, q))
                     except Exception as _e: print(f"[WARN] {_e}")
@@ -1191,11 +1188,11 @@ def upload_sales():
             cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
             branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
             ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace('\u00a0',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
             except: qty = 1
-            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            try: price = float(str(row[price_col]).replace(' ','').replace('\u00a0','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
             except: price = 0
-            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace('\u00a0','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
             except: amount = 0
             sale_date = None
             m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
@@ -2041,9 +2038,9 @@ def sync_catalog_from_yadisk():
                 if 'Артикул' in row_vals:
                     header_idx = i
                     for j, val in enumerate(row_vals):
-                        val_norm = val.replace('С','C').replace('с','c').replace('Е','E').replace('е','e')
+                        val_norm = val.replace('\u0421','C').replace('\u0441','c').replace('\u0415','E').replace('\u0435','e')
                         for branch in BRANCHES:
-                            branch_norm = branch.replace('С','C').replace('с','c').replace('Е','E').replace('е','e')
+                            branch_norm = branch.replace('\u0421','C').replace('\u0441','c').replace('\u0415','E').replace('\u0435','e')
                             if val_norm == branch_norm or val == branch:
                                 branch_cols[branch] = j; break
                         if val == 'Склад WMS': wms_col = j
@@ -2481,6 +2478,7 @@ def run_distribution():
             'M. BARAKA',
             'Family park',
             'UZBEGIM ANDIJAN',
+            'CENTRIUM HALL SAMARKAND',
         ]
 
         FLAGMANS = {'TASHKENT CITY MALL', 'ALAYSKIY', 'ATLAS CHIMGAN', 'Shota Rustavely'}
@@ -2514,14 +2512,12 @@ def run_distribution():
                 art_rows[art] = []
             art_rows[art].append({'nom': nom_full, 'qty': qty})
 
-        # Get discounted articles
-        cur.execute("SELECT DISTINCT article FROM catalog WHERE discount > 0")
-        discount_arts = {r['article'] for r in cur.fetchall()}
-
         results = []; total_qty_in = 0; total_alloc = 0
 
         for art, rows in art_rows.items():
             is_kids = art.startswith('Y') or art.startswith('y')
+            # Правило "футбол" (City Mall получает 50%) пока не определено - выключено
+            is_soccer = False
             total_qty_in += sum(r['qty'] for r in rows)
 
             # Total qty for this article
@@ -2964,7 +2960,7 @@ def auto_schlopka():
         art_names[r['article']] = r['name'] or r['category'] or ''
 
     # Исключаем из доноров Самарканд и Андижан
-    NO_TAKE_BRANCHES = {'UZBEGIM ANDIJAN', 'Samarkand', 'SAMARKAND', 'М.БАРАКА САМАРКАНД', 'M. BARAKA', 'Family park'}
+    NO_TAKE_BRANCHES = {'UZBEGIM ANDIJAN', 'Samarkand', 'SAMARKAND', 'М.БАРАКА САМАРКАНД', 'M. BARAKA', 'Family park', 'CENTRIUM HALL SAMARKAND'}
 
     schlopka_items = []  # (article, name, size, from_branch, to_flagman, qty)
 
@@ -3859,7 +3855,8 @@ def tg_webhook():
         'ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park',
         'HIGH TOWN PLAZA','M. BARAKA','MAGIC CITY','MALIKA',
         'NOVZA','Scopus Mall','Shota Rustavely','TASHKENT CITY MALL',
-        'UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR'
+        'UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR',
+        'CENTRIUM HALL SAMARKAND'
     ]
 
     def send_msg(chat_id, text, keyboard=None):
@@ -4283,17 +4280,7 @@ def reorder_recommendations():
 @admin_required
 def reorder_excel():
     """Export reorder recommendations to Excel"""
-    from flask import url_for
-    import requests as _req
-
-    # Reuse the recommendations logic
     category = request.args.get('category', '')
-
-    # Call internal endpoint
-    with app.test_client() as c:
-        c.set_cookie('session', request.cookies.get('session', ''))
-        resp = c.get(f'/api/reorder/recommendations?category={category}',
-                    headers={'Cookie': f'session={request.cookies.get("session","")}' })
 
     conn = get_db(); cur = conn.cursor()
 
