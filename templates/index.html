@@ -802,7 +802,7 @@ td.muted{color:var(--text2)}
           <div class="stat-card c-green"><div class="stat-num" id="s-done">—</div><div class="stat-label">Выполнены</div></div>
         </div>
         <div class="filters admin-only">
-          <select id="f-branch" onchange="loadOrders()"><option value="">Все филиалы</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option></select>
+          <select id="f-branch" onchange="loadOrders()"><option value="">Все филиалы</option></select>
           <select id="f-status" onchange="loadOrders()"><option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Выполнена</option></select>
           <input type="text" id="f-responsible" placeholder="🔍 Сотрудник..." oninput="loadOrders()">
           <input type="date" id="f-date-from" onchange="loadOrders()">
@@ -905,7 +905,7 @@ td.muted{color:var(--text2)}
         </div>
         <div class="filters" style="margin-bottom:20px">
           <select id="sales-cat" onchange="loadTopSales()"><option value="">Все категории</option><option value="Обувь">Обувь</option><option value="Одежда">Одежда</option><option value="Аксессуары">Аксессуары</option></select>
-          <select id="sales-branch" onchange="loadTopSales()"><option value="">Все филиалы</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option></select>
+          <select id="sales-branch" onchange="loadTopSales()"><option value="">Все филиалы</option></select>
         </div>
         <div class="sales-stats-grid">
           <div class="stat-card c-red"><div class="stat-num" id="ss-qty">—</div><div class="stat-label">Продано единиц</div></div>
@@ -1083,11 +1083,6 @@ td.muted{color:var(--text2)}
         <div style="display:flex;gap:8px;align-items:center">
           <select id="rec-branch" class="admin-only" onchange="loadRecommendations()" style="min-width:180px">
             <option value="">— выбрать филиал —</option>
-            <option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option>
-            <option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option>
-            <option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option>
-            <option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option>
-            <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option>
           </select>
           <input type="text" id="rec-search" placeholder="🔍 Артикул..." oninput="filterRecs()" style="min-width:160px">
           <select id="rec-season" onchange="filterRecs()">
@@ -1251,11 +1246,6 @@ td.muted{color:var(--text2)}
         <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
           <select id="zs-branch" class="admin-only" onchange="loadZeroSales()" style="min-width:180px">
             <option value="">— все филиалы —</option>
-            <option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option>
-            <option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option>
-            <option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option>
-            <option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option>
-            <option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option>
           </select>
           <button class="btn-secondary" onclick="loadZeroSales()">↻ Обновить</button>
           <button class="btn-secondary" onclick="exportZeroSalesExcel()" style="background:var(--green);color:#fff;border-color:var(--green)">📥 Excel</button>
@@ -1586,7 +1576,7 @@ td.muted{color:var(--text2)}
           <div class="form-section">Информация о заявке</div>
           <div class="form-row">
             <div class="form-group"><label>Филиал<span class="required">*</span></label>
-              <select id="r-branch"><option value="">— выбрать —</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option></select>
+              <select id="r-branch"><option value="">— выбрать —</option></select>
             </div>
             <div class="form-group"><label>Ответственный<span class="required">*</span></label><input type="text" id="r-responsible" placeholder="Ваше имя"></div>
           </div>
@@ -1658,7 +1648,7 @@ td.muted{color:var(--text2)}
     <div id="cart-branch-wrap" style="display:none;margin-bottom:10px">
       <div class="form-group">
         <label>Филиал</label>
-        <select id="cart-branch-sel"><option value="">— выбрать филиал —</option><option>ALAYSKIY</option><option>ATLAS CHIMGAN</option><option>ECO PARK</option><option>Family park</option><option>HIGH TOWN PLAZA</option><option>M. BARAKA</option><option>MAGIC CITY</option><option>MALIKA</option><option>NOVZA</option><option>Scopus Mall</option><option>Shota Rustavely</option><option>TASHKENT CITY MALL</option><option>UZBEGIM ANDIJAN</option><option>Yunusabad gallery</option><option>DETSKIY MIR</option></select>
+        <select id="cart-branch-sel"><option value="">— выбрать филиал —</option></select>
       </div>
     </div>
     <div class="form-row" style="margin-bottom:10px">
@@ -1885,12 +1875,30 @@ function showApp(d){
   var roleEl=document.getElementById('ui-role');
   if(roleEl)roleEl.textContent=d.role==='admin'?'Администратор':d.role==='regional'?'Региональный':d.branch||'Филиал';
 
+  // --- Заполняем все дропдауны филиалов динамически ---
+  var allBranches = d.all_branches || [];
+  function fillBranchSel(id, placeholder, branches){
+    var el = document.getElementById(id);
+    if(!el) return;
+    el.innerHTML = '<option value="">'+placeholder+'</option>' + branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
+  }
+  // Фильтр заявок
+  fillBranchSel('f-branch', 'Все филиалы', allBranches);
+  // Топ продаж
+  fillBranchSel('sales-branch', 'Все филиалы', allBranches);
+  // Рекомендации
+  fillBranchSel('rec-branch', '— выбрать филиал —', allBranches);
+  // Zero sales
+  fillBranchSel('zs-branch', '— все филиалы —', allBranches);
+
   // Hide flagman-only by default
   document.querySelectorAll('.flagman-only').forEach(el=>el.style.display='none');
 
   if(d.role==='admin'){
     loadTransferBadge();
     document.querySelectorAll('.flagman-only').forEach(el=>el.style.display='flex');
+    fillBranchSel('r-branch', '— выбрать —', allBranches);
+    fillBranchSel('cart-branch-sel', '— выбрать филиал —', allBranches);
   } else if(d.role==='warehouse'){
     // Склад видит схлопку и отчёт склада
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
@@ -1898,14 +1906,23 @@ function showApp(d){
     document.querySelectorAll('.nav-item').forEach(el=>el.style.display='none');
     document.getElementById('th-actions').style.display='none';
     document.getElementById('catalog-upload-btns').style.display='none';
-    // Показываем отчёт склада (утренний) и схлопку
     setTimeout(()=>showPage('warehouse-report', null), 100);
   } else if(d.role==='user'){
     document.querySelectorAll('.admin-only').forEach(el=>el.style.display='none');
     document.getElementById('th-actions').style.display='none';
     document.getElementById('catalog-upload-btns').style.display='none';
-    if(d.branch){var sel=document.getElementById('r-branch');sel.value=d.branch;sel.disabled=true;}
-    // Show transfers for flagmans
+    // Для branch users: скрываем дропдаун, показываем название филиала текстом
+    var branchWrap = document.getElementById('r-branch');
+    if(branchWrap && d.branch){
+      var branchLabel = document.createElement('div');
+      branchLabel.style.cssText='padding:10px 14px;background:var(--bg3,#f5f5f5);border-radius:8px;font-weight:600;color:var(--text1)';
+      branchLabel.textContent = d.branch;
+      branchWrap.parentNode.replaceChild(branchLabel, branchWrap);
+    }
+    // Корзина — для user тоже скрываем выбор филиала
+    var cartBranchWrap = document.getElementById('cart-branch-wrap');
+    if(cartBranchWrap) cartBranchWrap.style.display='none';
+    // Перемещения только для флагманов
     if(FLAGMANS.includes(d.branch)){
       document.querySelectorAll('.flagman-only').forEach(el=>el.style.display='flex');
       loadTransferBadge();
@@ -1915,21 +1932,17 @@ function showApp(d){
     document.getElementById('th-actions').style.display='none';
     document.getElementById('catalog-upload-btns').style.display='none';
     window.currentBranches=d.branches||[];
-    if(d.branches&&d.branches.length){
-      var sel=document.getElementById('r-branch');
-      sel.innerHTML='<option value="">— выбрать —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
-      var cartBranchSel=document.getElementById('cart-branch-sel');
-      if(cartBranchSel) cartBranchSel.innerHTML='<option value="">— выбрать филиал —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
-      // Show branch selector in catalog
-      var catBranchSel=document.getElementById('cat-branch-sel');
-      if(catBranchSel){
-        catBranchSel.style.display='block';
-        catBranchSel.innerHTML='<option value="">— все мои филиалы —</option>'+d.branches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
-      }
+    var myBranches = d.branches && d.branches.length ? d.branches : allBranches;
+    fillBranchSel('r-branch', '— выбрать —', myBranches);
+    fillBranchSel('cart-branch-sel', '— выбрать филиал —', myBranches);
+    var catBranchSel=document.getElementById('cat-branch-sel');
+    if(catBranchSel){
+      catBranchSel.style.display='block';
+      catBranchSel.innerHTML='<option value="">— все мои филиалы —</option>'+myBranches.map(b=>'<option value="'+b+'">'+b+'</option>').join('');
     }
   }
   loadOrders();loadStats();
-  // Show discount filter only for outlet stores and admin
+  // Скидки — только для аутлет-магазинов и admin
   var discountSel = document.getElementById('cat-discount');
   if(discountSel){
     var isOutlet = OUTLET_STORES.includes(d.branch) || d.role==='admin' || d.role==='regional';
@@ -2492,8 +2505,6 @@ async function submitCartOrder(){
   var branch=currentBranch;
   if(currentRole==='regional'||currentRole==='admin'){
     branch=document.getElementById('cart-branch-sel').value;
-  } else if(!branch){
-    branch=document.getElementById('r-branch').value;
   }
   if(!responsible){toast('Укажите ответственного',true);return;}
   if(!branch){toast('Выберите филиал',true);return;}
@@ -2732,7 +2743,8 @@ async function submitForm(){
 }
 
 function resetForm(){
-  if(currentRole==='admin')document.getElementById('r-branch').value='';
+  var rb=document.getElementById('r-branch');
+  if(rb&&(currentRole==='admin'||currentRole==='regional'))rb.value='';
   document.getElementById('r-responsible').value='';
   document.getElementById('r-date').value=new Date().toISOString().slice(0,10);
   document.getElementById('r-priority').value='Обычный';

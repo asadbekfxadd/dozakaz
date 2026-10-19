@@ -129,13 +129,15 @@ USERS = {
     'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
     'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
     'DETSKIY MIR': {'password': 'LI-NING1', 'role': 'user', 'branch': 'DETSKIY MIR', 'branches': None},
+    'CENTRIUM HALL SAMARKAND': {'password': 'LI-NING1', 'role': 'user', 'branch': 'CENTRIUM HALL SAMARKAND', 'branches': None},
     'SKLAD': {'password': 'sklad2026', 'role': 'warehouse', 'branch': 'WMS', 'branches': None},
     'DMITRIY': {'password': 'Dm!LN2026$', 'role': 'admin', 'branch': None, 'branches': None},
 }
 
 BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
             'M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall',
-            'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR']
+            'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery',
+            'DETSKIY MIR','CENTRIUM HALL SAMARKAND']
 BRANCHES_ALIASES = {'EСO PARK':'ECO PARK','ЕCO PARK':'ECO PARK','ECO  PARK':'ECO PARK'}
 
 FLAGMANS = ['TASHKENT CITY MALL','ATLAS CHIMGAN','ALAYSKIY','Shota Rustavely']
@@ -355,7 +357,9 @@ def logout():
 def me():
     if 'username' not in session:
         return jsonify({'logged_in': False})
-    return jsonify({'logged_in': True, 'role': session['role'], 'branch': session['branch'], 'branches': session.get('branches'), 'username': session['username']})
+    return jsonify({'logged_in': True, 'role': session['role'], 'branch': session['branch'],
+                    'branches': session.get('branches'), 'username': session['username'],
+                    'all_branches': BRANCHES})
 
 @app.route('/api/orders', methods=['GET'])
 @login_required
