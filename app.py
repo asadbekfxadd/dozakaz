@@ -7,6 +7,7 @@ import openpyxl
 from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import psycopg2
 from psycopg2.extras import RealDictCursor
+import psycopg2.pool as _pg_pool
 from threading import Thread
 from collections import defaultdict
 import time
@@ -61,8 +62,8 @@ def send_tg(chat_id, text):
         print(f'[TG] Error sending to {chat_id}: {e}')
         return None
 
-def notify_role(role, text, branch=None):
-    """Send notification to all subscribers with given role"""
+def _notify_role_bg(role, text, branch=None):
+    """Internal: send TG notifications (runs in background thread)."""
     conn = get_db(); cur = conn.cursor()
     try:
         if role == 'branch' and branch:
@@ -76,10 +77,14 @@ def notify_role(role, text, branch=None):
     except Exception as e:
         print(f'[TG NOTIFY] Error: {e}')
     finally:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
+
+def notify_role(role, text, branch=None):
+    """Send notification to all subscribers with given role (non-blocking)."""
+    Thread(target=_notify_role_bg, args=(role, text, branch), daemon=True).start()
 
 def notify_roles(roles, text):
-    """Send to multiple roles"""
+    """Send to multiple roles (non-blocking)."""
     for role in roles:
         notify_role(role, text)
 
@@ -163,9 +168,33 @@ SYNC_FILENAME = 'остатки для сайта.xlsx'
 SYNC_INTERVAL_HOURS = 2
 _last_sync = None
 
+_db_pool = None
+
+def _get_pool():
+    global _db_pool
+    if _db_pool is None:
+        _db_pool = _pg_pool.ThreadedConnectionPool(
+            minconn=2, maxconn=10,
+            dsn=DATABASE_URL, cursor_factory=RealDictCursor
+        )
+    return _db_pool
+
 def get_db():
-    conn = psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
-    return conn
+    """Get a connection from the pool (or direct connect as fallback)."""
+    try:
+        return _get_pool().getconn()
+    except Exception:
+        return psycopg2.connect(DATABASE_URL, cursor_factory=RealDictCursor)
+
+def release_db(conn):
+    """Return a pooled connection back to the pool."""
+    try:
+        _get_pool().putconn(conn)
+    except Exception:
+        try:
+            conn.close()
+        except Exception:
+            pass
 
 def init_db():
     conn = get_db()
@@ -296,7 +325,7 @@ def init_db():
     cur.execute('CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch)')
     conn.commit()
     cur.close()
-    conn.close()
+    release_db(conn)
 
 os.makedirs('uploads', exist_ok=True)
 os.makedirs('static', exist_ok=True)
@@ -402,7 +431,7 @@ def get_orders():
     q += ' ORDER BY created_at DESC'
     cur.execute(q, params)
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/orders/<int:oid>/items', methods=['GET'])
@@ -411,7 +440,7 @@ def get_order_items(oid):
     conn = get_db(); cur = conn.cursor()
     cur.execute('SELECT * FROM order_items WHERE order_id=%s', (oid,))
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify([dict(r) for r in rows])
 
 def upload_to_yadisk(file_path, filename):
@@ -547,7 +576,7 @@ def create_order():
     conn.commit()
     cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (order_id,))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     # Send TG notifications
     try:
         prio_icon = '⚡' if priority == 'Срочно' else '📋'
@@ -578,7 +607,7 @@ def update_status(oid):
     conn.commit()
     cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     # TG notification on status change
     try:
         if row:
@@ -604,11 +633,11 @@ def download_order_excel(oid):
     cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
     if not row:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return 'Not found', 404
     cur.execute('SELECT * FROM order_items WHERE order_id=%s', (oid,))
     items = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     buf = generate_order_excel(row['branch'], [dict(i) for i in items])
     ts = row['date'].replace('-','') if row['date'] else datetime.now().strftime('%Y%m%d')
     fname = f"ДОЗАКАЗ_{row['branch'].replace(' ','_')}_{ts}.xlsx"
@@ -622,7 +651,7 @@ def download(oid):
     conn = get_db(); cur = conn.cursor()
     cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at,file_data FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     if not row or not row['filename']:
         return 'Not found', 404
 
@@ -662,7 +691,7 @@ def stats():
     else:
         cur.execute(q + ' AND branch=%s', (session['branch'],))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify({'total': row['total'], 'new': row['new'], 'in_progress': row['inprog'], 'done': row['done']})
 
 @app.route('/api/catalog/upload', methods=['POST'])
@@ -762,7 +791,7 @@ def upload_catalog():
         for art, (abc, sold) in abc_data.items():
             if abc and abc != 'C':
                 cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close(); release_db(conn)
         return jsonify({'ok': True, 'count': len(catalog_items)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -820,7 +849,7 @@ def get_catalog():
     articles = cur.fetchall()
 
     if not articles:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return jsonify([])
 
     art_list = [r['article'] for r in articles]
@@ -888,12 +917,12 @@ def get_catalog():
                 }
                 sales_stats[art_with_a] = stats
                 sales_stats[r['article']] = stats
-        cur2.close(); conn2.close()
+        cur2.close(); release_db(conn2)
     except Exception as e:
         import traceback
         print(f"[SALES STATS ERROR] {e}\n{traceback.format_exc()}")
 
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     result = []
     for art_row in articles:
@@ -938,7 +967,7 @@ def catalog_distribution(article):
         GROUP BY branch ORDER BY sold DESC
     ''', (article, article.rstrip('A')))
     sales = {r['branch']: int(r['sold'] or 0) for r in cur.fetchall()}
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     # Combine
     all_branches = set(list(stocks.keys()) + list(sales.keys()))
     result = []
@@ -956,7 +985,7 @@ def get_seasons():
     conn = get_db(); cur = conn.cursor()
     cur.execute("SELECT DISTINCT season FROM catalog WHERE season != '' AND season IS NOT NULL ORDER BY season DESC")
     seasons = [r['season'] for r in cur.fetchall()]
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify(seasons)
 
 @app.route('/api/catalog/abc', methods=['POST'])
@@ -987,7 +1016,7 @@ def update_abc():
                         cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article LIKE %s', (abc, sold, art+'%'))
                         count += 1
                     break
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close(); release_db(conn)
         return jsonify({'ok': True, 'updated': count})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1025,7 +1054,7 @@ def upload_abc_file():
             cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s OR article=%s',
                        (abc, total_sold, art, art+'A'))
             count += cur.rowcount
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close(); release_db(conn)
         return jsonify({'ok': True, 'updated': count})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1048,7 +1077,7 @@ def abc_sync():
         cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s OR article=%s OR article=%s',
                    (abc, sold, art, art+'A', art.rstrip('A')))
         count += cur.rowcount
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True, 'updated': count})
 
 @app.route('/api/products', methods=['GET'])
@@ -1057,7 +1086,7 @@ def get_products():
     conn = get_db(); cur = conn.cursor()
     cur.execute('SELECT * FROM top_products ORDER BY sold DESC')
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/products/upload', methods=['POST'])
@@ -1100,7 +1129,7 @@ def upload_products():
         conn = get_db(); cur = conn.cursor()
         cur.execute('DELETE FROM top_products')
         cur.executemany('INSERT INTO top_products (article,category,sold,stock) VALUES (%s,%s,%s,%s)', products)
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close(); release_db(conn)
         return jsonify({'ok': True, 'count': len(products)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1132,7 +1161,7 @@ def analytics_orders():
             FROM orders o JOIN order_items oi ON o.id = oi.order_id
             GROUP BY o.branch ORDER BY total_qty DESC''')
         branch_totals = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify({'top_articles': [dict(r) for r in top_articles], 'branch_totals': [dict(r) for r in branch_totals]})
 
 # ===== SALES =====
@@ -1194,7 +1223,7 @@ def upload_sales():
                 (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
             )
             inserted += 1
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close(); release_db(conn)
         return jsonify({'ok': True, 'inserted': inserted})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1243,7 +1272,7 @@ def sales_analytics():
     totals = cur.fetchone()
     cur.execute('SELECT MIN(sale_date) as min_date, MAX(sale_date) as max_date FROM sales')
     dates = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify({
         'top_articles': [dict(r) for r in top_articles],
         'by_branch': [dict(r) for r in by_branch],
@@ -1259,7 +1288,7 @@ def sales_info():
     conn = get_db(); cur = conn.cursor()
     cur.execute('SELECT COUNT(*) as c FROM sales'); total = cur.fetchone()['c']
     cur.execute('SELECT MIN(sale_date) as mn, MAX(sale_date) as mx FROM sales'); dates = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify({'total': total, 'min_date': str(dates['mn']) if dates['mn'] else None, 'max_date': str(dates['mx']) if dates['mx'] else None})
 
 # ===== PHOTOS =====
@@ -1354,7 +1383,7 @@ def get_recommendations():
     # Get branch stock for all these articles
     art_list = [r['article'] for r in articles]
     if not art_list:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return jsonify([])
 
     cur.execute('''
@@ -1366,7 +1395,7 @@ def get_recommendations():
     for r in cur.fetchall():
         branch_stock.setdefault(r['article'], {})[r['size']] = r['qty']
 
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     result = []
     for art_row in articles:
@@ -1433,7 +1462,7 @@ def recommendations_excel():
     branch_stock = {}
     for r in cur.fetchall():
         branch_stock.setdefault(r['article'], {})[r['size']] = r['qty']
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     # Build recommendations
     recs = []
@@ -1536,7 +1565,7 @@ def cross_recommendations():
     top_elsewhere = cur.fetchall()
 
     if not top_elsewhere:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return jsonify([])
 
     art_list = [r['article'] for r in top_elsewhere]
@@ -1568,7 +1597,7 @@ def cross_recommendations():
     ''', (art_list_a,))
     wms_data = {r['article']: r for r in cur.fetchall()}
 
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     result = []
     for art_row in top_elsewhere:
@@ -1639,7 +1668,7 @@ def get_transfers():
     else:
         cur.execute('SELECT * FROM transfers WHERE from_branch=%s ORDER BY created_at DESC', (branch,))
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/transfers', methods=['POST'])
@@ -1665,7 +1694,7 @@ def create_transfer():
     conn.commit()
     cur.execute('SELECT * FROM transfers WHERE id=%s', (tid,))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify(dict(row)), 201
 
 @app.route('/api/transfers/<int:tid>/status', methods=['PATCH'])
@@ -1680,7 +1709,7 @@ def update_transfer_status(tid):
     conn.commit()
     cur.execute('SELECT * FROM transfers WHERE id=%s', (tid,))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify(dict(row))
 
 @app.route('/api/transfers/suggestions', methods=['GET'])
@@ -1737,7 +1766,7 @@ def transfer_suggestions():
     for r in donor_rows:
         donors_by_art.setdefault(r['article'], []).append(dict(r))
 
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     result = []
     for art_row in a_articles:
@@ -1775,7 +1804,7 @@ def transfer_stats():
     conn = get_db(); cur = conn.cursor()
     cur.execute("SELECT COUNT(*) as c FROM transfers WHERE status='Новая'")
     new = cur.fetchone()['c']
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify({'new': new})
 
 # ===== SCHLOPKA =====
@@ -1803,7 +1832,7 @@ def get_schlopka_sessions():
         ORDER BY s.created_at DESC LIMIT 20
     ''')
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/schlopka/upload', methods=['POST'])
@@ -1878,7 +1907,7 @@ def upload_schlopka():
             'INSERT INTO schlopka_items (session_id,article,name,size,branch,qty,note) VALUES (%s,%s,%s,%s,%s,%s,%s)',
             [(sid, art, name, size, from_branch, 1, to_branch) for art, name, size, from_branch, to_branch in items]
         )
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close(); release_db(conn)
         return jsonify({'ok': True, 'session_id': sid, 'count': len(items)})
     except Exception as e:
         return jsonify({'error': str(e)}), 500
@@ -1892,7 +1921,7 @@ def get_schlopka_detail(sid):
     cur.execute('SELECT * FROM schlopka_sessions WHERE id=%s', (sid,))
     sess = cur.fetchone()
     if not sess:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return jsonify({'error': 'Не найдено'}), 404
     q = 'SELECT * FROM schlopka_items WHERE session_id=%s'
     params = [sid]
@@ -1913,7 +1942,7 @@ def get_schlopka_detail(sid):
         GROUP BY branch ORDER BY branch
     ''', (sid,))
     branches = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify({'session': dict(sess), 'items': [dict(i) for i in items], 'branches': [dict(b) for b in branches]})
 
 @app.route('/api/schlopka/<int:sid>/bulk-status', methods=['PATCH'])
@@ -1929,7 +1958,7 @@ def bulk_schlopka_status(sid):
         cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE session_id=%s AND branch=%s', (status, sid, branch))
     else:
         cur.execute('UPDATE schlopka_items SET status=%s, updated_at=NOW() WHERE session_id=%s', (status, sid))
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True})
 
 @app.route('/api/schlopka/items/<int:item_id>/status', methods=['PATCH'])
@@ -1944,7 +1973,7 @@ def update_schlopka_status(item_id):
     conn.commit()
     cur.execute('SELECT * FROM schlopka_items WHERE id=%s', (item_id,))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify(dict(row))
 
 @app.route('/api/schlopka/<int:sid>/branch-ready', methods=['POST'])
@@ -1957,7 +1986,7 @@ def branch_ready(sid):
         return jsonify({'error': 'Branch required'}), 400
     conn = get_db(); cur = conn.cursor()
     cur.execute('UPDATE schlopka_items SET branch_ready=TRUE WHERE session_id=%s AND branch=%s', (sid, branch))
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True})
 
 @app.route('/api/schlopka/<int:sid>/branch-taken', methods=['POST'])
@@ -1970,7 +1999,7 @@ def branch_taken(sid):
         return jsonify({'error': 'Branch required'}), 400
     conn = get_db(); cur = conn.cursor()
     cur.execute("UPDATE schlopka_items SET branch_taken=TRUE, status='Забрал' WHERE session_id=%s AND branch=%s", (sid, branch))
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True})
 
 @app.route('/api/schlopka/<int:sid>/notify', methods=['POST'])
@@ -1978,7 +2007,7 @@ def branch_taken(sid):
 def notify_schlopka(sid):
     conn = get_db(); cur = conn.cursor()
     cur.execute('UPDATE schlopka_sessions SET ready_for_pickup=TRUE, ready_at=NOW() WHERE id=%s', (sid,))
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True})
 
 @app.route('/api/schlopka/<int:sid>/notify', methods=['DELETE'])
@@ -1986,7 +2015,7 @@ def notify_schlopka(sid):
 def cancel_notify_schlopka(sid):
     conn = get_db(); cur = conn.cursor()
     cur.execute('UPDATE schlopka_sessions SET ready_for_pickup=FALSE, ready_at=NULL WHERE id=%s', (sid,))
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True})
 
 @app.route('/api/schlopka/<int:sid>', methods=['DELETE'])
@@ -1994,7 +2023,7 @@ def cancel_notify_schlopka(sid):
 def delete_schlopka(sid):
     conn = get_db(); cur = conn.cursor()
     cur.execute('DELETE FROM schlopka_sessions WHERE id=%s', (sid,))
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True})
 
 def sync_catalog_from_yadisk():
@@ -2096,7 +2125,7 @@ def sync_catalog_from_yadisk():
             for art, (abc, sold) in abc_data.items():
                 if abc and abc != 'C':
                     cur.execute('UPDATE catalog SET abc=%s, sold=%s WHERE article=%s', (abc, sold, art))
-            conn.commit(); cur.close(); conn.close()
+            conn.commit(); cur.close(); release_db(conn)
             _last_sync = datetime.now().strftime('%Y-%m-%d %H:%M')
             print(f'[SYNC] Done: {len(catalog_items)} items at {_last_sync}')
             return True
@@ -2126,7 +2155,7 @@ def debug_counts():
         cur.execute('SELECT COUNT(*) as c FROM orders WHERE file_data IS NOT NULL'); with_file = cur.fetchone()['c']
         cur.execute('SELECT COUNT(*) as c FROM orders WHERE file_data IS NULL AND filename IS NOT NULL'); no_file = cur.fetchone()['c']
     except: with_file = 0; no_file = 0
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify({'catalog_rows': cat, 'unique_articles': arts, 'sales_rows': sales,
                     'orders': orders, 'orders_with_file_db': with_file, 'orders_file_missing': no_file})
 
@@ -2181,7 +2210,7 @@ def upload_discount():
         cur.execute("UPDATE catalog SET discount=70 WHERE article=%s OR article=%s OR article=%s",
                    (art, art+'A', art.rstrip('A')))
         count += cur.rowcount
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True, 'updated': count, 'articles': len(articles)})
 
 @app.route('/api/catalog/discount-clear', methods=['POST'])
@@ -2189,7 +2218,7 @@ def upload_discount():
 def clear_discount():
     conn = get_db(); cur = conn.cursor()
     cur.execute("UPDATE catalog SET discount=0")
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True})
 
 @app.route('/api/catalog/dead-stock')
@@ -2226,7 +2255,7 @@ def dead_stock():
         LIMIT 100
     ''')
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify([dict(r) for r in rows])
 
 @app.route('/api/ai/movement-plan', methods=['GET'])
@@ -2256,7 +2285,7 @@ def ai_movement_plan():
     # Get ABC A articles
     cur.execute("SELECT DISTINCT article FROM catalog WHERE abc='A'")
     a_articles = {r['article'] for r in cur.fetchall()}
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     # Build movement plan
     by_article = {}
@@ -2472,7 +2501,7 @@ def run_distribution():
         _conn_dist = get_db(); _cur_dist = _conn_dist.cursor()
         _cur_dist.execute("SELECT DISTINCT article FROM catalog WHERE discount > 0")
         discount_arts = {r['article'] for r in _cur_dist.fetchall()}
-        _cur_dist.close(); _conn_dist.close()
+        _cur_dist.close(); release_db(_conn_dist)
 
         results = []; total_qty_in = 0; total_alloc = 0
 
@@ -2780,7 +2809,7 @@ def zero_sales():
             network_stock[r['article']] = int(r['total'] or 0)
             network_sizes[r['article']] = int(r['sizes'] or 0)
 
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     result = []
     seen = set()
@@ -2864,7 +2893,7 @@ def auto_schlopka():
     articles = [a for a in articles if a not in discount_arts]
 
     if not articles:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return jsonify({'error': 'Все артикулы на скидке 70% — они только для аутлетов'}), 400
 
     # Filter out kids (Y...) articles
@@ -2877,7 +2906,7 @@ def auto_schlopka():
     articles = [a for a in articles if a not in acc_arts]
 
     if not articles:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return jsonify({'error': 'Нет подходящих артикулов (все детские или аксессуары)'}), 400
 
     cur.execute("""
@@ -2894,7 +2923,7 @@ def auto_schlopka():
     rows = cur.fetchall()
 
     if not rows:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return jsonify({'error': 'Нет остатков'}), 400
 
     # Продажи флагманов за 30 дней по этим артикулам
@@ -2996,7 +3025,7 @@ def auto_schlopka():
                         schlopka_items.append((art, name, size, donor, top_flagman, qty))
 
     if not schlopka_items:
-        cur.close(); conn.close()
+        cur.close(); release_db(conn)
         return jsonify({'error': 'Флагманы уже имеют полные сетки по этим артикулам'}), 400
 
     # Создаём сессию схлопки
@@ -3099,7 +3128,7 @@ def auto_schlopka():
     conn.commit()
 
     flagman_totals = Counter(item[4] for item in schlopka_items)
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     return jsonify({
         'ok': True,
@@ -3193,7 +3222,7 @@ def warehouse_report():
     """)
     singles_rows = cur.fetchall()
 
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     # Format results
     low_wms = []
@@ -3378,7 +3407,7 @@ def powerbi_sync():
             )
             inserted += 1
 
-        conn.commit(); cur.close(); conn.close()
+        conn.commit(); cur.close(); release_db(conn)
         return jsonify({'ok': True, 'inserted': inserted, 'replaced': replace})
     except Exception as e:
         import traceback
@@ -3435,7 +3464,7 @@ def warehouse_report_excel():
         ORDER BY MIN(c.abc), SUM(c.wms_stock) ASC LIMIT 200
     """)
     low_network = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     from openpyxl.utils import get_column_letter as gcl
     wb = openpyxl.Workbook()
@@ -3593,7 +3622,7 @@ def discount_recommendations():
             sales_map[art] = int(r['sold_90d'] or 0)
             sales_map[r['article']] = int(r['sold_90d'] or 0)
 
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     result = []
     for r in candidates:
@@ -3648,7 +3677,7 @@ def apply_discount_recommendation():
         cur.execute("UPDATE catalog SET discount=70 WHERE article=%s OR article=%s",
                    (art, art.rstrip('A')))
         updated += cur.rowcount
-    conn.commit(); cur.close(); conn.close()
+    conn.commit(); cur.close(); release_db(conn)
     return jsonify({'ok': True, 'updated': updated})
 
 
@@ -3691,7 +3720,7 @@ def discount_recommendations_excel():
             k = r['article'] if r['article'].endswith('A') else r['article']+'A'
             sales_map[k] = int(r['sold_90d'] or 0)
             sales_map[r['article']] = int(r['sold_90d'] or 0)
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     from openpyxl.utils import get_column_letter as gcl
     wb = openpyxl.Workbook(); ws = wb.active; ws.title = 'Рек. к скидке 70%'
@@ -3778,7 +3807,7 @@ def tg_webhook():
         c2 = get_db(); cur2 = c2.cursor()
         cur2.execute('INSERT INTO tg_subscribers (chat_id,username,full_name,role,active) VALUES (%s,%s,%s,%s,TRUE) ON CONFLICT (chat_id) DO UPDATE SET role=%s,username=%s,full_name=%s,active=TRUE',
             (chat_id, username, full_name, role, role, username, full_name))
-        c2.commit(); cur2.close(); c2.close()
+        c2.commit(); cur2.close(); release_db(c2)
 
     def start_kb():
         return {'inline_keyboard': [
@@ -3839,14 +3868,14 @@ def tg_webhook():
     elif text == '/stop':
         c2 = get_db(); cur2 = c2.cursor()
         cur2.execute('UPDATE tg_subscribers SET active=FALSE WHERE chat_id=%s', (chat_id,))
-        c2.commit(); cur2.close(); c2.close()
+        c2.commit(); cur2.close(); release_db(c2)
         send_tg(chat_id, '🔕 Уведомления отключены. /start — включить снова.')
 
     elif text == '/status':
         c2 = get_db(); cur2 = c2.cursor()
         cur2.execute('SELECT role, active FROM tg_subscribers WHERE chat_id=%s', (chat_id,))
         row = cur2.fetchone()
-        cur2.close(); c2.close()
+        cur2.close(); release_db(c2)
         if row:
             r = row['role']
             rname = r.replace('branch:','🏪 ') if r.startswith('branch:') else {'admin':'👔 Администратор','warehouse':'📦 Склад','regional':'📊 Региональный'}.get(r,r)
@@ -3884,7 +3913,7 @@ def tg_subscribers_list():
     conn = get_db(); cur = conn.cursor()
     cur.execute('SELECT id,chat_id,username,full_name,role,active,created_at FROM tg_subscribers ORDER BY created_at DESC')
     rows = [dict(r) for r in cur.fetchall()]
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     return jsonify(rows)
 
 
@@ -3895,7 +3924,7 @@ def auto_schlopka_excel(sid):
     conn = get_db(); cur = conn.cursor()
     cur.execute('SELECT name, file_data FROM schlopka_sessions WHERE id=%s', (sid,))
     row = cur.fetchone()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
     if not row or not row['file_data']:
         return jsonify({'error': 'Файл не найден'}), 404
     fname = f'Схлопка_{row["name"].replace(" ","_").replace(":","")}.xlsx'
@@ -3957,7 +3986,7 @@ def zero_sales_excel():
         """, (days, days))
 
     rows = cur.fetchall()
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     if category:
         rows = [r for r in rows if (r['category'] or '') == category]
@@ -4074,7 +4103,7 @@ def reorder_recommendations():
     """)
     network_map = {r['article']: int(r['network_stock'] or 0) for r in cur.fetchall()}
 
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     def calc_weekly_norm(daily_list):
         if not daily_list:
@@ -4205,7 +4234,7 @@ def reorder_excel():
 
     cur.execute("SELECT article, SUM(qty) as ns FROM branch_stock GROUP BY article")
     network_map = {r['article']: int(r['ns'] or 0) for r in cur.fetchall()}
-    cur.close(); conn.close()
+    cur.close(); release_db(conn)
 
     def calc_weekly_norm(daily_list):
         if not daily_list: return 0, 0
@@ -4326,7 +4355,7 @@ def tg_weekly_report():
         cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Новая'")
         pending = cur.fetchone()['c']
 
-        cur.close(); conn.close(); conn = None
+        cur.close(); release_db(conn); conn = None
 
         from datetime import timedelta
         week_start = (datetime.now() - timedelta(days=7)).strftime('%d.%m')
@@ -4358,7 +4387,7 @@ def tg_weekly_report():
         conn2 = get_db(); cur2 = conn2.cursor()
         cur2.execute("SELECT chat_id FROM tg_subscribers WHERE role='admin' AND active=TRUE")
         admins = cur2.fetchall()
-        cur2.close(); conn2.close()
+        cur2.close(); release_db(conn2)
 
         sent = 0
         for row in admins:
@@ -4374,7 +4403,7 @@ def tg_weekly_report():
     finally:
         try:
             if conn:
-                conn.close()
+                release_db(conn)
         except Exception:
             pass
 
