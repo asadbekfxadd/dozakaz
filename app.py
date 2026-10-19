@@ -15,6 +15,20 @@ app.secret_key = os.environ.get('SECRET_KEY', 'dozakaz-secret-key-2026-fallback'
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
+@app.route('/favicon.ico')
+def favicon():
+    return send_from_directory(os.path.join(app.root_path, 'static'),
+                               'favicon.ico', mimetype='image/vnd.microsoft.icon')
+
+@app.route('/static/icon-192.png')
+def icon192():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'icon-192.png')
+
+@app.route('/static/icon-512.png')
+def icon512():
+    return send_from_directory(os.path.join(app.root_path, 'static'), 'icon-512.png')
+
+
 ALLOWED = {'.xlsx', '.xls', '.csv'}
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
@@ -96,19 +110,6 @@ def get_pbi_token():
         print(f'[PBI TOKEN] Error: {e}')
         return None
 
-def get_setting(key, default=None):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT value FROM app_settings WHERE key=%s", (key,))
-    row = cur.fetchone()
-    cur.close(); conn.close()
-    return row['value'] if row else default
-
-def set_setting(key, value):
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("""INSERT INTO app_settings (key, value) VALUES (%s, %s)
-                   ON CONFLICT (key) DO UPDATE SET value=EXCLUDED.value""", (key, str(value)))
-    conn.commit(); cur.close(); conn.close()
-
 USERS = {
     'admin': {'password': '123456', 'role': 'admin', 'branch': None, 'branches': None},
     'ANNA_V': {'password': 'region1', 'role': 'regional', 'branch': None, 'branches': ['HIGH TOWN PLAZA','MAGIC CITY','NOVZA','Scopus Mall']},
@@ -128,15 +129,14 @@ USERS = {
     'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
     'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
     'DETSKIY MIR': {'password': 'LI-NING1', 'role': 'user', 'branch': 'DETSKIY MIR', 'branches': None},
-    'CENTRIUM HALL SAMARKAND': {'password': 'LI-NING1', 'role': 'user', 'branch': 'CENTRIUM HALL SAMARKAND', 'branches': None},
     'SKLAD': {'password': 'sklad2026', 'role': 'warehouse', 'branch': 'WMS', 'branches': None},
     'DMITRIY': {'password': 'Dm!LN2026$', 'role': 'admin', 'branch': None, 'branches': None},
 }
 
 BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
             'M. BARAKA','MAGIC CITY','MALIKA','NOVZA','Scopus Mall',
-            'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR','CENTRIUM HALL SAMARKAND']
-BRANCHES_ALIASES = {'E\u0421O PARK':'ECO PARK','\u0415CO PARK':'ECO PARK','ECO  PARK':'ECO PARK'}
+            'Shota Rustavely','TASHKENT CITY MALL','UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR']
+BRANCHES_ALIASES = {'EСO PARK':'ECO PARK','ЕCO PARK':'ECO PARK','ECO  PARK':'ECO PARK'}
 
 FLAGMANS = ['TASHKENT CITY MALL','ATLAS CHIMGAN','ALAYSKIY','Shota Rustavely']
 
@@ -242,6 +242,8 @@ def init_db():
     )""")
     cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS file_data BYTEA")
     cur.execute("ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS file_data BYTEA")
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE catalog ADD COLUMN IF NOT EXISTS discount INTEGER DEFAULT 0")
     cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_items (
         id SERIAL PRIMARY KEY,
@@ -255,8 +257,6 @@ def init_db():
         status TEXT DEFAULT 'Не собран',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''")
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_session ON schlopka_items(session_id)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_branch ON schlopka_items(session_id, branch)')
@@ -271,37 +271,6 @@ def init_db():
         note TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS conversion_data (
-        id SERIAL PRIMARY KEY,
-        branch TEXT NOT NULL,
-        date DATE NOT NULL,
-        visitors_raw INTEGER DEFAULT 0,
-        visitors_net INTEGER DEFAULT 0,
-        checks INTEGER DEFAULT 0,
-        revenue BIGINT DEFAULT 0,
-        created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-        UNIQUE(branch, date)
-    )''')
-    cur.execute('''CREATE TABLE IF NOT EXISTS conversion_settings (
-        branch TEXT PRIMARY KEY,
-        correction INTEGER DEFAULT 0
-    )''')
-    # Seed корректировки счётчиков (вычет сотрудников) — можно менять в UI
-    cur.execute("SELECT COUNT(*) AS c FROM conversion_settings")
-    if cur.fetchone()['c'] == 0:
-        _corr = {'TASHKENT CITY MALL': 25, 'MAGIC CITY': 20, 'ALAYSKIY': 15, 'ATLAS CHIMGAN': 15,
-                 'NOVZA': 15, 'ECO PARK': 15, 'Family park': 15, 'MALIKA': 10,
-                 'HIGH TOWN PLAZA': 5, 'Shota Rustavely': 5, 'Yunusabad gallery': 0,
-                 'M. BARAKA': 0, 'Scopus Mall': 0, 'UZBEGIM ANDIJAN': 0, 'DETSKIY MIR': 0}
-        for b, c in _corr.items():
-            cur.execute("INSERT INTO conversion_settings (branch, correction) VALUES (%s, %s) ON CONFLICT DO NOTHING", (b, c))
-    cur.execute("INSERT INTO conversion_settings (branch, correction) VALUES (%s, 0) ON CONFLICT DO NOTHING", ('CENTRIUM HALL SAMARKAND',))
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_conv_date ON conversion_data(date)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_conv_branch ON conversion_data(branch)')
-    cur.execute('''CREATE TABLE IF NOT EXISTS app_settings (
-        key TEXT PRIMARY KEY,
-        value TEXT
-    )''')
     # Indexes for performance
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
@@ -313,7 +282,12 @@ def init_db():
     cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_branch ON branch_stock(branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_art_branch ON branch_stock(article,branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_discount ON catalog(discount)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_branch ON sales(article, branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_date ON sales(article, sale_date)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch)')
     conn.commit()
@@ -753,7 +727,7 @@ def upload_catalog():
             wms = 0
             if wms_col is not None and row[wms_col] and str(row[wms_col]) not in ('None','nan'):
                 try:
-                    wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace('\u00a0','')
+                    wms_str = str(row[wms_col]).replace(',','').replace(' ','').replace(' ','')
                     wms = int(float(wms_str))
                 except Exception as _e: print(f"[WARN] {_e}")
             catalog_items.append((art, name, size, wms, season, category))
@@ -762,7 +736,7 @@ def upload_catalog():
                 if qty and str(qty) not in ('None','nan',''):
                     try:
                         # Handle "1,000" format (1C comma as thousands separator)
-                        qty_str = str(qty).replace(',', '').replace(' ', '').replace('\u00a0', '')
+                        qty_str = str(qty).replace(',', '').replace(' ', '').replace(' ', '')
                         q = int(float(qty_str))
                         if q > 0: branch_items.append((art, size, branch, q))
                     except Exception as _e: print(f"[WARN] {_e}")
@@ -1188,11 +1162,11 @@ def upload_sales():
             cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
             branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
             ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-            try: qty = int(float(str(row[qty_col]).replace(' ','').replace('\u00a0',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
             except: qty = 1
-            try: price = float(str(row[price_col]).replace(' ','').replace('\u00a0','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
             except: price = 0
-            try: amount = float(str(row[amount_col]).replace(' ','').replace('\u00a0','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
             except: amount = 0
             sale_date = None
             m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
@@ -1205,10 +1179,8 @@ def upload_sales():
             )
             inserted += 1
         conn.commit(); cur.close(); conn.close()
-        _record_sync_result('manual', True, inserted=inserted)
         return jsonify({'ok': True, 'inserted': inserted})
     except Exception as e:
-        _record_sync_result('manual', False, error=str(e))
         return jsonify({'error': str(e)}), 500
 
 @app.route('/api/sales/analytics', methods=['GET'])
@@ -1805,8 +1777,10 @@ def get_schlopka_sessions():
     conn = get_db(); cur = conn.cursor()
     cur.execute('''
         SELECT s.*,
-            COUNT(CASE WHEN i.status='Собран' OR i.status='Забрал' THEN 1 END) as collected,
-            COUNT(i.id) as total_items
+            COUNT(CASE WHEN i.branch_ready OR i.branch_taken OR i.status='Собран' OR i.status='Забрал' THEN 1 END) as collected,
+            COUNT(i.id) as total_items,
+            COUNT(DISTINCT CASE WHEN i.branch_ready THEN i.branch END) as branches_ready,
+            COUNT(DISTINCT i.branch) as branches_total
         FROM schlopka_sessions s
         LEFT JOIN schlopka_items i ON i.session_id = s.id
         GROUP BY s.id
@@ -2019,7 +1993,7 @@ def sync_catalog_from_yadisk():
         with urllib.request.urlopen(req, timeout=15) as r:
             href = _json.loads(r.read()).get('href', '')
         if not href:
-            print('[SYNC] No download link')
+            print('[SYNC] No download link — check SYNC_FOLDER/SYNC_FILENAME path and token')
             return False
         # Download file
         req2 = urllib.request.Request(href)
@@ -2038,9 +2012,9 @@ def sync_catalog_from_yadisk():
                 if 'Артикул' in row_vals:
                     header_idx = i
                     for j, val in enumerate(row_vals):
-                        val_norm = val.replace('\u0421','C').replace('\u0441','c').replace('\u0415','E').replace('\u0435','e')
+                        val_norm = val.replace('С','C').replace('с','c').replace('Е','E').replace('е','e')
                         for branch in BRANCHES:
-                            branch_norm = branch.replace('\u0421','C').replace('\u0441','c').replace('\u0415','E').replace('\u0435','e')
+                            branch_norm = branch.replace('С','C').replace('с','c').replace('Е','E').replace('е','e')
                             if val_norm == branch_norm or val == branch:
                                 branch_cols[branch] = j; break
                         if val == 'Склад WMS': wms_col = j
@@ -2111,7 +2085,7 @@ def sync_catalog_from_yadisk():
             print(f'[SYNC] Done: {len(catalog_items)} items at {_last_sync}')
             return True
     except Exception as e:
-        print(f'[SYNC] Error: {e}')
+        print(f'[SYNC] Error: {e} (path: {SYNC_FOLDER}/{SYNC_FILENAME})')
         return False
 
 def sync_scheduler():
@@ -2154,78 +2128,45 @@ def sync_now():
 @app.route('/api/catalog/discount-upload', methods=['POST'])
 @admin_required
 def upload_discount():
-    '''Upload list of articles with a discount %. File: Артикул + Скидка(%) columns.
-    Falls back to flat 70% if no percent column found (legacy article-only lists).'''
+    '''Upload list of articles with 70% discount'''
     f = request.files.get('file')
-    data = request.get_json(silent=True)
+    data = request.get_json()
     conn = get_db(); cur = conn.cursor()
-
-    items = []  # list of (article, percent)
-
+    
     if f:
         wb = openpyxl.load_workbook(io.BytesIO(f.read()), data_only=True)
         ws = wb.active
         rows = list(ws.iter_rows(values_only=True))
         art_col = 0
-        pct_col = None
         for i, row in enumerate(rows[:3]):
             rv = [str(c).strip().lower() if c else '' for c in row]
             if any('артикул' in v or 'article' in v for v in rv):
                 for j, v in enumerate(rv):
                     if 'артикул' in v or 'article' in v:
-                        art_col = j
-                    if 'скидк' in v or 'discount' in v or v.strip() == '%':
-                        pct_col = j
+                        art_col = j; break
                 rows = rows[i+1:]
                 break
+        articles = []
         for row in rows:
-            if not row or not row[art_col]:
-                continue
-            art = str(row[art_col]).strip()
-            if not art or art in ('None', 'nan', ''):
-                continue
-            pct = 70  # default when file has no percent column
-            if pct_col is not None and row[pct_col] not in (None, '', 'None', 'nan'):
-                try:
-                    pct_str = str(row[pct_col]).replace('%', '').replace(',', '.').strip()
-                    pct = int(round(float(pct_str)))
-                except Exception as _e:
-                    print(f"[WARN] bad discount value for {art}: {_e}")
-                    continue
-            if pct <= 0 or pct > 95:
-                continue
-            items.append((art, pct))
+            if row and row[art_col]:
+                art = str(row[art_col]).strip()
+                if art and art not in ('None', 'nan', ''):
+                    articles.append(art)
     elif data:
-        if data.get('items'):
-            for it in data['items']:
-                art = str(it.get('article', '')).strip()
-                try:
-                    pct = int(round(float(it.get('percent', 70))))
-                except Exception:
-                    pct = 70
-                if art and 0 < pct <= 95:
-                    items.append((art, pct))
-        else:
-            default_pct = int(data.get('percent', 70) or 70)
-            for art in data.get('articles', []):
-                art = str(art).strip()
-                if art:
-                    items.append((art, default_pct))
+        articles = data.get('articles', [])
     else:
         return jsonify({'error': 'Нет данных'}), 400
-
-    if not items:
-        return jsonify({'error': 'Не найдено артикулов со скидкой'}), 400
-
-    # Full replace: clear all existing discounts, then apply the new set
-    cur.execute("UPDATE catalog SET discount=0 WHERE discount>0")
+    
+    # Reset all discounts first
+    cur.execute("UPDATE catalog SET discount=0 WHERE discount=70")
+    # Set 70% for uploaded articles
     count = 0
-    for art, pct in items:
-        cur.execute("UPDATE catalog SET discount=%s WHERE article=%s OR article=%s OR article=%s",
-                   (pct, art, art+'A', art.rstrip('A')))
+    for art in articles:
+        cur.execute("UPDATE catalog SET discount=70 WHERE article=%s OR article=%s OR article=%s",
+                   (art, art+'A', art.rstrip('A')))
         count += cur.rowcount
     conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True, 'updated': count, 'articles': len(items)})
+    return jsonify({'ok': True, 'updated': count, 'articles': len(articles)})
 
 @app.route('/api/catalog/discount-clear', methods=['POST'])
 @admin_required
@@ -2478,7 +2419,6 @@ def run_distribution():
             'M. BARAKA',
             'Family park',
             'UZBEGIM ANDIJAN',
-            'CENTRIUM HALL SAMARKAND',
         ]
 
         FLAGMANS = {'TASHKENT CITY MALL', 'ALAYSKIY', 'ATLAS CHIMGAN', 'Shota Rustavely'}
@@ -2512,12 +2452,14 @@ def run_distribution():
                 art_rows[art] = []
             art_rows[art].append({'nom': nom_full, 'qty': qty})
 
+        # Get discounted articles
+        cur.execute("SELECT DISTINCT article FROM catalog WHERE discount > 0")
+        discount_arts = {r['article'] for r in cur.fetchall()}
+
         results = []; total_qty_in = 0; total_alloc = 0
 
         for art, rows in art_rows.items():
             is_kids = art.startswith('Y') or art.startswith('y')
-            # Правило "футбол" (City Mall получает 50%) пока не определено - выключено
-            is_soccer = False
             total_qty_in += sum(r['qty'] for r in rows)
 
             # Total qty for this article
@@ -2960,7 +2902,7 @@ def auto_schlopka():
         art_names[r['article']] = r['name'] or r['category'] or ''
 
     # Исключаем из доноров Самарканд и Андижан
-    NO_TAKE_BRANCHES = {'UZBEGIM ANDIJAN', 'Samarkand', 'SAMARKAND', 'М.БАРАКА САМАРКАНД', 'M. BARAKA', 'Family park', 'CENTRIUM HALL SAMARKAND'}
+    NO_TAKE_BRANCHES = {'UZBEGIM ANDIJAN', 'Samarkand', 'SAMARKAND', 'М.БАРАКА САМАРКАНД', 'M. BARAKA', 'Family park'}
 
     schlopka_items = []  # (article, name, size, from_branch, to_flagman, qty)
 
@@ -3353,139 +3295,75 @@ def powerbi_export():
         return jsonify({'error': str(e)}), 500
 
 
-def _do_powerbi_sync(replace=True):
-    """Export from Power BI and import as sales data. Returns dict with result info.
-    Used both by the manual /api/powerbi/sync button and the daily auto-sync job."""
-    import re as _re
-    file_data = _pbi_export_file()
-    wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
-    ws = wb.active
-    rows = list(ws.iter_rows(values_only=True))
-
-    header_idx = None
-    for i, row in enumerate(rows[:10]):
-        row_s = [str(c).strip() if c else '' for c in row]
-        if any('артикул' in v.lower() or 'article' in v.lower() for v in row_s):
-            header_idx = i; break
-    if header_idx is None:
-        raise Exception('Не найден заголовок в файле Power BI')
-
-    h = [str(c).strip() if c else '' for c in rows[header_idx]]
-    season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
-    for j, v in enumerate(h):
-        vl = v.lower()
-        if 'сезон' in vl or 'season' in vl: season_col = j
-        if 'артикул' in vl or 'article' in vl: art_col = j
-        if 'вид' in vl or 'category' in vl or 'type' in vl: cat_col = j
-        if 'магазин' in vl or 'branch' in vl or 'store' in vl: branch_col = j
-        if 'ссылка' in vl or 'ref' in vl or 'чек' in vl: ref_col = j
-        if 'количество' in vl or 'qty' in vl or 'кол' in vl: qty_col = j
-        if 'цена' in vl or 'price' in vl: price_col = j
-        if 'сумма' in vl or 'amount' in vl or 'выручка' in vl: amount_col = j
-
-    conn = get_db(); cur = conn.cursor()
-    if replace:
-        cur.execute('DELETE FROM sales')
-
-    inserted = 0
-    for row in rows[header_idx+1:]:
-        if not row: continue
-        art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
-        if not art or art in ('None','nan',''): continue
-        season = str(row[season_col]).strip() if season_col is not None and row[season_col] else ''
-        cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
-        branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
-        ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
-        try: qty = int(float(str(row[qty_col]).replace(chr(160),'').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
-        except: qty = 1
-        try: price = float(str(row[price_col]).replace(chr(160),'').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
-        except: price = 0
-        try: amount = float(str(row[amount_col]).replace(chr(160),'').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
-        except: amount = 0
-        sale_date = None
-        m = _re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
-        if m:
-            try: sale_date = f'{m.group(3)}-{m.group(2)}-{m.group(1)}'
-            except Exception as _e: print(f"[WARN] {_e}")
-        cur.execute(
-            'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
-            (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
-        )
-        inserted += 1
-
-    conn.commit(); cur.close(); conn.close()
-    return {'ok': True, 'inserted': inserted, 'replaced': replace}
-
-
-def _record_sync_result(source, ok, inserted=None, error=None):
-    """Save the outcome of a Power BI sync (manual or auto) so the UI can show 'last updated'."""
-    import json as _json
-    payload = {
-        'time': datetime.now().isoformat(timespec='seconds'),
-        'source': source,   # 'manual' or 'auto'
-        'ok': ok,
-        'inserted': inserted,
-        'error': error,
-    }
-    try:
-        set_setting('pbi_last_sync', _json.dumps(payload))
-    except Exception as e:
-        print(f"[PBI SYNC] Failed to record status: {e}")
-
-
 @app.route('/api/powerbi/sync', methods=['POST'])
 @admin_required
 def powerbi_sync():
-    """Export from Power BI and immediately import as sales data (manual trigger)"""
+    """Export from Power BI and immediately import as sales data"""
+    import re as _re
     replace = request.json.get('replace', False) if request.is_json else False
     try:
-        result = _do_powerbi_sync(replace=replace)
-        _record_sync_result('manual', True, inserted=result.get('inserted'))
-        return jsonify(result)
+        file_data = _pbi_export_file()
+        wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
+        ws = wb.active
+        rows = list(ws.iter_rows(values_only=True))
+
+        # Find header row
+        header_idx = None
+        for i, row in enumerate(rows[:10]):
+            row_s = [str(c).strip() if c else '' for c in row]
+            if any('артикул' in v.lower() or 'article' in v.lower() for v in row_s):
+                header_idx = i; break
+        if header_idx is None:
+            return jsonify({'error': 'Не найден заголовок в файле Power BI'}), 400
+
+        h = [str(c).strip() if c else '' for c in rows[header_idx]]
+        season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = None
+        for j, v in enumerate(h):
+            vl = v.lower()
+            if 'сезон' in vl or 'season' in vl: season_col = j
+            if 'артикул' in vl or 'article' in vl: art_col = j
+            if 'вид' in vl or 'category' in vl or 'type' in vl: cat_col = j
+            if 'магазин' in vl or 'branch' in vl or 'store' in vl: branch_col = j
+            if 'ссылка' in vl or 'ref' in vl or 'чек' in vl: ref_col = j
+            if 'количество' in vl or 'qty' in vl or 'кол' in vl: qty_col = j
+            if 'цена' in vl or 'price' in vl: price_col = j
+            if 'сумма' in vl or 'amount' in vl or 'выручка' in vl: amount_col = j
+
+        conn = get_db(); cur = conn.cursor()
+        if replace:
+            cur.execute('DELETE FROM sales')
+
+        inserted = 0
+        for row in rows[header_idx+1:]:
+            if not row: continue
+            art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
+            if not art or art in ('None','nan',''): continue
+            season = str(row[season_col]).strip() if season_col is not None and row[season_col] else ''
+            cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
+            branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
+            ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
+            try: qty = int(float(str(row[qty_col]).replace(' ','').replace(' ',''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None','nan') else 1
+            except: qty = 1
+            try: price = float(str(row[price_col]).replace(' ','').replace(' ','').replace(',','.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None','nan') else 0
+            except: price = 0
+            try: amount = float(str(row[amount_col]).replace(' ','').replace(' ','').replace(',','.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None','nan') else 0
+            except: amount = 0
+            sale_date = None
+            m = _re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
+            if m:
+                try: sale_date = f'{m.group(3)}-{m.group(2)}-{m.group(1)}'
+                except Exception as _e: print(f"[WARN] {_e}")
+            cur.execute(
+                'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
+                (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
+            )
+            inserted += 1
+
+        conn.commit(); cur.close(); conn.close()
+        return jsonify({'ok': True, 'inserted': inserted, 'replaced': replace})
     except Exception as e:
         import traceback
-        _record_sync_result('manual', False, error=str(e))
         return jsonify({'error': str(e), 'tb': traceback.format_exc()}), 500
-
-
-@app.route('/api/powerbi/last-sync')
-@login_required
-def powerbi_last_sync():
-    """Return info about the last Power BI sync (manual or automatic) for display in the UI."""
-    import json as _json
-    raw = get_setting('pbi_last_sync')
-    if not raw:
-        return jsonify({'time': None})
-    try:
-        return jsonify(_json.loads(raw))
-    except Exception:
-        return jsonify({'time': None})
-
-
-def _powerbi_daily_job():
-    """Запускается автоматически каждый день в 11:00 (Asia/Tashkent) —
-    подтягивает свежий отчёт Power BI и обновляет таблицу продаж."""
-    try:
-        result = _do_powerbi_sync(replace=True)
-        _record_sync_result('auto', True, inserted=result.get('inserted'))
-        print(f"[PBI AUTO-SYNC] {datetime.now()}: OK — {result}")
-    except Exception as e:
-        _record_sync_result('auto', False, error=str(e))
-        print(f"[PBI AUTO-SYNC] {datetime.now()}: FAILED — {e}")
-
-
-def _start_powerbi_scheduler():
-    try:
-        from apscheduler.schedulers.background import BackgroundScheduler
-        from apscheduler.triggers.cron import CronTrigger
-        sched = BackgroundScheduler(timezone='Asia/Tashkent')
-        sched.add_job(_powerbi_daily_job, CronTrigger(hour=11, minute=0), id='pbi_daily_sync', replace_existing=True)
-        sched.start()
-        print('[PBI SCHEDULER] Started — daily sync at 11:00 Asia/Tashkent')
-    except Exception as e:
-        print(f'[PBI SCHEDULER] Failed to start: {e}')
-
-_start_powerbi_scheduler()
 
 
 @app.route('/api/warehouse/report/excel')
@@ -3855,8 +3733,7 @@ def tg_webhook():
         'ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park',
         'HIGH TOWN PLAZA','M. BARAKA','MAGIC CITY','MALIKA',
         'NOVZA','Scopus Mall','Shota Rustavely','TASHKENT CITY MALL',
-        'UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR',
-        'CENTRIUM HALL SAMARKAND'
+        'UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR'
     ]
 
     def send_msg(chat_id, text, keyboard=None):
@@ -4280,7 +4157,17 @@ def reorder_recommendations():
 @admin_required
 def reorder_excel():
     """Export reorder recommendations to Excel"""
+    from flask import url_for
+    import requests as _req
+
+    # Reuse the recommendations logic
     category = request.args.get('category', '')
+
+    # Call internal endpoint
+    with app.test_client() as c:
+        c.set_cookie('session', request.cookies.get('session', ''))
+        resp = c.get(f'/api/reorder/recommendations?category={category}',
+                    headers={'Cookie': f'session={request.cookies.get("session","")}' })
 
     conn = get_db(); cur = conn.cursor()
 
@@ -4474,199 +4361,6 @@ def tg_weekly_report():
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'tb': traceback.format_exc()}), 500
-
-
-# ============================================================
-# КОНВЕРСИЯ: посетители / чеки / выручка / курс ЦБ
-# ============================================================
-
-_usd_rate_cache = {'rate': None, 'ts': 0, 'date': ''}
-
-def get_cbu_usd_rate():
-    """Курс USD от ЦБ Узбекистана (cbu.uz), кэш 6 часов."""
-    import urllib.request, json as _json, time as _time
-    now = _time.time()
-    if _usd_rate_cache['rate'] and now - _usd_rate_cache['ts'] < 6 * 3600:
-        return _usd_rate_cache['rate'], _usd_rate_cache['date']
-    try:
-        req = urllib.request.Request(
-            'https://cbu.uz/ru/arkhiv-kursov-valyut/json/USD/',
-            headers={'User-Agent': 'Mozilla/5.0'})
-        with urllib.request.urlopen(req, timeout=10) as r:
-            data = _json.loads(r.read().decode('utf-8'))
-        rate = float(data[0]['Rate'])
-        _usd_rate_cache.update({'rate': rate, 'ts': now, 'date': data[0].get('Date', '')})
-        return rate, _usd_rate_cache['date']
-    except Exception:
-        # fallback: последний закэшированный или 12000
-        return _usd_rate_cache['rate'] or 12000.0, _usd_rate_cache['date'] or 'fallback'
-
-
-@app.route('/api/usd_rate')
-@login_required
-def api_usd_rate():
-    rate, rate_date = get_cbu_usd_rate()
-    return jsonify({'rate': rate, 'date': rate_date, 'source': 'ЦБ РУз'})
-
-
-@app.route('/api/conversion/settings', methods=['GET'])
-@login_required
-def get_conversion_settings():
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT branch, correction FROM conversion_settings ORDER BY branch")
-    rows = cur.fetchall()
-    cur.close(); conn.close()
-    return jsonify({r['branch']: r['correction'] for r in rows})
-
-
-@app.route('/api/conversion/settings', methods=['POST'])
-@admin_required
-def save_conversion_settings():
-    data = request.get_json() or {}
-    conn = get_db(); cur = conn.cursor()
-    for branch, corr in data.items():
-        try:
-            corr = int(corr)
-        except (ValueError, TypeError):
-            continue
-        cur.execute("""INSERT INTO conversion_settings (branch, correction) VALUES (%s, %s)
-                       ON CONFLICT (branch) DO UPDATE SET correction = EXCLUDED.correction""",
-                    (branch, corr))
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True})
-
-
-@app.route('/api/conversion/save', methods=['POST'])
-@admin_required
-def save_conversion_data():
-    """Сохранение дневных данных. body: {date: 'YYYY-MM-DD', rows: [{branch, visitors_raw, checks, revenue}]}"""
-    data = request.get_json() or {}
-    date = data.get('date', '').strip()
-    rows = data.get('rows', [])
-    if not date or not rows:
-        return jsonify({'error': 'Нужны date и rows'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("SELECT branch, correction FROM conversion_settings")
-    corr_map = {r['branch']: r['correction'] for r in cur.fetchall()}
-    saved = 0
-    for r in rows:
-        branch = str(r.get('branch', '')).strip()
-        if not branch:
-            continue
-        vraw = int(r.get('visitors_raw', 0) or 0)
-        checks = int(r.get('checks', 0) or 0)
-        revenue = int(r.get('revenue', 0) or 0)
-        corr = corr_map.get(branch, 0)
-        vnet = max(vraw - corr, 0) if vraw > 0 else 0
-        cur.execute("""INSERT INTO conversion_data (branch, date, visitors_raw, visitors_net, checks, revenue)
-                       VALUES (%s, %s, %s, %s, %s, %s)
-                       ON CONFLICT (branch, date) DO UPDATE SET
-                         visitors_raw = EXCLUDED.visitors_raw,
-                         visitors_net = EXCLUDED.visitors_net,
-                         checks = EXCLUDED.checks,
-                         revenue = EXCLUDED.revenue""",
-                    (branch, date, vraw, vnet, checks, revenue))
-        saved += 1
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True, 'saved': saved, 'date': date})
-
-
-@app.route('/api/conversion/data')
-@login_required
-def get_conversion_data():
-    """Данные за период: ?from=YYYY-MM-DD&to=YYYY-MM-DD. Свод по филиалам + по дням."""
-    dfrom = request.args.get('from', '')
-    dto = request.args.get('to', '')
-    if not dfrom or not dto:
-        return jsonify({'error': 'Нужны from и to'}), 400
-    conn = get_db(); cur = conn.cursor()
-    # Свод по филиалам
-    cur.execute("""SELECT branch,
-                          SUM(visitors_raw) AS visitors_raw, SUM(visitors_net) AS visitors_net,
-                          SUM(checks) AS checks, SUM(revenue) AS revenue,
-                          COUNT(DISTINCT date) AS days
-                   FROM conversion_data WHERE date BETWEEN %s AND %s
-                   GROUP BY branch ORDER BY branch""", (dfrom, dto))
-    summary = []
-    for r in cur.fetchall():
-        vnet = int(r['visitors_net'] or 0); checks = int(r['checks'] or 0); rev = int(r['revenue'] or 0)
-        summary.append({
-            'branch': r['branch'], 'visitors_raw': int(r['visitors_raw'] or 0),
-            'visitors_net': vnet, 'checks': checks, 'revenue': rev, 'days': r['days'],
-            'conversion': round(checks / vnet * 100, 1) if vnet > 0 else 0,
-            'avg_check': round(rev / checks) if checks > 0 else 0
-        })
-    summary.sort(key=lambda x: -x['conversion'])
-    # По дням
-    cur.execute("""SELECT branch, TO_CHAR(date, 'YYYY-MM-DD') AS date,
-                          visitors_raw, visitors_net, checks, revenue
-                   FROM conversion_data WHERE date BETWEEN %s AND %s
-                   ORDER BY date, branch""", (dfrom, dto))
-    daily = []
-    for r in cur.fetchall():
-        vnet = int(r['visitors_net'] or 0); checks = int(r['checks'] or 0)
-        daily.append({
-            'branch': r['branch'], 'date': r['date'],
-            'visitors_raw': int(r['visitors_raw'] or 0), 'visitors_net': vnet,
-            'checks': checks, 'revenue': int(r['revenue'] or 0),
-            'conversion': round(checks / vnet * 100, 1) if vnet > 0 else 0
-        })
-    cur.close(); conn.close()
-    rate, rate_date = get_cbu_usd_rate()
-    return jsonify({'summary': summary, 'daily': daily, 'usd_rate': rate, 'usd_date': rate_date})
-
-
-@app.route('/api/conversion/compare')
-@login_required
-def compare_conversion_periods():
-    """Сравнение двух периодов: ?from1&to1&from2&to2"""
-    f1, t1 = request.args.get('from1', ''), request.args.get('to1', '')
-    f2, t2 = request.args.get('from2', ''), request.args.get('to2', '')
-    if not all([f1, t1, f2, t2]):
-        return jsonify({'error': 'Нужны from1, to1, from2, to2'}), 400
-    conn = get_db(); cur = conn.cursor()
-
-    def period(df, dt):
-        cur.execute("""SELECT branch, SUM(visitors_net) AS v, SUM(checks) AS c, SUM(revenue) AS r
-                       FROM conversion_data WHERE date BETWEEN %s AND %s GROUP BY branch""", (df, dt))
-        out = {}
-        for row in cur.fetchall():
-            v = int(row['v'] or 0); c = int(row['c'] or 0); r = int(row['r'] or 0)
-            out[row['branch']] = {'visitors': v, 'checks': c, 'revenue': r,
-                                  'conversion': round(c / v * 100, 1) if v > 0 else 0}
-        return out
-
-    p1, p2 = period(f1, t1), period(f2, t2)
-    cur.close(); conn.close()
-    rate, _ = get_cbu_usd_rate()
-    branches = sorted(set(list(p1.keys()) + list(p2.keys())))
-    result = []
-    for b in branches:
-        a = p1.get(b, {'visitors': 0, 'checks': 0, 'revenue': 0, 'conversion': 0})
-        z = p2.get(b, {'visitors': 0, 'checks': 0, 'revenue': 0, 'conversion': 0})
-        result.append({
-            'branch': b, 'p1': a, 'p2': z,
-            'conv_delta': round(a['conversion'] - z['conversion'], 1),
-            'p1_usd': round(a['revenue'] / rate, 2), 'p2_usd': round(z['revenue'] / rate, 2),
-            'rev_delta_pct': round((a['revenue'] - z['revenue']) / z['revenue'] * 100, 1) if z['revenue'] > 0 else 0
-        })
-    result.sort(key=lambda x: -x['conv_delta'])
-    return jsonify({'rows': result, 'usd_rate': rate})
-
-
-@app.route('/api/conversion/data', methods=['DELETE'])
-@admin_required
-def delete_conversion_date():
-    """Удалить данные за дату: ?date=YYYY-MM-DD"""
-    date = request.args.get('date', '')
-    if not date:
-        return jsonify({'error': 'Нужна date'}), 400
-    conn = get_db(); cur = conn.cursor()
-    cur.execute("DELETE FROM conversion_data WHERE date = %s", (date,))
-    deleted = cur.rowcount
-    conn.commit(); cur.close(); conn.close()
-    return jsonify({'ok': True, 'deleted': deleted})
-
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
