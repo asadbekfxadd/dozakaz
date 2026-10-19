@@ -3733,12 +3733,7 @@ def tg_webhook():
     import json as _json, urllib.request, urllib.parse
     data = request.get_json() or {}
 
-    BRANCHES_LIST = [
-        'ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park',
-        'HIGH TOWN PLAZA','M. BARAKA','MAGIC CITY','MALIKA',
-        'NOVZA','Scopus Mall','Shota Rustavely','TASHKENT CITY MALL',
-        'UZBEGIM ANDIJAN','Yunusabad gallery','DETSKIY MIR'
-    ]
+    BRANCHES_LIST = list(BRANCHES)
 
     def send_msg(chat_id, text, keyboard=None):
         params = {'chat_id': chat_id, 'text': text, 'parse_mode': 'HTML'}
