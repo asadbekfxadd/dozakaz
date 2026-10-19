@@ -225,8 +225,11 @@ def init_db():
         filename TEXT,
         original_name TEXT,
         status TEXT DEFAULT 'Новая',
+        reject_reason TEXT DEFAULT '',
         created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    # Migration: add reject_reason if missing
+    cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS reject_reason TEXT DEFAULT ''")
     cur.execute('''CREATE TABLE IF NOT EXISTS order_items (
         id SERIAL PRIMARY KEY,
         order_id INTEGER REFERENCES orders(id),
@@ -428,7 +431,7 @@ def get_orders():
     date_from = request.args.get('date_from', '')
     date_to = request.args.get('date_to', '')
     conn = get_db(); cur = conn.cursor()
-    q = 'SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE 1=1'
+    q = 'SELECT id,branch,responsible,date,status,priority,note,filename,original_name,reject_reason,created_at FROM orders WHERE 1=1'
     params = []
     if session['role'] == 'user':
         q += ' AND branch=%s'; params.append(session['branch'])
@@ -590,7 +593,7 @@ def create_order():
                 WHERE article=%s AND size=%s
             ''', (qty, art, size))
     conn.commit()
-    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (order_id,))
+    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,reject_reason,created_at FROM orders WHERE id=%s', (order_id,))
     row = cur.fetchone()
     cur.close(); release_db(conn)
     # Send TG notifications
@@ -616,19 +619,23 @@ def update_status(oid):
         return jsonify({'error': 'Forbidden'}), 403
     data = request.get_json()
     status = data.get('status')
-    if status not in ('Новая', 'В работе', 'Выполнена'):
+    reject_reason = data.get('reject_reason', '').strip()
+    if status not in ('Новая', 'В работе', 'Выполнена', 'Отказана'):
         return jsonify({'error': 'Invalid status'}), 400
     conn = get_db(); cur = conn.cursor()
-    cur.execute('UPDATE orders SET status=%s WHERE id=%s', (status, oid))
+    if status == 'Отказана':
+        cur.execute('UPDATE orders SET status=%s, reject_reason=%s WHERE id=%s', (status, reject_reason, oid))
+    else:
+        cur.execute('UPDATE orders SET status=%s WHERE id=%s', (status, oid))
     conn.commit()
-    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (oid,))
+    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,reject_reason,created_at FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
     cur.close(); release_db(conn)
     # TG notification on status change
     try:
         if row:
             branch = row['branch']
-            STATUS_ICONS = {'В работе': '🔄', 'Выполнена': '✅', 'Новая': '📋'}
+            STATUS_ICONS = {'В работе': '🔄', 'Выполнена': '✅', 'Новая': '📋', 'Отказана': '❌'}
             icon = STATUS_ICONS.get(status, '📋')
             msg = f'{icon} <b>Заявка #{oid} — {status}</b>\n🏪 {branch}\n📅 {row["date"]}'
             if status == 'В работе':
@@ -638,6 +645,10 @@ def update_status(oid):
                 msg += '\n\n🎉 Ваша заявка выполнена!'
                 notify_role('branch', msg, branch=branch)
                 notify_role('admin', f'✅ Заявка #{oid} ({branch}) выполнена')
+            elif status == 'Отказана':
+                reason_text = f'\n\n📝 Причина: {reject_reason}' if reject_reason else ''
+                msg += f'\n\n❌ Ваша заявка отклонена.{reason_text}'
+                notify_role('branch', msg, branch=branch)
     except Exception as e:
         print(f'[TG STATUS] {e}')
     return jsonify(dict(row))
@@ -646,7 +657,7 @@ def update_status(oid):
 @login_required
 def download_order_excel(oid):
     conn = get_db(); cur = conn.cursor()
-    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,created_at FROM orders WHERE id=%s', (oid,))
+    cur.execute('SELECT id,branch,responsible,date,status,priority,note,filename,original_name,reject_reason,created_at FROM orders WHERE id=%s', (oid,))
     row = cur.fetchone()
     if not row:
         cur.close(); release_db(conn)

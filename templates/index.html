@@ -207,6 +207,7 @@ tbody tr:hover{background:rgba(255,255,255,.02)}
 tbody tr.row-new{border-left-color:var(--accent)}
 tbody tr.row-work{border-left-color:var(--amber)}
 tbody tr.row-done{border-left-color:var(--green)}
+tbody tr.row-rejected{border-left-color:#e53e3e;opacity:.7}
 td{padding:13px 16px;font-size:13px;color:var(--text)}
 td.muted{color:var(--text2)}
 
@@ -215,6 +216,7 @@ td.muted{color:var(--text2)}
 .badge-new{background:rgba(255,23,68,.15);color:var(--accent);border:1px solid rgba(255,23,68,.2)}
 .badge-work{background:rgba(255,171,0,.15);color:var(--amber);border:1px solid rgba(255,171,0,.2)}
 .badge-done{background:rgba(0,230,118,.15);color:var(--green);border:1px solid rgba(0,230,118,.2)}
+.badge-rejected{background:rgba(229,62,62,.15);color:#e53e3e;border:1px solid rgba(229,62,62,.25)}
 .badge-urgent{background:rgba(255,23,68,.2);color:var(--accent);font-size:10px;padding:3px 8px;border-radius:4px;font-weight:700}
 .badge-normal{background:var(--bg3);color:var(--text3);font-size:10px;padding:3px 8px;border-radius:4px}
 .badge-a{background:rgba(255,171,0,.15);color:var(--amber);font-size:10px;padding:2px 8px;border-radius:4px;font-weight:700;border:1px solid rgba(255,171,0,.2)}
@@ -468,6 +470,7 @@ td.muted{color:var(--text2)}
 .badge-new{background:var(--accent2);color:var(--accent)}
 .badge-work{background:var(--amber2);color:var(--amber)}
 .badge-done{background:var(--green2);color:var(--green)}
+.badge-rejected{background:rgba(229,62,62,.15);color:#e53e3e;border:1px solid rgba(229,62,62,.25)}
 .badge-urgent{background:var(--accent2);color:var(--accent);font-size:10px;padding:2px 7px}
 .badge-normal{background:var(--bg3);color:var(--text3);font-size:10px;padding:2px 7px}
 .badge-a{background:#1a0f00;color:#f59e0b;font-size:10px;padding:2px 8px;border-radius:3px;font-weight:700}
@@ -803,7 +806,7 @@ td.muted{color:var(--text2)}
         </div>
         <div class="filters admin-only">
           <select id="f-branch" onchange="loadOrders()"><option value="">Все филиалы</option></select>
-          <select id="f-status" onchange="loadOrders()"><option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Выполнена</option></select>
+          <select id="f-status" onchange="loadOrders()"><option value="">Все статусы</option><option>Новая</option><option>В работе</option><option>Выполнена</option><option>Отказана</option></select>
           <input type="text" id="f-responsible" placeholder="🔍 Сотрудник..." oninput="loadOrders()">
           <input type="date" id="f-date-from" onchange="loadOrders()">
           <input type="date" id="f-date-to" onchange="loadOrders()">
@@ -2066,6 +2069,7 @@ function updateDashCharts(stats){
 function statusBadge(s){
   if(s==='Новая')return '<span class="badge badge-new"><span class="dot dot-new"></span>Новая</span>';
   if(s==='В работе')return '<span class="badge badge-work"><span class="dot dot-work"></span>В работе</span>';
+  if(s==='Отказана')return '<span class="badge badge-rejected">❌ Отказана</span>';
   return '<span class="badge badge-done"><span class="dot dot-done"></span>Выполнена</span>';
 }
 function prioBadge(p){return p==='Срочно'?'<span class="badge badge-urgent">&#9889; Срочно</span>':'<span class="badge badge-normal">Обычный</span>';}
@@ -3606,8 +3610,9 @@ function renderMobileOrders(orders){
         <a href="/api/orders/${o.id}/excel" class="file-chip" download>📥 Excel</a>
       </div>
       ${currentRole==='admin'?`<div class="order-card-mobile-actions">
-        ${o.status!=='В работе'&&o.status!=='Выполнена'?`<button class="btn-secondary" style="flex:1;padding:10px" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>`:''}
-        ${o.status!=='Выполнена'?`<button class="btn-primary" style="flex:1;padding:10px" onclick="setStatus(${o.id},'Выполнена')">✓ Готово</button>`:''}
+        ${o.status!=='В работе'&&o.status!=='Выполнена'&&o.status!=='Отказана'?`<button class="btn-secondary" style="flex:1;padding:10px" onclick="setStatus(${o.id},'В работе')">▶ В работу</button>`:''}
+        ${o.status!=='Выполнена'&&o.status!=='Отказана'?`<button class="btn-primary" style="flex:1;padding:10px" onclick="setStatus(${o.id},'Выполнена')">✓ Готово</button>`:''}
+        ${o.status!=='Отказана'?`<button class="btn-secondary" style="flex:1;padding:10px;color:#e53e3e;border-color:rgba(229,62,62,.3)" onclick="openRejectModal(${o.id})">✕ Отказ</button>`:''}
       </div>`:''}
     </div>
   `).join('');
@@ -3633,7 +3638,21 @@ async function loadOrders(){
   if(!orders.length){
     tbody.innerHTML='<tr><td colspan="7"><div class="empty-state">Заявок не найдено</div></td></tr>';
   } else {
-    tbody.innerHTML=orders.map(o=>'<tr class="'+(o.status==='Новая'?'row-new':o.status==='В работе'?'row-work':'row-done')+'"><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">📎 '+(o.original_name?.length>20?o.original_name.slice(0,18)+'…':o.original_name||'файл')+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">📥 Excel</a></td><td style="font-size:12px;color:var(--text2);max-width:160px"><span title="'+(o.note||'')+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.note&&o.note.trim()?o.note:'—')+'</span></td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+(currentRole==='admin'?'<div style="display:flex;gap:5px;flex-wrap:wrap">'+(o.status!=='В работе'&&o.status!=='Выполнена'?'<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">▶ В работу</button>':'')+(o.status!=='Выполнена'?'<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">✓ Готово</button>':'')+'</div>':'—')+'</td></tr>').join('');
+    tbody.innerHTML=orders.map(o=>{
+      var rowClass=o.status==='Новая'?'row-new':o.status==='В работе'?'row-work':o.status==='Отказана'?'row-rejected':'row-done';
+      var noteHtml=o.status==='Отказана'&&o.reject_reason
+        ?'<span style="color:#e53e3e;font-size:11px;display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="Отказ: '+o.reject_reason+'">❌ '+o.reject_reason+'</span>'
+        :'<span title="'+(o.note||'')+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+(o.note&&o.note.trim()?o.note:'—')+'</span>';
+      var actionsHtml='—';
+      if(currentRole==='admin'){
+        var btns='';
+        if(o.status!=='В работе'&&o.status!=='Выполнена'&&o.status!=='Отказана') btns+='<button class="btn-icon" onclick="setStatus('+o.id+',\'В работе\')">▶ В работу</button>';
+        if(o.status!=='Выполнена'&&o.status!=='Отказана') btns+='<button class="btn-icon success" onclick="setStatus('+o.id+',\'Выполнена\')">✓ Готово</button>';
+        if(o.status!=='Отказана') btns+='<button class="btn-icon" style="background:rgba(229,62,62,.12);color:#e53e3e;border-color:rgba(229,62,62,.25)" onclick="openRejectModal('+o.id+')">✕ Отказ</button>';
+        actionsHtml='<div style="display:flex;gap:5px;flex-wrap:wrap">'+btns+'</div>';
+      }
+      return '<tr class="'+rowClass+'"><td style="font-weight:700;text-transform:uppercase">'+o.branch+'</td><td class="muted">'+o.responsible+'</td><td class="muted">'+o.date+'</td><td>'+(o.filename?'<a href="/api/download/'+o.id+'" class="file-chip">📎 '+(o.original_name?.length>20?o.original_name.slice(0,18)+'…':o.original_name||'файл')+'</a>':'')+'<a href="/api/orders/'+o.id+'/excel" class="file-chip" download style="margin-left:2px">📥 Excel</a></td><td style="font-size:12px;color:var(--text2);max-width:160px">'+noteHtml+'</td><td>'+statusBadge(o.status)+'</td><td>'+prioBadge(o.priority)+'</td><td>'+actionsHtml+'</td></tr>';
+    }).join('');
   }
   // Mobile cards
   renderMobileOrders(orders);
@@ -4364,6 +4383,57 @@ async function distRun(){
     document.getElementById('dist-run-btn').style.opacity='1';
   }
 }
+
+// ===== REJECT ORDER =====
+var _rejectOrderId = null;
+
+function openRejectModal(id) {
+  _rejectOrderId = id;
+  document.getElementById('reject-reason-input').value = '';
+  document.getElementById('reject-modal-overlay').style.display = 'flex';
+  setTimeout(()=>document.getElementById('reject-reason-input').focus(), 80);
+}
+
+function closeRejectModal() {
+  document.getElementById('reject-modal-overlay').style.display = 'none';
+  _rejectOrderId = null;
+}
+
+async function confirmReject() {
+  if (!_rejectOrderId) return;
+  var reason = document.getElementById('reject-reason-input').value.trim();
+  if (!reason) { document.getElementById('reject-reason-input').focus(); toast('Укажите причину отказа', true); return; }
+  var btn = document.getElementById('reject-confirm-btn');
+  btn.disabled = true; btn.textContent = '...';
+  try {
+    var r = await fetch('/api/orders/' + _rejectOrderId + '/status', {
+      method: 'PATCH',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({status: 'Отказана', reject_reason: reason})
+    });
+    if (!r.ok) throw new Error('Ошибка ' + r.status);
+    toast('Заявка отклонена');
+    closeRejectModal();
+    loadOrders();
+  } catch(e) { toast(e.message, true); }
+  btn.disabled = false; btn.textContent = '❌ Отказать';
+}
 </script>
+
+<!-- Reject order modal -->
+<div id="reject-modal-overlay" style="display:none;position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:9999;align-items:center;justify-content:center" onclick="if(event.target===this)closeRejectModal()">
+  <div style="background:var(--bg2);border:1px solid var(--border);border-radius:14px;padding:28px;width:min(420px,92vw);box-shadow:0 8px 40px rgba(0,0,0,.4)">
+    <div style="font-size:16px;font-weight:700;margin-bottom:6px;color:var(--text1)">❌ Отказать в заявке</div>
+    <div style="font-size:13px;color:var(--text3);margin-bottom:18px">Укажите причину — она будет отправлена в Telegram филиалу</div>
+    <textarea id="reject-reason-input" placeholder="Например: товар отсутствует на складе, заявка оформлена неверно..." rows="4"
+      style="width:100%;box-sizing:border-box;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:10px 12px;color:var(--text1);font-size:13px;resize:vertical;font-family:inherit;outline:none"
+      onkeydown="if(event.key==='Enter'&&event.ctrlKey)confirmReject()"></textarea>
+    <div style="display:flex;gap:10px;margin-top:16px;justify-content:flex-end">
+      <button onclick="closeRejectModal()" style="padding:9px 18px;border-radius:8px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;font-size:13px">Отмена</button>
+      <button id="reject-confirm-btn" onclick="confirmReject()" style="padding:9px 18px;border-radius:8px;border:none;background:#e53e3e;color:#fff;cursor:pointer;font-size:13px;font-weight:600">❌ Отказать</button>
+    </div>
+  </div>
+</div>
+
 </body>
 </html>
