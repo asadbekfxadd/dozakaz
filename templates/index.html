@@ -1859,11 +1859,14 @@ async function init(){
 async function doLogin(){
   var username=document.getElementById('l-user').value.trim();
   var password=document.getElementById('l-pass').value;
-  var r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
-  var d=await r.json();
-  if(!r.ok){document.getElementById('login-error').style.display='block';return;}
-  document.getElementById('login-error').style.display='none';
-  currentRole=d.role;currentBranch=d.branch;showApp(d);
+  var errEl=document.getElementById('login-error');
+  try{
+    var r=await fetch('/api/login',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({username,password})});
+    var d=await r.json();
+    if(!r.ok){errEl.textContent=d.error||'Неверный логин или пароль';errEl.style.display='block';return;}
+    errEl.style.display='none';
+    currentRole=d.role;currentBranch=d.branch;showApp(d);
+  }catch(e){errEl.textContent='Ошибка соединения';errEl.style.display='block';}
 }
 
 function showApp(d){
@@ -3327,16 +3330,8 @@ function renderSchlopkaItems(){
     return true;
   });
 
-  // Stats
-  var total = currentSchlopkaItems.length;
-  var notReady = currentSchlopkaItems.filter(i=>i.status==='Не собран').length;
-  var ready = currentSchlopkaItems.filter(i=>i.status==='В работе').length;
-  var sent = currentSchlopkaItems.filter(i=>i.status==='Собран'||i.status==='Забрал').length;
-  document.getElementById('schlopka-detail-stats').textContent = 'Всего: '+total+' позиций';
-  document.getElementById('schlopka-stats-cards').innerHTML =
-    '<div style="background:var(--accent2);border:1px solid rgba(255,23,68,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--accent)">'+notReady+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Не собран</div></div>'+
-    '<div style="background:var(--amber2);border:1px solid rgba(255,171,0,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--amber)">'+ready+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">В работе</div></div>'+
-    '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--green)">'+sent+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Передан</div></div>';
+  // Always render stats via shared function
+  renderSchlopkaStats();
 
   var statusColor = {'Не собран':'var(--accent)','В работе':'var(--amber)','Собран':'var(--green)','Забрал':'var(--blue)'};
 
@@ -3379,10 +3374,12 @@ function renderSchlopkaStats(){
   var notReady = currentSchlopkaItems.filter(i=>i.status==='Не собран').length;
   var ready = currentSchlopkaItems.filter(i=>i.status==='В работе').length;
   var sent = currentSchlopkaItems.filter(i=>i.status==='Собран'||i.status==='Забрал').length;
+  var el = document.getElementById('schlopka-detail-stats');
+  if(el) el.textContent = 'Всего: '+total+' позиций';
   document.getElementById('schlopka-stats-cards').innerHTML =
     '<div style="background:var(--accent2);border:1px solid rgba(255,23,68,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--accent)">'+notReady+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Не собран</div></div>'+
     '<div style="background:var(--amber2);border:1px solid rgba(255,171,0,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--amber)">'+ready+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">В работе</div></div>'+
-    '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--green)">'+sent+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Собран</div></div>';
+    '<div style="background:var(--green2);border:1px solid rgba(0,230,118,.2);border-radius:8px;padding:12px 18px;text-align:center"><div style="font-size:22px;font-weight:800;color:var(--green)">'+sent+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase;margin-top:2px">Собран/Передан</div></div>';
 }
 
 function renderSchlopkaRow(item, statusColor){
@@ -3803,6 +3800,17 @@ ${JSON.stringify(salesD.by_category, null, 1)}
     toast('Ошибка AI анализа: ' + e.message, true);
   }
 }
+
+// Global error handler for unhandled promise rejections (network errors, etc.)
+window.addEventListener('unhandledrejection', function(e){
+  var msg = e.reason && e.reason.message ? e.reason.message : String(e.reason);
+  // Ignore abort errors (user navigation) and non-critical fetch failures
+  if(msg && (msg.includes('AbortError') || msg.includes('NetworkError'))) return;
+  console.error('[Unhandled]', e.reason);
+  // Show toast for user visibility in dev/staging
+  if(window.location.hostname !== 'localhost') return;
+  toast('Ошибка: ' + msg.slice(0,80), true);
+});
 
 init();
 loadSyncStatus();

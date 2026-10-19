@@ -8,9 +8,15 @@ from openpyxl.styles import Font, PatternFill, Alignment, Border, Side
 import psycopg2
 from psycopg2.extras import RealDictCursor
 from threading import Thread
+from collections import defaultdict
 import time
 
 app = Flask(__name__)
+
+# Simple in-memory login rate limiter: max 10 attempts per IP per 15 min
+_login_attempts = defaultdict(list)
+_LOGIN_MAX = 10
+_LOGIN_WINDOW = 900  # seconds
 app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(32)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
@@ -332,12 +338,23 @@ def static_files(filename):
 
 @app.route('/api/login', methods=['POST'])
 def login():
+    ip = request.remote_addr or 'unknown'
+    now = time.time()
+    # Prune old attempts
+    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _LOGIN_WINDOW]
+    if len(_login_attempts[ip]) >= _LOGIN_MAX:
+        return jsonify({'error': 'Слишком много попыток входа. Попробуйте через 15 минут.'}), 429
+
     data = request.get_json()
     username = data.get('username', '').strip()
     password = data.get('password', '').strip()
     user = USERS.get(username)
     if not user or user['password'] != password:
+        _login_attempts[ip].append(now)
         return jsonify({'error': 'Неверный логин или пароль'}), 401
+
+    # Successful login: clear attempts for this IP
+    _login_attempts.pop(ip, None)
     session['username'] = username
     session['role'] = user['role']
     session['branch'] = user.get('branch')
@@ -3731,6 +3748,9 @@ def tg_webhook():
     import json as _json, urllib.request, urllib.parse
     data = request.get_json() or {}
 
+    if not TG_BOT_TOKEN:
+        return 'ok'
+
     BRANCHES_LIST = list(BRANCHES)
 
     def send_msg(chat_id, text, keyboard=None):
@@ -3836,6 +3856,8 @@ def tg_webhook():
             send_tg(chat_id, '❌ Не зарегистрированы. /start')
 
     return 'ok'
+
+
 @app.route('/api/tg/setup-webhook', methods=['POST'])
 @admin_required
 def setup_tg_webhook():
@@ -4154,17 +4176,8 @@ def reorder_recommendations():
 @admin_required
 def reorder_excel():
     """Export reorder recommendations to Excel"""
-    from flask import url_for
-    import requests as _req
-
     # Reuse the recommendations logic
     category = request.args.get('category', '')
-
-    # Call internal endpoint
-    with app.test_client() as c:
-        c.set_cookie('session', request.cookies.get('session', ''))
-        resp = c.get(f'/api/reorder/recommendations?category={category}',
-                    headers={'Cookie': f'session={request.cookies.get("session","")}' })
 
     conn = get_db(); cur = conn.cursor()
 
@@ -4313,7 +4326,7 @@ def tg_weekly_report():
         cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Новая'")
         pending = cur.fetchone()['c']
 
-        cur.close(); conn.close()
+        cur.close(); conn.close(); conn = None
 
         from datetime import timedelta
         week_start = (datetime.now() - timedelta(days=7)).strftime('%d.%m')
@@ -4358,6 +4371,12 @@ def tg_weekly_report():
     except Exception as e:
         import traceback
         return jsonify({'error': str(e), 'tb': traceback.format_exc()}), 500
+    finally:
+        try:
+            if conn:
+                conn.close()
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     port = int(os.environ.get('PORT', 5000))
