@@ -44,7 +44,7 @@ TG_BOT_TOKEN = os.environ.get('TG_BOT_TOKEN', '')
 _tg_subscribers = {}  # chat_id -> role (loaded from DB)
 
 def send_tg(chat_id, text):
-    """Send Telegram message"""
+    """Send Telegram message. Auto-deactivates subscriber on 403 (bot blocked)."""
     import urllib.request, urllib.parse, json as _json
     if not TG_BOT_TOKEN:
         return None
@@ -58,6 +58,19 @@ def send_tg(chat_id, text):
         req = urllib.request.Request(url, data=data, method='POST')
         with urllib.request.urlopen(req, timeout=10) as r:
             return _json.loads(r.read())
+    except urllib.error.HTTPError as e:
+        if e.code in (403, 400):
+            # User blocked bot or chat not found — deactivate subscriber
+            print(f'[TG] {e.code} for chat_id {chat_id} — deactivating subscriber')
+            try:
+                conn = get_db(); cur = conn.cursor()
+                cur.execute('UPDATE tg_subscribers SET active=FALSE WHERE chat_id=%s', (str(chat_id),))
+                conn.commit(); cur.close(); release_db(conn)
+            except Exception as db_e:
+                print(f'[TG] Failed to deactivate {chat_id}: {db_e}')
+        else:
+            print(f'[TG] Error sending to {chat_id}: {e}')
+        return None
     except Exception as e:
         print(f'[TG] Error sending to {chat_id}: {e}')
         return None
