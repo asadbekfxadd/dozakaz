@@ -11,7 +11,7 @@ from threading import Thread
 import time
 
 app = Flask(__name__)
-app.secret_key = os.environ.get('SECRET_KEY', 'dozakaz-secret-key-2026-fallback')
+app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(32)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
 
@@ -33,12 +33,14 @@ ALLOWED = {'.xlsx', '.xls', '.csv'}
 DATABASE_URL = os.environ.get('DATABASE_URL', '')
 
 # Telegram Bot config
-TG_BOT_TOKEN = os.environ.get('TG_BOT_TOKEN', '8893357777:AAEk4kCB8n9Lp1HJlSpig-OgBgrac9EXvMs')
+TG_BOT_TOKEN = os.environ.get('TG_BOT_TOKEN', '')
 _tg_subscribers = {}  # chat_id -> role (loaded from DB)
 
 def send_tg(chat_id, text):
     """Send Telegram message"""
     import urllib.request, urllib.parse, json as _json
+    if not TG_BOT_TOKEN:
+        return None
     try:
         url = f'https://api.telegram.org/bot{TG_BOT_TOKEN}/sendMessage'
         data = urllib.parse.urlencode({
@@ -142,14 +144,14 @@ BRANCHES_ALIASES = {'EСO PARK':'ECO PARK','ЕCO PARK':'ECO PARK','ECO  PARK':'E
 
 FLAGMANS = ['TASHKENT CITY MALL','ATLAS CHIMGAN','ALAYSKIY','Shota Rustavely']
 
-YADISK_TOKEN = os.environ.get('YADISK_TOKEN', '35a4110c9f5a4729ba8a54cf978276f4')
+YADISK_TOKEN = os.environ.get('YADISK_TOKEN', '')
 YADISK_PUBLIC_KEY = 'https://disk.yandex.ru/d/uJxKSsp_PRLemQ'
 YADISK_FOLDER = '/06-White Background Pics'
 _photo_cache = {}
 _photo_url_cache = {}
 
 # Auto-sync config
-SYNC_TOKEN = os.environ.get('SYNC_YADISK_TOKEN', 'y0__wgBEMqV35IIGNuWAyCth5vyF4mF73xoNyGCf7QJ3fjdgKw2YKVk')
+SYNC_TOKEN = os.environ.get('SYNC_YADISK_TOKEN', '')
 SYNC_FOLDER = '/li-ning-sync/остатки'
 SYNC_FILENAME = 'остатки для сайта.xlsx'
 SYNC_INTERVAL_HOURS = 2
@@ -276,19 +278,13 @@ def init_db():
     # Indexes for performance
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article, branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_discount ON catalog(discount)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_branch ON branch_stock(branch)')
+    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_art_branch ON branch_stock(article, branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_article ON sales(article)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_branch ON sales(article,branch)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_article ON branch_stock(article)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_branch ON branch_stock(branch)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_branch_stock_art_branch ON branch_stock(article,branch)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_article ON catalog(article)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_abc ON catalog(abc)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_catalog_discount ON catalog(discount)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_date ON sales(sale_date)')
-    cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_branch ON sales(branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_branch ON sales(article, branch)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_sales_art_date ON sales(article, sale_date)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_orders_branch ON orders(branch)')
@@ -543,6 +539,7 @@ def create_order():
         if priority == 'Срочно': msg += '\n\n🚨 <b>СРОЧНО!</b>'
         # Notify admins
         notify_role('admin', msg)
+        # Notify regional managers — branch info is in the message so they can self-filter
         notify_role('regional', msg)
         # Notify branch manager - confirm receipt
         notify_role('branch', f'✅ <b>Заявка #{order_id} принята!</b>\n🏪 {branch}\n📅 {date}\nСтатус: <b>Новая</b>\n\nМы получили вашу заявку и начнём обработку.', branch=branch)
@@ -633,25 +630,23 @@ def download(oid):
 @login_required
 def stats():
     conn = get_db(); cur = conn.cursor()
+    q = """
+        SELECT COUNT(*) as total,
+               COUNT(CASE WHEN status='Новая' THEN 1 END) as new,
+               COUNT(CASE WHEN status='В работе' THEN 1 END) as inprog,
+               COUNT(CASE WHEN status='Выполнена' THEN 1 END) as done
+        FROM orders WHERE 1=1
+    """
     if session['role'] == 'admin':
-        cur.execute('SELECT COUNT(*) as c FROM orders'); total = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Новая'"); new = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='В работе'"); inprog = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE status='Выполнена'"); done = cur.fetchone()['c']
+        cur.execute(q)
     elif session['role'] == 'regional':
-        bs = session.get('branches', [])
-        cur.execute('SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s)', (bs,)); total = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='Новая'", (bs,)); new = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='В работе'", (bs,)); inprog = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch = ANY(%s) AND status='Выполнена'", (bs,)); done = cur.fetchone()['c']
+        bs = session.get('branches') or []
+        cur.execute(q + ' AND branch = ANY(%s)', (bs,))
     else:
-        b = session['branch']
-        cur.execute('SELECT COUNT(*) as c FROM orders WHERE branch=%s', (b,)); total = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch=%s AND status='Новая'", (b,)); new = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch=%s AND status='В работе'", (b,)); inprog = cur.fetchone()['c']
-        cur.execute("SELECT COUNT(*) as c FROM orders WHERE branch=%s AND status='Выполнена'", (b,)); done = cur.fetchone()['c']
+        cur.execute(q + ' AND branch=%s', (session['branch'],))
+    row = cur.fetchone()
     cur.close(); conn.close()
-    return jsonify({'total': total, 'new': new, 'in_progress': inprog, 'done': done})
+    return jsonify({'total': row['total'], 'new': row['new'], 'in_progress': row['inprog'], 'done': row['done']})
 
 @app.route('/api/catalog/upload', methods=['POST'])
 @admin_required
@@ -2457,8 +2452,10 @@ def run_distribution():
             art_rows[art].append({'nom': nom_full, 'qty': qty})
 
         # Get discounted articles
-        cur.execute("SELECT DISTINCT article FROM catalog WHERE discount > 0")
-        discount_arts = {r['article'] for r in cur.fetchall()}
+        _conn_dist = get_db(); _cur_dist = _conn_dist.cursor()
+        _cur_dist.execute("SELECT DISTINCT article FROM catalog WHERE discount > 0")
+        discount_arts = {r['article'] for r in _cur_dist.fetchall()}
+        _cur_dist.close(); _conn_dist.close()
 
         results = []; total_qty_in = 0; total_alloc = 0
 
@@ -2507,6 +2504,7 @@ def run_distribution():
                     size_hint = ''
 
                 is_popular = size_hint in POPULAR_SIZES
+                is_soccer = art.startswith('F') or art.startswith('f')  # Football/Soccer articles
 
                 # Soccer: City Mall gets 50% first
                 store_counts = {si: 0 for si in eligible}
