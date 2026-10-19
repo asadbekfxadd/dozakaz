@@ -2709,9 +2709,14 @@ function onFile(inp){if(inp.files[0]){selectedFile=inp.files[0];document.getElem
 function handleDrop(e){e.preventDefault();document.getElementById('upload-zone').classList.remove('drag');var f=e.dataTransfer.files[0];if(f){selectedFile=f;document.getElementById('upload-name').innerHTML='✓ '+f.name;}}
 
 async function submitForm(){
-  var branch=document.getElementById('r-branch').value;
+  var branch;
+  if(currentRole==='user'&&currentBranch){
+    branch=currentBranch;
+  } else {
+    branch=document.getElementById('r-branch').value;
+    if(!branch){toast('Выберите филиал',true);return;}
+  }
   var responsible=document.getElementById('r-responsible').value.trim();
-  if(!branch){toast('Выберите филиал',true);return;}
   if(!responsible){toast('Укажите ответственного',true);return;}
   var fd=new FormData();
   fd.append('branch',branch);fd.append('responsible',responsible);
