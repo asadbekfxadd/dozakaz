@@ -178,8 +178,11 @@ _photo_url_cache = {}
 SYNC_TOKEN = os.environ.get('SYNC_YADISK_TOKEN', '')
 SYNC_FOLDER = '/li-ning-sync/остатки'
 SYNC_FILENAME = 'остатки для сайта.xlsx'
-SYNC_INTERVAL_HOURS = 2
+SYNC_SALES_FOLDER = os.environ.get('SYNC_SALES_FOLDER', '/li-ning-sync/продажи')
+SYNC_SALES_FILENAME = os.environ.get('SYNC_SALES_FILENAME', 'продажи для сайта.xlsx')
+SYNC_HOUR_UTC = 3   # 08:00 Tashkent = 03:00 UTC
 _last_sync = None
+_last_sales_sync = None
 
 _db_pool = None
 
@@ -2146,11 +2149,137 @@ def sync_catalog_from_yadisk():
         print(f'[SYNC] Error: {e} (path: {SYNC_FOLDER}/{SYNC_FILENAME})')
         return False
 
+def sync_sales_from_yadisk():
+    """Download and import sales Excel from Yandex Disk (SYNC_SALES_FOLDER/SYNC_SALES_FILENAME)."""
+    import urllib.request, urllib.parse, json as _json
+    global _last_sales_sync
+    if not SYNC_TOKEN:
+        print('[SALES SYNC] No SYNC_YADISK_TOKEN')
+        return False
+    try:
+        full_path = SYNC_SALES_FOLDER + '/' + SYNC_SALES_FILENAME
+        url = ('https://cloud-api.yandex.net/v1/disk/resources/download?path='
+               + urllib.parse.quote(full_path, safe=''))
+        req = urllib.request.Request(url, headers={'Authorization': f'OAuth {SYNC_TOKEN}'})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            href = _json.loads(r.read()).get('href', '')
+        if not href:
+            print(f'[SALES SYNC] No download link — check path: {full_path}')
+            return False
+        req2 = urllib.request.Request(href)
+        with urllib.request.urlopen(req2, timeout=60) as r2:
+            file_data = r2.read()
+        with app.app_context():
+            wb = openpyxl.load_workbook(io.BytesIO(file_data), data_only=True)
+            ws = wb.active
+            rows = list(ws.iter_rows(values_only=True))
+            header_idx = None
+            for i, row in enumerate(rows):
+                row_s = [str(c).strip() if c else '' for c in row]
+                if 'Артикул' in row_s or 'Арт' in row_s:
+                    header_idx = i; break
+            if header_idx is None:
+                print('[SALES SYNC] Header not found'); return False
+            h1 = [str(c).strip() if c else '' for c in rows[header_idx]]
+            season_col = art_col = cat_col = branch_col = ref_col = qty_col = price_col = amount_col = date_col = None
+            for j, v in enumerate(h1):
+                if 'Сезон' in v: season_col = j
+                if 'Артикул' in v: art_col = j
+                if 'Вид' in v and cat_col is None: cat_col = j
+                if v == 'Магазин': branch_col = j
+                if v == 'Ссылка': ref_col = j
+                if v == 'Количество': qty_col = j
+                if v == 'Цена': price_col = j
+                if v == 'Сумма': amount_col = j
+                if v in ('Дата', 'Дата продажи'): date_col = j
+            if art_col is None:
+                print('[SALES SYNC] No article column'); return False
+            conn = get_db(); cur = conn.cursor()
+            # Only insert new records (don't wipe existing)
+            cur.execute('SELECT MAX(sale_date) as md FROM sales')
+            row_md = cur.fetchone()
+            max_existing = str(row_md['md']) if row_md and row_md['md'] else None
+            inserted = 0
+            for row in rows[header_idx + 1:]:
+                if not row: continue
+                art = str(row[art_col]).strip() if art_col is not None and row[art_col] else ''
+                if not art or art in ('None', 'nan', ''): continue
+                season = str(row[season_col]).strip() if season_col is not None and row[season_col] else ''
+                cat = str(row[cat_col]).strip() if cat_col is not None and row[cat_col] else ''
+                branch = str(row[branch_col]).strip() if branch_col is not None and row[branch_col] else ''
+                ref = str(row[ref_col]).strip() if ref_col is not None and row[ref_col] else ''
+                try: qty = int(float(str(row[qty_col]).replace(' ', '').replace(' ', ''))) if qty_col is not None and row[qty_col] and str(row[qty_col]) not in ('None', 'nan') else 1
+                except: qty = 1
+                try: price = float(str(row[price_col]).replace(' ', '').replace(' ', '').replace(',', '.')) if price_col is not None and row[price_col] and str(row[price_col]) not in ('None', 'nan') else 0
+                except: price = 0
+                try: amount = float(str(row[amount_col]).replace(' ', '').replace(' ', '').replace(',', '.')) if amount_col is not None and row[amount_col] and str(row[amount_col]) not in ('None', 'nan') else 0
+                except: amount = 0
+                sale_date = None
+                if date_col is not None and row[date_col]:
+                    dv = row[date_col]
+                    if hasattr(dv, 'strftime'):
+                        sale_date = dv.strftime('%Y-%m-%d')
+                    else:
+                        m = re.search(r'(\d{2})\.(\d{2})\.(\d{4})', str(dv))
+                        if m: sale_date = f'{m.group(3)}-{m.group(2)}-{m.group(1)}'
+                if sale_date is None:
+                    m = re.search(r'от (\d{2})\.(\d{2})\.(\d{4})', ref)
+                    if m: sale_date = f'{m.group(3)}-{m.group(2)}-{m.group(1)}'
+                # Skip rows older than what we already have
+                if max_existing and sale_date and sale_date <= max_existing:
+                    continue
+                cur.execute(
+                    'INSERT INTO sales (season,article,category,branch,sale_date,qty,price,amount) VALUES (%s,%s,%s,%s,%s,%s,%s,%s)',
+                    (season, art.rstrip('A'), cat, branch, sale_date, qty, price, amount)
+                )
+                inserted += 1
+            conn.commit(); cur.close(); release_db(conn)
+            _last_sales_sync = datetime.now().strftime('%Y-%m-%d %H:%M')
+            print(f'[SALES SYNC] Done: {inserted} new rows at {_last_sales_sync}')
+            return inserted
+    except Exception as e:
+        print(f'[SALES SYNC] Error: {e} (path: {SYNC_SALES_FOLDER}/{SYNC_SALES_FILENAME})')
+        return False
+
+
 def sync_scheduler():
-    time.sleep(10)  # wait for app to start
+    """Run daily at SYNC_HOUR_UTC (08:00 Tashkent = 03:00 UTC). First run on startup."""
+    import datetime as _dt
+    time.sleep(15)  # wait for app to fully start
+    first_run = True
     while True:
-        sync_catalog_from_yadisk()
-        time.sleep(SYNC_INTERVAL_HOURS * 3600)
+        if first_run:
+            # On first run: sync immediately so data is fresh after deploy
+            first_run = False
+        else:
+            # Sleep until next SYNC_HOUR_UTC
+            now_utc = _dt.datetime.utcnow()
+            next_run = now_utc.replace(hour=SYNC_HOUR_UTC, minute=0, second=0, microsecond=0)
+            if now_utc >= next_run:
+                next_run += _dt.timedelta(days=1)
+            sleep_secs = (next_run - _dt.datetime.utcnow()).total_seconds()
+            print(f'[SYNC] Next run at {next_run.strftime("%Y-%m-%d %H:%M")} UTC ({sleep_secs/3600:.1f}h)')
+            time.sleep(max(sleep_secs, 0))
+
+        catalog_ok = sync_catalog_from_yadisk()
+        sales_result = sync_sales_from_yadisk()
+        # Notify admins via TG
+        try:
+            parts = []
+            if catalog_ok:
+                parts.append('📦 Остатки обновлены')
+            else:
+                parts.append('❌ Остатки: ошибка синхронизации')
+            if sales_result is False:
+                parts.append('❌ Продажи: ошибка синхронизации')
+            elif sales_result == 0:
+                parts.append('📊 Продажи: нет новых записей')
+            else:
+                parts.append(f'📊 Продажи: +{sales_result} новых строк')
+            msg = '🔄 <b>Авто-синхронизация</b>\n' + '\n'.join(parts)
+            notify_role('admin', msg)
+        except Exception as _e:
+            print(f'[SYNC] TG notify error: {_e}')
 
 # Start background sync thread
 sync_thread = Thread(target=sync_scheduler, daemon=True)
@@ -2175,13 +2304,32 @@ def debug_counts():
 @app.route('/api/sync/status')
 @admin_required
 def sync_status():
-    return jsonify({'last_sync': _last_sync, 'interval_hours': SYNC_INTERVAL_HOURS, 'folder': SYNC_FOLDER})
+    import datetime as _dt
+    now_utc = _dt.datetime.utcnow()
+    next_run = now_utc.replace(hour=SYNC_HOUR_UTC, minute=0, second=0, microsecond=0)
+    if now_utc >= next_run:
+        next_run += _dt.timedelta(days=1)
+    return jsonify({
+        'last_sync': _last_sync,
+        'last_sales_sync': _last_sales_sync,
+        'sync_hour_utc': SYNC_HOUR_UTC,
+        'sync_hour_local': f'{(SYNC_HOUR_UTC + 5) % 24:02d}:00 (Ташкент)',
+        'next_run_utc': next_run.strftime('%Y-%m-%d %H:%M UTC'),
+        'folder': SYNC_FOLDER,
+        'sales_folder': SYNC_SALES_FOLDER,
+        'sales_filename': SYNC_SALES_FILENAME,
+    })
 
 @app.route('/api/sync/now', methods=['POST'])
 @admin_required
 def sync_now():
-    ok = sync_catalog_from_yadisk()
-    return jsonify({'ok': ok, 'last_sync': _last_sync})
+    what = request.json.get('what', 'all') if request.is_json else 'all'
+    result = {}
+    if what in ('all', 'catalog'):
+        result['catalog'] = sync_catalog_from_yadisk()
+    if what in ('all', 'sales'):
+        result['sales'] = sync_sales_from_yadisk()
+    return jsonify({'ok': True, 'result': result, 'last_sync': _last_sync, 'last_sales_sync': _last_sales_sync})
 
 @app.route('/api/catalog/discount-upload', methods=['POST'])
 @admin_required
