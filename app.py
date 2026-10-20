@@ -2971,6 +2971,8 @@ def zero_sales():
     art_list = list(set(r['article'] for r in rows))
     network_stock = {}
     network_sizes = {}
+    network_sales = {}      # продажи по сети за период
+    branch_sales_map = {}   # {article: {branch: qty}} — где продается
     if art_list:
         cur.execute("""
             SELECT article, SUM(qty) as total, COUNT(DISTINCT size) as sizes
@@ -2980,6 +2982,52 @@ def zero_sales():
         for r in cur.fetchall():
             network_stock[r['article']] = int(r['total'] or 0)
             network_sizes[r['article']] = int(r['sizes'] or 0)
+
+        # Продажи по всей сети за период
+        cur.execute("""
+            SELECT article, SUM(qty) as total_qty, COUNT(DISTINCT branch) as selling_branches
+            FROM sales
+            WHERE article = ANY(%s) AND sale_date >= CURRENT_DATE - %s
+            GROUP BY article
+        """, (art_list, days))
+        for r in cur.fetchall():
+            network_sales[r['article']] = {
+                'qty': int(r['total_qty'] or 0),
+                'branches': int(r['selling_branches'] or 0)
+            }
+        # Также проверить с суффиксом A
+        art_list_a = [a + 'A' for a in art_list]
+        cur.execute("""
+            SELECT TRIM(TRAILING 'A' FROM article) as article_base,
+                   SUM(qty) as total_qty, COUNT(DISTINCT branch) as selling_branches
+            FROM sales
+            WHERE article = ANY(%s) AND sale_date >= CURRENT_DATE - %s
+            GROUP BY article_base
+        """, (art_list_a, days))
+        for r in cur.fetchall():
+            ab = r['article_base']
+            if ab not in network_sales or network_sales[ab]['qty'] == 0:
+                network_sales[ab] = {
+                    'qty': int(r['total_qty'] or 0),
+                    'branches': int(r['selling_branches'] or 0)
+                }
+
+        # Топ-3 филиала где продается этот артикул (для рекомендации)
+        cur.execute("""
+            SELECT TRIM(TRAILING 'A' FROM article) as article_base,
+                   branch, SUM(qty) as qty
+            FROM sales
+            WHERE (article = ANY(%s) OR article = ANY(%s))
+            AND sale_date >= CURRENT_DATE - %s
+            GROUP BY article_base, branch
+            ORDER BY article_base, qty DESC
+        """, (art_list, art_list_a, days))
+        for r in cur.fetchall():
+            ab = r['article_base']
+            if ab not in branch_sales_map:
+                branch_sales_map[ab] = []
+            if len(branch_sales_map[ab]) < 3:
+                branch_sales_map[ab].append({'branch': r['branch'], 'qty': int(r['qty'] or 0)})
 
     cur.close(); release_db(conn)
 
@@ -3012,6 +3060,12 @@ def zero_sales():
         total_wms = int(r['wms_stock'] or 0) if 'wms_stock' in r else 0
         can_order_count = sum(1 for s in wms_sizes_detail if s['can_order'])
 
+        ns = network_sales.get(art, {'qty': 0, 'branches': 0})
+        top_branches = branch_sales_map.get(art, [])
+        # Убрать текущий филиал из топа (если смотрим по конкретному)
+        if branch:
+            top_branches = [b for b in top_branches if b['branch'] != branch]
+
         item = {
             'article': art,
             'name': r['name'] or '',
@@ -3028,6 +3082,10 @@ def zero_sales():
             'is_broken_grid': is_broken_grid,
             'needs_schlopka': needs_schlopka,
             'days_no_sale': days,
+            'network_sales_qty': ns['qty'],
+            'network_sales_branches': ns['branches'],
+            'top_selling_branches': top_branches,
+            'hot_in_network': ns['qty'] > 5,  # флаг: горячий товар в сети
         }
         if role != 'user':
             item['branch'] = r.get('branch', '')

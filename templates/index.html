@@ -1250,6 +1250,10 @@ td.muted{color:var(--text2)}
           <select id="zs-branch" class="admin-only" onchange="loadZeroSales()" style="min-width:180px">
             <option value="">— все филиалы —</option>
           </select>
+          <label style="cursor:pointer;display:inline-flex;align-items:center" class="admin-only" title="Загрузить остатки из 1С">
+            <input type="file" id="zs-1c-file" accept=".xlsx" style="display:none" onchange="upload1CStock(this)">
+            <span class="btn-secondary" onclick="document.getElementById('zs-1c-file').click()" style="white-space:nowrap">📤 Загрузить 1С</span>
+          </label>
           <button class="btn-secondary" onclick="loadZeroSales()">↻ Обновить</button>
           <button class="btn-secondary" onclick="exportZeroSalesExcel()" style="background:var(--green);color:#fff;border-color:var(--green)">📥 Excel</button>
           <button id="zs-schlopka-btn" class="btn-primary" style="display:none;background:var(--amber)" onclick="createAutoSchlopka()">
@@ -1263,6 +1267,7 @@ td.muted{color:var(--text2)}
         <!-- Filters -->
         <div style="display:flex;gap:8px;margin-bottom:8px;flex-wrap:wrap">
           <button class="period-tab active" id="zs-filter-all" onclick="zsFilter('all',this)">Все</button>
+          <button class="period-tab" id="zs-filter-hot" onclick="zsFilter('hot',this)">🔥 Горячие в сети</button>
           <button class="period-tab" id="zs-filter-broken" onclick="zsFilter('broken',this)">🔴 Битая сетка</button>
           <button class="period-tab" id="zs-filter-schlopka" onclick="zsFilter('schlopka',this)">⚡ Нужна схлопка (&lt;50шт)</button>
         </div>
@@ -1285,13 +1290,14 @@ td.muted{color:var(--text2)}
                 <th>В филиале</th>
                 <th>Размеров</th>
                 <th>В сети</th>
+                <th>🔥 Прод. в сети</th>
                 <th>WMS склад</th>
                 <th>Можно дозаказать</th>
                 <th>Статус</th>
               </tr>
             </thead>
             <tbody id="zs-tbody">
-              <tr><td colspan="9"><div class="empty-state">Выберите филиал или нажмите обновить</div></td></tr>
+              <tr><td colspan="12"><div class="empty-state">Выберите филиал или нажмите обновить</div></td></tr>
             </tbody>
           </table>
         </div>
@@ -4055,7 +4061,7 @@ async function loadZeroSales(){
   var url = '/api/zero-sales?days=30';
   if(branch) url += '&branch=' + encodeURIComponent(branch);
 
-  document.getElementById('zs-tbody').innerHTML = '<tr><td colspan="9"><div class="empty-state">Загрузка...</div></td></tr>';
+  document.getElementById('zs-tbody').innerHTML = '<tr><td colspan="12"><div class="empty-state">Загрузка...</div></td></tr>';
 
   var r = await fetch(url);
   if(!r.ok){ toast('Ошибка загрузки', true); return; }
@@ -4105,17 +4111,20 @@ function renderZeroSales(){
   var needsSchlopka = data.filter(i=>i.needs_schlopka).length;
   var totalStock = data.reduce((s,i)=>s+(i.branch_stock||0),0);
   var statsEl = document.getElementById('zs-stats');
+  var hotInNet = data.filter(i=>i.hot_in_network).length;
   if(statsEl) statsEl.innerHTML =
     '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--text)">'+total+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Артикулов</div></div>'+
+    '<div style="background:rgba(255,150,0,.08);border:1px solid rgba(255,150,0,.25);border-radius:10px;padding:12px 18px;text-align:center;cursor:pointer" onclick="zsFilter(\'hot\',document.getElementById(\'zs-filter-hot\'))"><div style="font-size:24px;font-weight:800;color:#ff9600">'+hotInNet+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">🔥 Горячие в сети</div></div>'+
     '<div style="background:rgba(255,23,68,.08);border:1px solid rgba(255,23,68,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--accent)">'+broken+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Битая сетка</div></div>'+
     '<div style="background:rgba(245,158,11,.08);border:1px solid rgba(245,158,11,.2);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--amber)">'+needsSchlopka+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Нужна схлопка</div></div>'+
     '<div style="background:rgba(255,255,255,.03);border:1px solid rgba(255,255,255,.07);border-radius:10px;padding:12px 18px;text-align:center"><div style="font-size:24px;font-weight:800;color:var(--text)">'+totalStock+'</div><div style="font-size:10px;color:var(--text3);text-transform:uppercase">Единиц в залежи</div></div>';
 
+  if(_zsFilter === 'hot') data = data.filter(i=>i.hot_in_network);
   if(_zsFilter === 'broken') data = data.filter(i=>i.is_broken_grid);
   if(_zsFilter === 'schlopka') data = data.filter(i=>i.needs_schlopka);
 
   if(!data.length){
-    document.getElementById('zs-tbody').innerHTML = '<tr><td colspan="9"><div class="empty-state">Нет данных</div></td></tr>';
+    document.getElementById('zs-tbody').innerHTML = '<tr><td colspan="12"><div class="empty-state">Нет данных</div></td></tr>';
     return;
   }
 
@@ -4130,13 +4139,32 @@ function renderZeroSales(){
 
   document.getElementById('zs-tbody').innerHTML = data.map(item=>{
     var statusBadges = '';
+    if(item.hot_in_network) statusBadges += '<span style="background:rgba(255,150,0,.15);color:#ff9600;border:1px solid rgba(255,150,0,.3);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;margin-right:4px">🔥 ГОРЯЧИЙ</span>';
     if(item.is_broken_grid) statusBadges += '<span style="background:rgba(255,23,68,.15);color:var(--accent);border:1px solid rgba(255,23,68,.3);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700;margin-right:4px">🔴 БИТАЯ СЕТКА</span>';
     if(item.needs_schlopka) statusBadges += '<span style="background:rgba(245,158,11,.15);color:var(--amber);border:1px solid rgba(245,158,11,.3);border-radius:4px;padding:2px 7px;font-size:10px;font-weight:700">⚡ СХЛОПКА</span>';
     if(!statusBadges) statusBadges = '<span style="color:var(--text3);font-size:11px">● Нет продаж</span>';
 
-    var networkColor = item.network_stock < 50 ? 'var(--amber)' : item.network_stock < 10 ? 'var(--accent)' : 'var(--text)';
+    var networkColor = item.network_stock < 10 ? 'var(--accent)' : item.network_stock < 50 ? 'var(--amber)' : 'var(--text)';
 
-    return '<tr>'+
+    // Продажи в сети — с подсказкой топ-филиалов
+    var salesQty = item.network_sales_qty || 0;
+    var salesColor = salesQty > 20 ? '#22c55e' : salesQty > 5 ? '#f59e0b' : 'var(--text3)';
+    var salesTitle = '';
+    if(item.top_selling_branches && item.top_selling_branches.length){
+      salesTitle = 'Продается в: '+item.top_selling_branches.map(b=>b.branch+' ('+b.qty+'шт)').join(', ');
+    }
+    var salesCell = salesQty > 0
+      ? '<span title="'+salesTitle+'" style="color:'+salesColor+';font-weight:700;cursor:default">'+salesQty+' шт'+(item.network_sales_branches>1?' / '+item.network_sales_branches+' фил.':'')+'</span>'
+      : '<span style="color:var(--text3);font-size:11px">—</span>';
+
+    // Рекомендация куда переместить
+    var moveHint = '';
+    if(item.hot_in_network && item.top_selling_branches && item.top_selling_branches.length){
+      var topBr = item.top_selling_branches[0];
+      moveHint = '<div style="font-size:10px;color:#22c55e;margin-top:3px">→ '+topBr.branch+'</div>';
+    }
+
+    return '<tr'+(item.hot_in_network?' style="background:rgba(255,150,0,.04)"':'')+'>'+
       '<td style="font-weight:700;text-transform:uppercase;font-size:12px">'+item.article+'</td>'+
       '<td style="font-size:11px;color:var(--text2);max-width:200px"><span title="'+item.name+'" style="display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">'+item.name+'</span></td>'+
       '<td>'+abcBadge(item.abc)+'</td>'+
@@ -4145,9 +4173,29 @@ function renderZeroSales(){
       '<td style="text-align:center;font-weight:700;color:var(--accent)">'+item.branch_stock+'</td>'+
       '<td style="text-align:center"><span style="'+(item.is_broken_grid?'color:var(--accent);font-weight:700':'')+'">'+(item.branch_sizes||0)+'</span></td>'+
       '<td style="text-align:center;font-weight:700;color:'+networkColor+'">'+item.network_stock+'</td>'+
+      '<td style="text-align:center">'+salesCell+moveHint+'</td>'+
+      '<td style="text-align:center;color:var(--text3);font-size:11px">'+(item.wms_total||0)+'</td>'+
+      '<td style="text-align:center;font-size:11px">'+(item.can_order_count||0)+'</td>'+
       '<td>'+statusBadges+'</td>'+
       '</tr>';
   }).join('');
+}
+
+async function upload1CStock(input){
+  var file = input.files[0];
+  if(!file) return;
+  input.value = '';
+  var fd = new FormData();
+  fd.append('file', file);
+  toast('Загружаю 1С файл...');
+  var r = await fetch('/api/catalog/upload', {method:'POST', body: fd});
+  var d = await r.json();
+  if(d.ok){
+    toast('✅ Загружено '+d.count+' артикулов из 1С');
+    setTimeout(loadZeroSales, 500);
+  } else {
+    toast('Ошибка: '+(d.error||'неизвестная'), true);
+  }
 }
 
 function exportZeroSalesExcel(){
