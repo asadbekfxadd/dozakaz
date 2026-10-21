@@ -2292,9 +2292,9 @@ def sync_scheduler():
         except Exception as _e:
             print(f'[SYNC] TG notify error: {_e}')
 
-# Start background sync thread
-sync_thread = Thread(target=sync_scheduler, daemon=True)
-sync_thread.start()
+# Auto-sync disabled — manual upload only via /api/catalog/upload and /api/sales/upload
+# sync_thread = Thread(target=sync_scheduler, daemon=True)
+# sync_thread.start()
 
 @app.route('/api/debug/counts')
 @login_required
