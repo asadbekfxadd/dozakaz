@@ -492,7 +492,10 @@ def upload_to_yadisk(file_path, filename):
         print(f'[YADISK UPLOAD] Error: {e}')
         return False
 
-def generate_order_excel(branch, items):
+def generate_order_excel(branch, items, stock_map=None):
+    """
+    stock_map: dict {(article, size): network_stock} — суммарный остаток по сети
+    """
     wb = openpyxl.Workbook()
     ws = wb.active
     ws.title = 'Заказ'
@@ -500,8 +503,9 @@ def generate_order_excel(branch, items):
     ws.column_dimensions['B'].width = 18
     ws.column_dimensions['C'].width = 18
     ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 14
     ws.row_dimensions[1].height = 6
-    ws.merge_cells('B2:D2')
+    ws.merge_cells('B2:E2')
     cell = ws['B2']
     cell.value = f'Филиал {branch}'
     cell.font = Font(name='Arial', bold=True, size=11)
@@ -510,23 +514,40 @@ def generate_order_excel(branch, items):
     ws.row_dimensions[2].height = 20
     thin = Side(style='thin')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    headers = [('A3','№'),('B3','Артикул'),('C3','Характеристика'),('D3','Кол-во')]
+    headers = [('A3','№'),('B3','Артикул'),('C3','Характеристика'),('D3','Кол-во'),('E3','Остаток в сети')]
     for coord, val in headers:
         c = ws[coord]
         c.value = val
         c.font = Font(name='Arial', bold=True, size=10)
         c.alignment = Alignment(horizontal='center', vertical='center')
         c.border = border
+        if coord == 'E3':
+            c.fill = PatternFill('solid', fgColor='E8F5E9')
     ws.row_dimensions[3].height = 16
+    grn_fill = PatternFill('solid', fgColor='E8F5E9')
+    amb_fill = PatternFill('solid', fgColor='FFF8E1')
+    red_fill = PatternFill('solid', fgColor='FFEBEE')
     for i, item in enumerate(items, 1):
         row = i + 3
+        art = item.get('article', '')
+        size = item.get('size', '')
+        net_stock = None
+        if stock_map is not None:
+            net_stock = stock_map.get((art, size)) or stock_map.get((art.rstrip('A'), size))
         ws.cell(row=row, column=1, value=i).alignment = Alignment(horizontal='center')
-        ws.cell(row=row, column=2, value=item.get('article', ''))
-        ws.cell(row=row, column=3, value=item.get('size', '')).alignment = Alignment(horizontal='center')
+        ws.cell(row=row, column=2, value=art)
+        ws.cell(row=row, column=3, value=size).alignment = Alignment(horizontal='center')
         ws.cell(row=row, column=4, value=item.get('qty', 1)).alignment = Alignment(horizontal='center')
-        for col in range(1, 5):
+        stock_cell = ws.cell(row=row, column=5, value=net_stock if net_stock is not None else '—')
+        stock_cell.alignment = Alignment(horizontal='center')
+        if net_stock is not None:
+            stock_cell.fill = red_fill if net_stock == 0 else amb_fill if net_stock < 5 else grn_fill
+            stock_cell.font = Font(name='Arial', size=10, bold=True,
+                                   color='B71C1C' if net_stock == 0 else 'E65100' if net_stock < 5 else '1B5E20')
+        for col in range(1, 6):
             ws.cell(row=row, column=col).border = border
-            ws.cell(row=row, column=col).font = Font(name='Arial', size=10)
+            if col != 5:
+                ws.cell(row=row, column=col).font = Font(name='Arial', size=10)
         ws.row_dimensions[row].height = 15
     buf = io.BytesIO()
     wb.save(buf)
@@ -566,7 +587,21 @@ def create_order():
         branch_slug = branch.replace(' ','_').replace('.','')
         original_name = f'ДОЗАКАЗ_{branch_slug}_{ts}.xlsx'
         filename = f'{ts}_{secure_filename(original_name)}'
-        excel_buf = generate_order_excel(branch, items)
+        # Подтянуть остатки по сети для Excel
+        _smap = {}
+        try:
+            _conn = get_db(); _cur = _conn.cursor()
+            _arts = list(set(it.get('article','') for it in items if it.get('article')))
+            if _arts:
+                _cur.execute("SELECT article, size, SUM(qty) as t FROM branch_stock WHERE article = ANY(%s) GROUP BY article, size", (_arts,))
+                for _r in _cur.fetchall(): _smap[(_r['article'], _r['size'])] = int(_r['t'] or 0)
+                _arts_b = [a.rstrip('A') for a in _arts]
+                _cur.execute("SELECT article, size, SUM(qty) as t FROM branch_stock WHERE article = ANY(%s) GROUP BY article, size", (_arts_b,))
+                for _r in _cur.fetchall():
+                    if (_r['article'], _r['size']) not in _smap: _smap[(_r['article'], _r['size'])] = int(_r['t'] or 0)
+            _cur.close(); release_db(_conn)
+        except Exception as _e: print(f'[WARN stock_map] {_e}')
+        excel_buf = generate_order_excel(branch, items, stock_map=_smap)
         file_path = os.path.join(app.config['UPLOAD_FOLDER'], filename)
         file_data = excel_buf.read()
         try:
@@ -664,8 +699,30 @@ def download_order_excel(oid):
         return 'Not found', 404
     cur.execute('SELECT * FROM order_items WHERE order_id=%s', (oid,))
     items = cur.fetchall()
+    # Суммарный остаток по сети для каждого (артикул, размер)
+    stock_map = {}
+    if items:
+        art_list = list(set(i['article'] for i in items))
+        cur.execute("""
+            SELECT article, size, SUM(qty) as total
+            FROM branch_stock WHERE article = ANY(%s)
+            GROUP BY article, size
+        """, (art_list,))
+        for sr in cur.fetchall():
+            stock_map[(sr['article'], sr['size'])] = int(sr['total'] or 0)
+        # также без суффикса A
+        art_list_base = [a.rstrip('A') for a in art_list]
+        cur.execute("""
+            SELECT article, size, SUM(qty) as total
+            FROM branch_stock WHERE article = ANY(%s)
+            GROUP BY article, size
+        """, (art_list_base,))
+        for sr in cur.fetchall():
+            key = (sr['article'], sr['size'])
+            if key not in stock_map:
+                stock_map[key] = int(sr['total'] or 0)
     cur.close(); release_db(conn)
-    buf = generate_order_excel(row['branch'], [dict(i) for i in items])
+    buf = generate_order_excel(row['branch'], [dict(i) for i in items], stock_map=stock_map)
     ts = row['date'].replace('-','') if row['date'] else datetime.now().strftime('%Y%m%d')
     fname = f"ДОЗАКАЗ_{row['branch'].replace(' ','_')}_{ts}.xlsx"
     return send_file(buf, as_attachment=True, download_name=fname,
