@@ -514,7 +514,7 @@ def generate_order_excel(branch, items, stock_map=None):
     ws.row_dimensions[2].height = 20
     thin = Side(style='thin')
     border = Border(left=thin, right=thin, top=thin, bottom=thin)
-    headers = [('A3','№'),('B3','Артикул'),('C3','Характеристика'),('D3','Кол-во'),('E3','Остаток в сети')]
+    headers = [('A3','№'),('B3','Артикул'),('C3','Характеристика'),('D3','Кол-во'),('E3','Остаток в филиале')]
     for coord, val in headers:
         c = ws[coord]
         c.value = val
@@ -587,16 +587,16 @@ def create_order():
         branch_slug = branch.replace(' ','_').replace('.','')
         original_name = f'ДОЗАКАЗ_{branch_slug}_{ts}.xlsx'
         filename = f'{ts}_{secure_filename(original_name)}'
-        # Подтянуть остатки по сети для Excel
+        # Подтянуть остатки в филиале-получателе для Excel
         _smap = {}
         try:
             _conn = get_db(); _cur = _conn.cursor()
             _arts = list(set(it.get('article','') for it in items if it.get('article')))
-            if _arts:
-                _cur.execute("SELECT article, size, SUM(qty) as t FROM branch_stock WHERE article = ANY(%s) GROUP BY article, size", (_arts,))
+            if _arts and branch:
+                _cur.execute("SELECT article, size, SUM(qty) as t FROM branch_stock WHERE article = ANY(%s) AND branch = %s GROUP BY article, size", (_arts, branch))
                 for _r in _cur.fetchall(): _smap[(_r['article'], _r['size'])] = int(_r['t'] or 0)
                 _arts_b = [a.rstrip('A') for a in _arts]
-                _cur.execute("SELECT article, size, SUM(qty) as t FROM branch_stock WHERE article = ANY(%s) GROUP BY article, size", (_arts_b,))
+                _cur.execute("SELECT article, size, SUM(qty) as t FROM branch_stock WHERE article = ANY(%s) AND branch = %s GROUP BY article, size", (_arts_b, branch))
                 for _r in _cur.fetchall():
                     if (_r['article'], _r['size']) not in _smap: _smap[(_r['article'], _r['size'])] = int(_r['t'] or 0)
             _cur.close(); release_db(_conn)
@@ -699,24 +699,25 @@ def download_order_excel(oid):
         return 'Not found', 404
     cur.execute('SELECT * FROM order_items WHERE order_id=%s', (oid,))
     items = cur.fetchall()
-    # Суммарный остаток по сети для каждого (артикул, размер)
+    # Остаток в филиале заявки для каждого (артикул, размер)
     stock_map = {}
-    if items:
+    branch = row['branch']
+    if items and branch:
         art_list = list(set(i['article'] for i in items))
         cur.execute("""
             SELECT article, size, SUM(qty) as total
-            FROM branch_stock WHERE article = ANY(%s)
+            FROM branch_stock WHERE article = ANY(%s) AND branch = %s
             GROUP BY article, size
-        """, (art_list,))
+        """, (art_list, branch))
         for sr in cur.fetchall():
             stock_map[(sr['article'], sr['size'])] = int(sr['total'] or 0)
         # также без суффикса A
         art_list_base = [a.rstrip('A') for a in art_list]
         cur.execute("""
             SELECT article, size, SUM(qty) as total
-            FROM branch_stock WHERE article = ANY(%s)
+            FROM branch_stock WHERE article = ANY(%s) AND branch = %s
             GROUP BY article, size
-        """, (art_list_base,))
+        """, (art_list_base, branch))
         for sr in cur.fetchall():
             key = (sr['article'], sr['size'])
             if key not in stock_map:
