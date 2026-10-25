@@ -453,6 +453,124 @@ def get_orders():
     cur.close(); release_db(conn)
     return jsonify([dict(r) for r in rows])
 
+@app.route('/api/orders/merged-excel', methods=['GET'])
+@login_required
+def merged_orders_excel():
+    """Сводный Excel: все заявки филиала за дату, артикулы суммируются."""
+    branch = request.args.get('branch', '').strip()
+    date = request.args.get('date', datetime.now().strftime('%Y-%m-%d'))
+    conn = get_db(); cur = conn.cursor()
+    # Фильтр по роли
+    if session['role'] == 'user':
+        branch = session['branch']
+    elif session['role'] == 'regional':
+        allowed = session.get('branches', [])
+        if branch not in allowed:
+            branch = allowed[0] if allowed else ''
+    if not branch:
+        return jsonify({'error': 'Филиал не указан'}), 400
+    # Все заявки филиала за дату
+    cur.execute('''
+        SELECT o.id, o.responsible, o.created_at
+        FROM orders o
+        WHERE o.branch=%s AND o.date=%s
+        ORDER BY o.created_at
+    ''', (branch, date))
+    orders = cur.fetchall()
+    if not orders:
+        cur.close(); release_db(conn)
+        return jsonify({'error': f'Нет заявок за {date} для филиала {branch}'}), 404
+    order_ids = [o['id'] for o in orders]
+    # Все позиции из этих заявок
+    cur.execute('''
+        SELECT oi.article, oi.name, oi.size, SUM(oi.qty) as total_qty
+        FROM order_items oi
+        WHERE oi.order_id = ANY(%s)
+        GROUP BY oi.article, oi.name, oi.size
+        ORDER BY oi.article, oi.size
+    ''', (order_ids,))
+    items_raw = cur.fetchall()
+    # Остатки в филиале
+    arts = list(set(r['article'] for r in items_raw))
+    arts_stripped = list(set(a.rstrip('A') for a in arts))
+    all_arts = list(set(arts + arts_stripped))
+    stock_map = {}
+    if all_arts:
+        cur.execute("SELECT article, size, SUM(qty) as t FROM branch_stock WHERE article = ANY(%s) AND branch = %s GROUP BY article, size",
+                    (all_arts, branch))
+        for r in cur.fetchall(): stock_map[(r['article'], r['size'])] = int(r['t'] or 0)
+    cur.close(); release_db(conn)
+    items = [{'article': r['article'], 'name': r['name'], 'size': r['size'], 'qty': int(r['total_qty'] or 0)} for r in items_raw]
+    # Генерируем Excel
+    buf = generate_merged_excel(branch, date, orders, items, stock_map)
+    fname = f"СВОДНЫЙ_{branch.replace(' ','_')}_{date}.xlsx"
+    return send_file(buf, as_attachment=True, download_name=fname,
+                     mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+def generate_merged_excel(branch, date, orders, items, stock_map):
+    """Сводный Excel: шапка с инфо о заявках, позиции суммированы."""
+    wb = openpyxl.Workbook()
+    ws = wb.active
+    ws.title = 'Сводный заказ'
+    ws.column_dimensions['A'].width = 6
+    ws.column_dimensions['B'].width = 18
+    ws.column_dimensions['C'].width = 18
+    ws.column_dimensions['D'].width = 10
+    ws.column_dimensions['E'].width = 14
+    thin = Side(style='thin')
+    border = Border(left=thin, right=thin, top=thin, bottom=thin)
+    # Строка 1: заголовок
+    ws.row_dimensions[1].height = 6
+    ws.merge_cells('A2:E2')
+    c = ws['A2']
+    c.value = f'СВОДНЫЙ ЗАКАЗ — Филиал {branch} — {date}'
+    c.font = Font(name='Arial', bold=True, size=12)
+    c.fill = PatternFill('solid', fgColor='FFD700')
+    c.alignment = Alignment(horizontal='center', vertical='center')
+    ws.row_dimensions[2].height = 22
+    # Строка 3: список заявок
+    ws.merge_cells('A3:E3')
+    names = ', '.join(o['responsible'] for o in orders)
+    count = len(orders)
+    c3 = ws['A3']
+    c3.value = f'Объединено заявок: {count}  |  Ответственные: {names}'
+    c3.font = Font(name='Arial', size=9, italic=True, color='555555')
+    c3.alignment = Alignment(horizontal='left', vertical='center')
+    ws.row_dimensions[3].height = 14
+    # Строка 4: заголовки таблицы
+    headers = [('A4','№'),('B4','Артикул'),('C4','Характеристика'),('D4','Кол-во'),('E4','Остаток в филиале')]
+    for coord, val in headers:
+        c = ws[coord]
+        c.value = val
+        c.font = Font(name='Arial', bold=True, size=10)
+        c.alignment = Alignment(horizontal='center', vertical='center')
+        c.border = border
+        if coord == 'E4': c.fill = PatternFill('solid', fgColor='E8F5E9')
+    ws.row_dimensions[4].height = 16
+    grn_fill = PatternFill('solid', fgColor='E8F5E9')
+    amb_fill = PatternFill('solid', fgColor='FFF8E1')
+    red_fill = PatternFill('solid', fgColor='FFEBEE')
+    for i, item in enumerate(items, 1):
+        row = i + 4
+        art = item['article']; size = item['size']
+        net_stock = stock_map.get((art, size)) or stock_map.get((art.rstrip('A'), size))
+        ws.cell(row=row, column=1, value=i).alignment = Alignment(horizontal='center')
+        ws.cell(row=row, column=2, value=art)
+        ws.cell(row=row, column=3, value=size).alignment = Alignment(horizontal='center')
+        ws.cell(row=row, column=4, value=item['qty']).alignment = Alignment(horizontal='center')
+        sc = ws.cell(row=row, column=5, value=net_stock if net_stock is not None else '—')
+        sc.alignment = Alignment(horizontal='center')
+        if net_stock is not None:
+            sc.fill = red_fill if net_stock == 0 else amb_fill if net_stock < 5 else grn_fill
+            sc.font = Font(name='Arial', size=10, bold=True,
+                           color='B71C1C' if net_stock == 0 else 'E65100' if net_stock < 5 else '1B5E20')
+        for col in range(1, 6):
+            ws.cell(row=row, column=col).border = border
+            if col != 5: ws.cell(row=row, column=col).font = Font(name='Arial', size=10)
+        ws.row_dimensions[row].height = 15
+    buf = io.BytesIO(); wb.save(buf); buf.seek(0)
+    return buf
+
 @app.route('/api/orders/<int:oid>/items', methods=['GET'])
 @login_required
 def get_order_items(oid):

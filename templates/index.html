@@ -811,6 +811,7 @@ td.muted{color:var(--text2)}
           <input type="date" id="f-date-to" onchange="loadOrders()">
           <button class="btn-secondary" onclick="clearFilters()" style="padding:8px 14px">✕ Сброс</button>
           <button class="btn-secondary" onclick="loadOrders()" style="padding:8px 14px">↻</button>
+          <button class="btn-secondary" onclick="downloadMergedExcel()" style="padding:8px 14px;background:rgba(34,197,94,.12);border-color:rgba(34,197,94,.3);color:#22c55e" title="Скачать все заявки выбранного филиала за выбранную дату одним файлом">📥 Сводный Excel</button>
         </div>
         <!-- Charts row -->
         <div id="dash-charts" class="admin-only" style="display:grid;grid-template-columns:1fr 280px;gap:14px;margin-bottom:20px">
@@ -1975,6 +1976,34 @@ function toast(msg,err){
 function clearFilters(){
   ['f-branch','f-status','f-responsible','f-date-from','f-date-to'].forEach(id=>document.getElementById(id).value='');
   loadOrders();
+}
+
+async function downloadMergedExcel(){
+  var branch = (document.getElementById('f-branch')||{}).value||'';
+  var dateFrom = (document.getElementById('f-date-from')||{}).value||'';
+  var dateTo = (document.getElementById('f-date-to')||{}).value||'';
+  // Используем date-from если задан, иначе сегодня
+  var date = dateFrom || new Date().toISOString().slice(0,10);
+  if(!branch){
+    toast('Выберите филиал в фильтре', true);
+    return;
+  }
+  toast('Формирую сводный файл...');
+  var url = '/api/orders/merged-excel?branch='+encodeURIComponent(branch)+'&date='+encodeURIComponent(date);
+  try {
+    var r = await fetch(url);
+    if(!r.ok){
+      var err = await r.json().catch(()=>({error:'Ошибка сервера'}));
+      toast('Ошибка: '+(err.error||r.status), true);
+      return;
+    }
+    var blob = await r.blob();
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'СВОДНЫЙ_'+branch+'_'+date+'.xlsx';
+    a.click();
+    toast('✅ Сводный Excel скачан');
+  } catch(e){ toast('Ошибка: '+e, true); }
 }
 
 function animateNum(el, target){
