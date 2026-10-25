@@ -473,7 +473,7 @@ def merged_orders_excel():
     cur.execute('''
         SELECT o.id, o.responsible, o.created_at
         FROM orders o
-        WHERE o.branch=%s AND o.date=%s
+        WHERE o.branch=%s AND o.date=%s AND o.status='Новая'
         ORDER BY o.created_at
     ''', (branch, date))
     orders = cur.fetchall()
