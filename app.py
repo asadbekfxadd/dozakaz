@@ -19,8 +19,27 @@ _login_attempts = defaultdict(list)
 _LOGIN_MAX = 10
 _LOGIN_WINDOW = 900  # seconds
 app.secret_key = os.environ.get('SECRET_KEY') or os.urandom(32)
+_ON_SERVER = bool(os.environ.get('RAILWAY_ENVIRONMENT') or os.environ.get('FORCE_HTTPS'))
+app.config.update(SESSION_COOKIE_HTTPONLY=True, SESSION_COOKIE_SAMESITE='Lax',
+                  SESSION_COOKIE_SECURE=_ON_SERVER, PERMANENT_SESSION_LIFETIME=60 * 60 * 24 * 14)
+if _ON_SERVER:
+    # за прокси Railway настоящий адрес клиента — в X-Forwarded-For (иначе лимит попыток общий на всех)
+    from werkzeug.middleware.proxy_fix import ProxyFix
+    app.wsgi_app = ProxyFix(app.wsgi_app, x_for=1, x_proto=1)
 app.config['UPLOAD_FOLDER'] = 'uploads'
 app.config['MAX_CONTENT_LENGTH'] = 32 * 1024 * 1024
+
+
+@app.after_request
+def _security_headers(resp):
+    resp.headers.setdefault('X-Content-Type-Options', 'nosniff')
+    resp.headers.setdefault('X-Frame-Options', 'SAMEORIGIN')
+    resp.headers.setdefault('Referrer-Policy', 'same-origin')
+    if _ON_SERVER:
+        resp.headers.setdefault('Strict-Transport-Security', 'max-age=31536000')
+    if request.path.startswith('/api/'):
+        resp.headers['Cache-Control'] = 'no-store'
+    return resp
 
 @app.route('/favicon.ico')
 def favicon():
@@ -136,28 +155,29 @@ def get_pbi_token():
         print(f'[PBI TOKEN] Error: {e}')
         return None
 
+# Пароли в код не кладём: они задаются переменными окружения (см. README, раздел «Пароли»).
 USERS = {
-    'admin': {'password': '123456', 'role': 'admin', 'branch': None, 'branches': None},
-    'ANNA_V': {'password': 'region1', 'role': 'regional', 'branch': None, 'branches': ['HIGH TOWN PLAZA','MAGIC CITY','NOVZA','Scopus Mall']},
-    'ANNA_G': {'password': 'region2', 'role': 'regional', 'branch': None, 'branches': ['ATLAS CHIMGAN','ECO PARK','HIGH TOWN PLAZA','MALIKA','Shota Rustavely','Yunusabad gallery']},
-    'ALAYSKIY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ALAYSKIY', 'branches': None},
-    'ATLAS CHIMGAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ATLAS CHIMGAN', 'branches': None},
-    'ECO PARK': {'password': 'LI-NING1', 'role': 'user', 'branch': 'ECO PARK', 'branches': None},
-    'Family park': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Family park', 'branches': None},
-    'HIGH TOWN PLAZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'HIGH TOWN PLAZA', 'branches': None},
-    'M. BARAKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'M. BARAKA', 'branches': None},
-    'MAGIC CITY': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MAGIC CITY', 'branches': None},
-    'MALIKA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'MALIKA', 'branches': None},
-    'NOVZA': {'password': 'LI-NING1', 'role': 'user', 'branch': 'NOVZA', 'branches': None},
-    'Scopus Mall': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Scopus Mall', 'branches': None},
-    'Shota Rustavely': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Shota Rustavely', 'branches': None},
-    'TASHKENT CITY MALL': {'password': 'LI-NING1', 'role': 'user', 'branch': 'TASHKENT CITY MALL', 'branches': None},
-    'UZBEGIM ANDIJAN': {'password': 'LI-NING1', 'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
-    'Yunusabad gallery': {'password': 'LI-NING1', 'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
-    'DETSKIY MIR': {'password': 'LI-NING1', 'role': 'user', 'branch': 'DETSKIY MIR', 'branches': None},
-    'CENTRIUM HALL SAMARKAND': {'password': 'LI-NING1', 'role': 'user', 'branch': 'CENTRIUM HALL SAMARKAND', 'branches': None},
-    'SKLAD': {'password': 'sklad2026', 'role': 'warehouse', 'branch': 'WMS', 'branches': None},
-    'DMITRIY': {'password': 'Dm!LN2026$', 'role': 'admin', 'branch': None, 'branches': None},
+    'admin': {'role': 'admin', 'branch': None, 'branches': None},
+    'ANNA_V': {'role': 'regional', 'branch': None, 'branches': ['HIGH TOWN PLAZA','MAGIC CITY','NOVZA','Scopus Mall']},
+    'ANNA_G': {'role': 'regional', 'branch': None, 'branches': ['ATLAS CHIMGAN','ECO PARK','HIGH TOWN PLAZA','MALIKA','Shota Rustavely','Yunusabad gallery']},
+    'ALAYSKIY': {'role': 'user', 'branch': 'ALAYSKIY', 'branches': None},
+    'ATLAS CHIMGAN': {'role': 'user', 'branch': 'ATLAS CHIMGAN', 'branches': None},
+    'ECO PARK': {'role': 'user', 'branch': 'ECO PARK', 'branches': None},
+    'Family park': {'role': 'user', 'branch': 'Family park', 'branches': None},
+    'HIGH TOWN PLAZA': {'role': 'user', 'branch': 'HIGH TOWN PLAZA', 'branches': None},
+    'M. BARAKA': {'role': 'user', 'branch': 'M. BARAKA', 'branches': None},
+    'MAGIC CITY': {'role': 'user', 'branch': 'MAGIC CITY', 'branches': None},
+    'MALIKA': {'role': 'user', 'branch': 'MALIKA', 'branches': None},
+    'NOVZA': {'role': 'user', 'branch': 'NOVZA', 'branches': None},
+    'Scopus Mall': {'role': 'user', 'branch': 'Scopus Mall', 'branches': None},
+    'Shota Rustavely': {'role': 'user', 'branch': 'Shota Rustavely', 'branches': None},
+    'TASHKENT CITY MALL': {'role': 'user', 'branch': 'TASHKENT CITY MALL', 'branches': None},
+    'UZBEGIM ANDIJAN': {'role': 'user', 'branch': 'UZBEGIM ANDIJAN', 'branches': None},
+    'Yunusabad gallery': {'role': 'user', 'branch': 'Yunusabad gallery', 'branches': None},
+    'DETSKIY MIR': {'role': 'user', 'branch': 'DETSKIY MIR', 'branches': None},
+    'CENTRIUM HALL SAMARKAND': {'role': 'user', 'branch': 'CENTRIUM HALL SAMARKAND', 'branches': None},
+    'SKLAD': {'role': 'warehouse', 'branch': 'WMS', 'branches': None},
+    'DMITRIY': {'role': 'admin', 'branch': None, 'branches': None},
 }
 
 BRANCHES = ['ALAYSKIY','ATLAS CHIMGAN','ECO PARK','Family park','HIGH TOWN PLAZA',
@@ -300,8 +320,6 @@ def init_db():
     )""")
     cur.execute("ALTER TABLE orders ADD COLUMN IF NOT EXISTS file_data BYTEA")
     cur.execute("ALTER TABLE schlopka_sessions ADD COLUMN IF NOT EXISTS file_data BYTEA")
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
-    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE catalog ADD COLUMN IF NOT EXISTS discount INTEGER DEFAULT 0")
     cur.execute('''CREATE TABLE IF NOT EXISTS schlopka_items (
         id SERIAL PRIMARY KEY,
@@ -315,6 +333,8 @@ def init_db():
         status TEXT DEFAULT 'Не собран',
         updated_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
     )''')
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_ready BOOLEAN DEFAULT FALSE")
+    cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS branch_taken BOOLEAN DEFAULT FALSE")
     cur.execute("ALTER TABLE schlopka_items ADD COLUMN IF NOT EXISTS note TEXT DEFAULT ''")
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_session ON schlopka_items(session_id)')
     cur.execute('CREATE INDEX IF NOT EXISTS idx_schlopka_branch ON schlopka_items(session_id, branch)')
@@ -350,10 +370,69 @@ os.makedirs('uploads', exist_ok=True)
 os.makedirs('static', exist_ok=True)
 init_db()
 
+
+import hmac as _hmac, hashlib as _hashlib, json as _json_env
+from werkzeug.security import check_password_hash
+
+
+def _password_for(username):
+    """Пароль (или его хэш) пользователя из окружения.
+    USER_PASSWORDS — JSON {"логин": "пароль или хэш"}; для филиалов (роль user) без своей записи
+    действует BRANCH_PASSWORD. Нет пароля — войти нельзя."""
+    try:
+        own = _json_env.loads(os.environ.get('USER_PASSWORDS') or '{}')
+    except ValueError:
+        own = {}
+    if isinstance(own, dict) and own.get(username):
+        return str(own[username])
+    if USERS.get(username, {}).get('role') == 'user':
+        return os.environ.get('BRANCH_PASSWORD') or None
+    return None
+
+
+def _check_password(stored, given):
+    if not stored or not given:
+        return False
+    if stored.startswith(('pbkdf2:', 'scrypt:')):
+        return check_password_hash(stored, given)
+    return _hmac.compare_digest(stored.encode(), given.encode())
+
+
+def _pw_stamp(username):
+    """Отпечаток пароля в сессии: смена пароля завершает старые входы."""
+    return _hmac.new(str(app.secret_key).encode(), (_password_for(username) or '').encode(), _hashlib.sha256).hexdigest()[:24]
+
+
+def _session_ok():
+    u = session.get('username')
+    if not u or u not in USERS:
+        return False
+    return _hmac.compare_digest(str(session.get('pv', '')), _pw_stamp(u))
+
+
+def _order_visible(cur, oid):
+    cur.execute('SELECT branch FROM orders WHERE id=%s', (oid,))
+    r = cur.fetchone()
+    return bool(r) and branch_allowed(r['branch'])
+
+
+def branch_allowed(branch):
+    """Может ли текущий пользователь видеть данные филиала."""
+    role = session.get('role')
+    if role in ('admin', 'warehouse'):
+        return True
+    if role == 'regional':
+        return branch in (session.get('branches') or [])
+    if role == 'user':
+        return branch == session.get('branch')
+    return False
+
+
 def login_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'username' not in session:
+        if not _session_ok():
+            session.clear()
             return jsonify({'error': 'Unauthorized'}), 401
         return f(*args, **kwargs)
     return decorated
@@ -361,7 +440,8 @@ def login_required(f):
 def admin_required(f):
     @wraps(f)
     def decorated(*args, **kwargs):
-        if 'username' not in session:
+        if not _session_ok():
+            session.clear()
             return jsonify({'error': 'Unauthorized'}), 401
         if session.get('role') != 'admin':
             return jsonify({'error': 'Forbidden'}), 403
@@ -388,22 +468,28 @@ def static_files(filename):
 def login():
     ip = request.remote_addr or 'unknown'
     now = time.time()
-    # Prune old attempts
-    _login_attempts[ip] = [t for t in _login_attempts[ip] if now - t < _LOGIN_WINDOW]
-    if len(_login_attempts[ip]) >= _LOGIN_MAX:
+    data = request.get_json(silent=True) or {}
+    username = str(data.get('username', '')).strip()
+    password = str(data.get('password', '')).strip()
+    keys = [f'ip:{ip}', f'user:{username.lower()[:60]}']
+    for k in keys:
+        _login_attempts[k] = [t for t in _login_attempts[k] if now - t < _LOGIN_WINDOW]
+    if any(len(_login_attempts[k]) >= _LOGIN_MAX for k in keys):
         return jsonify({'error': 'Слишком много попыток входа. Попробуйте через 15 минут.'}), 429
 
-    data = request.get_json()
-    username = data.get('username', '').strip()
-    password = data.get('password', '').strip()
     user = USERS.get(username)
-    if not user or user['password'] != password:
-        _login_attempts[ip].append(now)
+    if not user or not _check_password(_password_for(username), password):
+        for k in keys:
+            _login_attempts[k].append(now)
         return jsonify({'error': 'Неверный логин или пароль'}), 401
 
-    # Successful login: clear attempts for this IP
-    _login_attempts.pop(ip, None)
+    # Successful login: clear attempts for this IP and user
+    for k in keys:
+        _login_attempts.pop(k, None)
+    session.clear()
+    session.permanent = True
     session['username'] = username
+    session['pv'] = _pw_stamp(username)
     session['role'] = user['role']
     session['branch'] = user.get('branch')
     session['branches'] = user.get('branches')
@@ -416,7 +502,7 @@ def logout():
 
 @app.route('/api/me')
 def me():
-    if 'username' not in session:
+    if not _session_ok():
         return jsonify({'logged_in': False})
     return jsonify({'logged_in': True, 'role': session['role'], 'branch': session['branch'],
                     'branches': session.get('branches'), 'username': session['username'],
@@ -575,6 +661,9 @@ def generate_merged_excel(branch, date, orders, items, stock_map):
 @login_required
 def get_order_items(oid):
     conn = get_db(); cur = conn.cursor()
+    if not _order_visible(cur, oid):
+        cur.close(); release_db(conn)
+        return jsonify({'error': 'Forbidden'}), 403
     cur.execute('SELECT * FROM order_items WHERE order_id=%s', (oid,))
     rows = cur.fetchall()
     cur.close(); release_db(conn)
@@ -776,6 +865,9 @@ def update_status(oid):
     if status not in ('Новая', 'В работе', 'Выполнена', 'Отказана'):
         return jsonify({'error': 'Invalid status'}), 400
     conn = get_db(); cur = conn.cursor()
+    if not _order_visible(cur, oid):
+        cur.close(); release_db(conn)
+        return jsonify({'error': 'Forbidden'}), 403
     if status == 'Отказана':
         cur.execute('UPDATE orders SET status=%s, reject_reason=%s WHERE id=%s', (status, reject_reason, oid))
     else:
@@ -815,6 +907,9 @@ def download_order_excel(oid):
     if not row:
         cur.close(); release_db(conn)
         return 'Not found', 404
+    if not branch_allowed(row['branch']):
+        cur.close(); release_db(conn)
+        return 'Forbidden', 403
     cur.execute('SELECT * FROM order_items WHERE order_id=%s', (oid,))
     items = cur.fetchall()
     # Остаток в филиале заявки для каждого (артикул, размер)
@@ -857,6 +952,8 @@ def download(oid):
     cur.close(); release_db(conn)
     if not row or not row['filename']:
         return 'Not found', 404
+    if not branch_allowed(row['branch']):
+        return 'Forbidden', 403
 
     # 1. Try DB storage (most reliable)
     if row.get('file_data'):
