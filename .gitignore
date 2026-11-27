@@ -34,3 +34,9 @@ Thumbs.db
 
 # Uploads (local dev only)
 uploads/
+
+# Локальная БД и резервные копии
+*.db
+*.sqlite
+app - *.py
+index - *.html
